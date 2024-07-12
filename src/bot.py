@@ -93,12 +93,16 @@ async def run_bot() -> None:
         handle_commands,
         NewMessage(
             pattern=rf'^/(\w+)(?:@{bot_info['username']})?\s?(.+)?',
-            func=lambda x: not any(x.message.text.startswith(c) for c in ('/start', '/help')),
+            func=lambda x: x.is_private
+            and not any(x.message.text.startswith(c) for c in ('/start', '/help')),
         ),
     )
-    bot.add_event_handler(start_command, NewMessage(pattern='/start'))
+    bot.add_event_handler(start_command, NewMessage(pattern='/start', func=lambda x: x.is_private))
     bot.add_event_handler(
-        help_command, NewMessage(pattern='/help', func=lambda x: x.message.sender_id in BOT_ADMINS)
+        help_command,
+        NewMessage(
+            pattern='/help', func=lambda x: x.is_private and x.message.sender_id in BOT_ADMINS
+        ),
     )
     bot.add_event_handler(handle_messages, NewMessage(func=lambda x: x.is_private))
 
