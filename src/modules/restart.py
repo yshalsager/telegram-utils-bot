@@ -5,17 +5,40 @@ from os import execl
 from pathlib import Path
 from sys import executable
 
-from telethon import events
+from telethon.events import NewMessage
 
 from src import BOT_ADMINS
-from src.bot import bot
+from src.modules.base import ModuleBase
 
 
-@bot.on(events.NewMessage(from_users=BOT_ADMINS, pattern=r'/restart'))
-async def restart(event: events.NewMessage.Event) -> None:
+# @bot.on(NewMessage(from_users=BOT_ADMINS, pattern=r'/restart'))
+async def restart(event: NewMessage.Event) -> None:
     """Restart the bot."""
     restart_message = await event.reply('Restarting, please wait...')
     Path('restart.json').write_text(
         json.dumps({'chat': restart_message.chat_id, 'message': restart_message.id})
     )
     execl(executable, executable, '-m', 'src')  # noqa: S606
+
+
+class Restart(ModuleBase):
+    @property
+    def name(self) -> str:
+        return 'Restart'
+
+    @property
+    def description(self) -> str:
+        return 'Restart the bot.'
+
+    def commands(self) -> ModuleBase.CommandsT:
+        return {'restart': {'handler': restart, 'description': self.description}}
+
+    def is_applicable(self, event: NewMessage.Event) -> bool:
+        return event.message.text.startswith('/restart') and event.sender_id in BOT_ADMINS
+
+    async def handle(self, event: NewMessage.Event, command: str | None = None) -> bool:
+        assert command is not None
+        handler = self.commands().get(command, {}).get('handler')
+        if callable(handler):
+            await handler(event)
+        return True
