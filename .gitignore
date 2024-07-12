@@ -80,6 +80,7 @@ tmp_*
 *.session
 *.session-journal
 restart.json
+permissions.json
 
 # OS
 .DS_Store

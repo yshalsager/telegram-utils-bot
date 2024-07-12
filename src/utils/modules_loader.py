@@ -7,7 +7,8 @@ from types import ModuleType
 
 from telethon.events import NewMessage
 
-from modules.base import ModuleBase
+from src.modules.base import ModuleBase
+from src.utils.permission_manager import PermissionManager
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +50,17 @@ class ModuleRegistry:
     This class is used to register modules and their commands.
     """
 
-    def __init__(self, directory: str) -> None:
+    def __init__(self, directory: str, permission_manager: PermissionManager) -> None:
         self.modules: list[ModuleBase] = load_modules(directory)
+        self.permission_manager = permission_manager
 
     def get_applicable_modules(self, event: NewMessage.Event) -> list[ModuleBase]:
-        return [module for module in self.modules if module.is_applicable(event)]
+        return [
+            module
+            for module in self.modules
+            if module.is_applicable(event)
+            and self.permission_manager.has_permission(module.name, event.sender_id)
+        ]
 
     def get_module_by_command(self, command: str) -> ModuleBase | None:
         for module in self.modules:

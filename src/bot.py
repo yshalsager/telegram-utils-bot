@@ -11,14 +11,16 @@ from telethon import TelegramClient
 from telethon.events import NewMessage, StopPropagation
 from telethon.tl.types import KeyboardButton, KeyboardButtonRow, ReplyKeyboardMarkup
 
-from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN
+from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN, PARENT_DIR
 from src.modules.base import ModuleBase
 from src.utils.modules_loader import ModuleRegistry
+from src.utils.permission_manager import PermissionManager
 
 bot = TelegramClient('utils-bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 bot.parse_mode = 'html'
 bot_info = {}
-modules = ModuleRegistry(__package__)
+permission_manager = PermissionManager(set(BOT_ADMINS), PARENT_DIR / 'permissions.json')
+modules = ModuleRegistry(__package__, permission_manager)
 logger = logging.getLogger(__name__)
 
 
@@ -44,10 +46,10 @@ async def handle_restart() -> None:
 async def handle_commands(event: NewMessage.Event) -> None:
     command = event.pattern_match.group(1)
     module = modules.get_module_by_command(command)
-    if module:
+    if module and permission_manager.has_permission(module.name, event.sender_id):
         await module.handle(event, command)
-    else:
-        await event.reply('Unknown command. Use /help to see available commands.')
+    # else:
+    #     await event.reply('Unknown command. Use /help to see available commands.')
     raise StopPropagation
 
 
