@@ -12,7 +12,7 @@ class Debug(ModuleBase):
     @staticmethod
     async def to_json(event: NewMessage.Event) -> None:
         await event.reply(
-            f'<code>{orjson.dumps(event.message.to_dict(), option=json_options).decode()}</code>',
+            f'<pre>{orjson.dumps(event.message.to_dict(), option=json_options).decode()}</pre>',
         )
 
     @property
