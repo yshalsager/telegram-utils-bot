@@ -12,7 +12,7 @@ class Debug(ModuleBase):
     @staticmethod
     async def to_json(event: NewMessage.Event) -> None:
         await event.reply(
-            f'<pre>{orjson.dumps(event.message.to_dict(), option=json_options).decode()}</pre>',
+            f'<pre>{orjson.dumps((await event.get_reply_message()).to_dict(), option=json_options).decode()}</pre>'
         )
 
     @property
@@ -27,4 +27,4 @@ class Debug(ModuleBase):
         return {'json': {'handler': self.to_json, 'description': self.description}}
 
     def is_applicable(self, event: NewMessage.Event) -> bool:
-        return bool(event.message.text.startswith('/json'))
+        return bool(event.message.text.startswith('/json') and event.message.reply_to_msg_id)
