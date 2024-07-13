@@ -1,5 +1,6 @@
-import json
 from pathlib import Path
+
+import orjson
 
 
 class PermissionManager:
@@ -10,14 +11,14 @@ class PermissionManager:
 
     def _load_permissions(self) -> dict[str, set[int]]:
         if self.permissions_file.exists():
-            permissions = json.loads(self.permissions_file.read_text())
+            permissions = orjson.loads(self.permissions_file.read_text())
             return {module: set(users) for module, users in permissions.items()}
         return {}
 
     def _save_permissions(self) -> None:
         permissions = {module: list(users) for module, users in self.module_permissions.items()}
-        self.permissions_file.write_text(
-            json.dumps(permissions, indent=2, ensure_ascii=False, sort_keys=True)
+        self.permissions_file.write_bytes(
+            orjson.dumps(permissions, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS)
         )
 
     def add_user_to_module(self, module_name: str, user_id: int) -> None:

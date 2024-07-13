@@ -1,10 +1,10 @@
 """Bot restart module."""
 
-import json
 from os import execl
 from pathlib import Path
 from sys import executable
 
+import orjson
 from telethon.events import NewMessage
 
 from src import BOT_ADMINS
@@ -16,7 +16,7 @@ async def restart(event: NewMessage.Event) -> None:
     """Restart the bot."""
     restart_message = await event.reply('Restarting, please wait...')
     Path('restart.json').write_text(
-        json.dumps({'chat': restart_message.chat_id, 'message': restart_message.id})
+        orjson.dumps({'chat': restart_message.chat_id, 'message': restart_message.id}).decode()
     )
     execl(executable, executable, '-m', 'src')  # noqa: S606
 

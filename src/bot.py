@@ -2,11 +2,11 @@
 Telegram Bot
 """
 
-import json
 import logging
 from asyncio import run
 from pathlib import Path
 
+from orjson import orjson
 from telethon import TelegramClient
 from telethon.events import NewMessage, StopPropagation
 from telethon.tl.types import KeyboardButton, KeyboardButtonRow, ReplyKeyboardMarkup
@@ -34,7 +34,7 @@ async def handle_restart() -> None:
     if not restart_path.exists():
         return
 
-    restart_message = json.loads(restart_path.read_text())
+    restart_message = orjson.loads(restart_path.read_text())
     await bot.edit_message(
         restart_message['chat'],
         restart_message['message'],
