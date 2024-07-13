@@ -55,6 +55,26 @@ async def user_permissions(event: NewMessage.Event) -> None:
     await event.reply(message)
 
 
+async def list_all_users(event: NewMessage.Event) -> None:
+    user_to_modules: dict[int, list[str]] = {}
+    for module, users in permission_manager.module_permissions.items():
+        for user_id in users:
+            if user_id not in user_to_modules:
+                user_to_modules[user_id] = []
+            user_to_modules[user_id].append(module)
+
+    if not user_to_modules:
+        await event.reply('No users found.')
+        return
+
+    message = '<b>All users with permissions:</b>\n\n'
+    for user_id, modules in sorted(user_to_modules.items()):
+        modules_list = ', '.join(modules)
+        message += f'- <a href="tg://user?id={user_id}">{user_id}</a>: {modules_list}\n'
+
+    await event.reply(message)
+
+
 bot.add_event_handler(
     manage_permissions,
     NewMessage(
@@ -73,4 +93,9 @@ bot.add_event_handler(
 bot.add_event_handler(
     list_permissions,
     NewMessage(pattern='^/permissions$', func=lambda x: x.is_private and x.sender_id in BOT_ADMINS),
+)
+
+bot.add_event_handler(
+    list_all_users,
+    NewMessage(pattern='^/users$', func=lambda x: x.is_private and x.sender_id in BOT_ADMINS),
 )
