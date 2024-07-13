@@ -81,6 +81,7 @@ tmp_*
 *.session-journal
 restart.json
 permissions.json
+modules.json
 
 # OS
 .DS_Store

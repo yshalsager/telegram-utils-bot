@@ -4,7 +4,9 @@ import logging
 from importlib import import_module
 from pathlib import Path
 from types import ModuleType
+from typing import cast
 
+from orjson import orjson
 from telethon.events import NewMessage
 
 from src.modules.base import ModuleBase
@@ -53,20 +55,48 @@ class ModuleRegistry:
     def __init__(self, directory: str, permission_manager: PermissionManager) -> None:
         self.modules: list[ModuleBase] = load_modules(directory)
         self.permission_manager = permission_manager
+        self.modules_file = Path(directory).parent / 'modules.json'
+        self.modules_status: dict[str, bool] = self._load_modules_status()
+
+    def _load_modules_status(self) -> dict[str, bool]:
+        if self.modules_file.exists():
+            return cast(dict[str, bool], orjson.loads(self.modules_file.read_text()))
+        return {module.name: True for module in self.modules}
+
+    def _save_modules_status(self) -> None:
+        self.modules_file.write_bytes(
+            orjson.dumps(self.modules_status, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS)
+        )
+
+    def enable_module(self, module_name: str) -> None:
+        self.modules_status[module_name] = True
+        self._save_modules_status()
+
+    def disable_module(self, module_name: str) -> None:
+        self.modules_status[module_name] = False
+        self._save_modules_status()
+
+    def is_module_enabled(self, module_name: str) -> bool:
+        return self.modules_status.get(module_name, True)
 
     def get_applicable_modules(self, event: NewMessage.Event) -> list[ModuleBase]:
         return [
             module
             for module in self.modules
-            if module.is_applicable(event)
+            if self.is_module_enabled(module.name)
+            and module.is_applicable(event)
             and self.permission_manager.has_permission(module.name, event.sender_id)
         ]
 
     def get_module_by_command(self, command: str) -> ModuleBase | None:
         for module in self.modules:
-            if command in module.commands():
+            if self.is_module_enabled(module.name) and command in module.commands():
                 return module
         return None
 
     def get_all_commands(self) -> dict[str, ModuleBase.CommandsT]:
-        return {module.name: module.commands() for module in self.modules}
+        return {
+            module.name: module.commands()
+            for module in self.modules
+            if self.is_module_enabled(module.name)
+        }
