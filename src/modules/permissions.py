@@ -33,11 +33,40 @@ async def list_permissions(event: NewMessage.Event) -> None:
     await event.reply(message)
 
 
+async def user_permissions(event: NewMessage.Event) -> None:
+    try:
+        user_id = int(event.pattern_match.group(1))
+    except (ValueError, TypeError):
+        await event.reply('Invalid user ID. Please provide a valid integer.')
+        return
+
+    user_modules = [
+        module
+        for module, users in permission_manager.module_permissions.items()
+        if user_id in users
+    ]
+
+    if not user_modules:
+        await event.reply(f'User {user_id} has no permissions.')
+        return
+
+    message = f'<a href="tg://user?id={user_id}">{user_id}</a> <b>has access to:</b>\n\n'
+    message += '\n'.join(f'- {module}' for module in user_modules)
+    await event.reply(message)
+
+
 bot.add_event_handler(
     manage_permissions,
     NewMessage(
         pattern=r'^/permissions\s+(add|remove)\s+(\w+)\s+(\d+)',
         func=lambda x: x.is_private and x.sender_id in BOT_ADMINS,
+    ),
+)
+
+bot.add_event_handler(
+    user_permissions,
+    NewMessage(
+        pattern=r'^/permissions\s+(\d+)$', func=lambda x: x.is_private and x.sender_id in BOT_ADMINS
     ),
 )
 
