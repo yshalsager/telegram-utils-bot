@@ -35,10 +35,3 @@ class Restart(ModuleBase):
 
     def is_applicable(self, event: NewMessage.Event) -> bool:
         return event.message.text.startswith('/restart') and event.sender_id in BOT_ADMINS
-
-    async def handle(self, event: NewMessage.Event, command: str | None = None) -> bool:
-        assert command is not None
-        handler = self.commands().get(command, {}).get('handler')
-        if callable(handler):
-            await handler(event)
-        return True

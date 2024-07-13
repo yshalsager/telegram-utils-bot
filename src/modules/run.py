@@ -60,11 +60,6 @@ class SubprocessModule(ModuleBase):
         # only bot owner can run shell commands
         return bool(event.message.text.startswith('/shell') and event.sender_id == BOT_ADMINS[0])
 
-    async def handle(self, event: NewMessage.Event, command: str | None = None) -> bool:
-        if command == 'shell':
-            await self.run_command(event)
-        return True
-
     @staticmethod
     async def run_command(event: NewMessage.Event) -> None:
         cmd = event.message.text.split(maxsplit=1)[1] if len(event.message.text.split()) > 1 else ''

@@ -28,6 +28,9 @@ class ModuleBase(ABC):
     def is_applicable(self, event: NewMessage.Event) -> bool:
         pass
 
-    @abstractmethod
     async def handle(self, event: NewMessage.Event, command: str | None = None) -> bool:
-        pass
+        assert command is not None
+        handler = self.commands().get(command, {}).get('handler')
+        if callable(handler):
+            await handler(event)
+        return True
