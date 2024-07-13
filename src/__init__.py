@@ -1,6 +1,6 @@
 """Bot initialization"""
 
-import logging
+import logging.config
 from os import getenv
 from pathlib import Path
 
@@ -18,9 +18,39 @@ BOT_ADMINS = [
 ] or []
 
 # Logging
-log_date_format = '%Y-%m-%d %H:%M:%S'
-logging.basicConfig(
-    format='%(asctime)s [%(levelname)s] %(name)s [%(module)s.%(funcName)s:%(lineno)d]: %(message)s',
-    level=logging.INFO,
-    datefmt=log_date_format,
-)
+log_file_path = PARENT_DIR / 'bot.log'
+logging_config = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'detailed': {
+            'format': '%(asctime)s [%(levelname)s] %(name)s [%(module)s.%(funcName)s:%(lineno)d]: %(message)s',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+    'handlers': {
+        'file': {
+            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'level': 'INFO',
+            'formatter': 'detailed',
+            'filename': log_file_path,
+            'when': 'midnight',
+            'interval': 1,
+            'backupCount': 7,
+        },
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': 'INFO',
+            'formatter': 'detailed',
+            'stream': 'ext://sys.stdout',
+        },
+    },
+    'loggers': {
+        '': {  # root logger
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
+logging.config.dictConfig(logging_config)
