@@ -106,7 +106,10 @@ async def run_bot() -> None:
             pattern='/help', func=lambda x: x.is_private and x.message.sender_id in BOT_ADMINS
         ),
     )
-    bot.add_event_handler(handle_messages, NewMessage(func=lambda x: x.is_private))
+    bot.add_event_handler(
+        handle_messages,
+        NewMessage(func=lambda x: x.is_private and not x.message.text.startswith('/')),
+    )
 
     # Check if the bot is restarting
     await handle_restart()
