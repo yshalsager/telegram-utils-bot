@@ -79,6 +79,7 @@ tmp_*
 *.zip
 *.session
 *.session-journal
+downloads/
 restart.json
 permissions.json
 modules.json
