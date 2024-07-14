@@ -7,7 +7,6 @@ from sys import executable
 import orjson
 from telethon.events import NewMessage
 
-from src import BOT_ADMINS
 from src.modules.base import ModuleBase
 
 
@@ -34,4 +33,4 @@ class Restart(ModuleBase):
         return {'restart': {'handler': restart, 'description': self.description}}
 
     def is_applicable(self, event: NewMessage.Event) -> bool:
-        return event.message.text.startswith('/restart') and event.sender_id in BOT_ADMINS
+        return bool(event.message.text.startswith('/restart'))
