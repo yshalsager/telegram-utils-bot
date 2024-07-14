@@ -1,4 +1,7 @@
+from typing import Any
+
 import orjson
+from humanize import naturalsize
 from telethon.events import NewMessage
 
 from src.modules.base import ModuleBase
@@ -8,12 +11,26 @@ json_options = (
 )
 
 
+def process_dict(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {
+            k: naturalsize(v) if k == 'size' else process_dict(v)
+            for k, v in obj.items()
+            if not isinstance(v, bytes)
+        }
+    if isinstance(obj, list):
+        return [process_dict(item) for item in obj if not isinstance(item, bytes)]
+    if isinstance(obj, bytes):
+        return '<bytes>'
+    return obj
+
+
 class Debug(ModuleBase):
     @staticmethod
     async def to_json(event: NewMessage.Event) -> None:
-        await event.reply(
-            f'<pre>{orjson.dumps((await event.get_reply_message()).to_dict(), option=json_options).decode()}</pre>'
-        )
+        reply_message = await event.get_reply_message()
+        json_str = orjson.dumps(process_dict(reply_message.to_dict()), option=json_options).decode()
+        await event.reply(f'<pre>{json_str}</pre>')
 
     @property
     def name(self) -> str:
