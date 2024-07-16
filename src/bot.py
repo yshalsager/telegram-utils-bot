@@ -11,7 +11,7 @@ from typing import Any
 
 from orjson import orjson
 from telethon import Button, TelegramClient
-from telethon.events import CallbackQuery, NewMessage, StopPropagation
+from telethon.events import CallbackQuery, InlineQuery, NewMessage, StopPropagation
 
 from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN, PARENT_DIR
 from src.modules.base import ModuleBase
@@ -113,6 +113,13 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
     await event.delete()
 
 
+async def handle_inline_query(event: InlineQuery.Event) -> None:
+    for module in modules_registry.modules:
+        if hasattr(module, 'handle_inline_query') and module.is_applicable(event):
+            await module.handle_inline_query(event)
+    raise StopPropagation
+
+
 async def start_command(event: NewMessage.Event) -> None:
     await event.reply('Welcome! Use /help to see available commands.')
     raise StopPropagation
@@ -154,6 +161,7 @@ async def run_bot() -> None:
         NewMessage(func=lambda x: x.is_private and not x.message.text.startswith('/')),
     )
     bot.add_event_handler(handle_callback, CallbackQuery(pattern=r'^m_'))
+    bot.add_event_handler(handle_inline_query, InlineQuery(func=lambda x: len(x.text) > 2))
 
     # Check if the bot is restarting
     await handle_restart()

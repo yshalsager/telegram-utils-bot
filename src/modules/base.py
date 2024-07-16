@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from telethon.events import NewMessage
+from telethon.events import InlineQuery, NewMessage
 
 
 class ModuleBase(ABC):
@@ -34,3 +34,9 @@ class ModuleBase(ABC):
         if callable(handler):
             await handler(event)
         return True
+
+
+class InlineModule(ABC):
+    @abstractmethod
+    async def handle_inline_query(self, event: InlineQuery.Event) -> None:
+        pass
