@@ -13,8 +13,8 @@ async def list_plugins(event: NewMessage.Event) -> None:
             module.name, False
         ) else disabled_modules.append(module.name)
 
-    enabled_text = ', '.join(enabled_modules) if enabled_modules else 'None'
-    disabled_text = ', '.join(disabled_modules) if disabled_modules else 'None'
+    enabled_text = ', '.join(sorted(enabled_modules)) if enabled_modules else 'None'
+    disabled_text = ', '.join(sorted(disabled_modules)) if disabled_modules else 'None'
     await event.reply(
         f'<b>Enabled modules</b>: {enabled_text}\n' f'<b>Disabled modules</b>: {disabled_text}',
     )
