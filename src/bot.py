@@ -3,7 +3,8 @@ Telegram Bot
 """
 
 import logging
-from asyncio import CancelledError, create_task, run
+from asyncio import CancelledError, Task, create_task, run
+from contextlib import suppress
 from pathlib import Path
 
 from orjson import orjson
@@ -47,7 +48,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
     module = modules_registry.get_module_by_command(command)
     if not module or not permission_manager.has_permission(module.name, event.sender_id):
         raise StopPropagation
-    task = create_task(module.handle(event, command))
+    task: Task[bool] = create_task(module.handle(event, command))
     task_id = f'{event.message.chat_id}_{event.message.id}'
     if not hasattr(event.client, 'active_tasks'):
         event.client.active_tasks = {}
@@ -60,8 +61,13 @@ async def handle_commands(event: NewMessage.Event) -> None:
         logger.error(f'Error in module {module.name}: {e!s}')
         await event.reply(f'An error occurred: {e!s}')
     finally:
-        if getattr(event.client, 'active_tasks', {}).get(task_id):
-            del event.client.active_tasks[task_id]
+        active_tasks = getattr(event.client, 'active_tasks', {})
+        if task_id in active_tasks:
+            task = active_tasks[task_id]
+            if not task.done():
+                with suppress(CancelledError):
+                    task.cancel()
+            del active_tasks[task_id]
     raise StopPropagation
 
 
