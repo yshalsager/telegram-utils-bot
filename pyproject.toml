@@ -16,6 +16,7 @@ humanize = "^4.10.0"
 orjson = "^3.10.6"
 regex = "^2024.5.15"
 yt-dlp = "^2024.4.9"
+search-engine-parser = "^0.6.8"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.26.0"
