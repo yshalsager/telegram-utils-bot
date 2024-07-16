@@ -3,7 +3,7 @@ Telegram Bot
 """
 
 import logging
-from asyncio import run
+from asyncio import CancelledError, create_task, run
 from pathlib import Path
 
 from orjson import orjson
@@ -45,10 +45,23 @@ async def handle_restart() -> None:
 async def handle_commands(event: NewMessage.Event) -> None:
     command = event.pattern_match.group(1)
     module = modules_registry.get_module_by_command(command)
-    if module and permission_manager.has_permission(module.name, event.sender_id):
-        await module.handle(event, command)
-    # else:
-    #     await event.reply('Unknown command. Use /help to see available commands.')
+    if not module or not permission_manager.has_permission(module.name, event.sender_id):
+        raise StopPropagation
+    task = create_task(module.handle(event, command))
+    task_id = f'{event.message.chat_id}_{event.message.id}'
+    if not hasattr(event.client, 'active_tasks'):
+        event.client.active_tasks = {}
+    event.client.active_tasks[task_id] = task
+    try:
+        await task
+    except CancelledError:
+        await event.reply('Operation cancelled.')
+    except Exception as e:  # noqa: BLE001
+        logger.error(f'Error in module {module.name}: {e!s}')
+        await event.reply(f'An error occurred: {e!s}')
+    finally:
+        if getattr(event.client, 'active_tasks', {}).get(task_id):
+            del event.client.active_tasks[task_id]
     raise StopPropagation
 
 
@@ -70,6 +83,17 @@ async def handle_messages(event: NewMessage.Event) -> None:
     raise StopPropagation
 
 
+async def cancel_command(event: NewMessage.Event) -> None:
+    original_message = await event.get_reply_message()
+    task_id = f'{original_message.chat_id}_{original_message.id}'
+    if not getattr(event.client, 'active_tasks', {}).get(task_id):
+        await event.reply('No active operation found for this command.')
+        return
+    event.client.active_tasks[task_id].cancel()
+    await event.reply('Operation cancellation requested.')
+    raise StopPropagation
+
+
 async def run_bot() -> None:
     """Run the bot."""
     # Get bot info
@@ -83,10 +107,13 @@ async def run_bot() -> None:
         NewMessage(
             pattern=rf'^/(\w+)(?:@{bot_info['username']})?\s?(.+)?',
             func=lambda x: x.is_private
-            and not any(x.message.text.startswith(c) for c in ('/start', '/help')),
+            and not any(x.message.text.startswith(c) for c in ('/start', '/help', '/cancel')),
         ),
     )
     bot.add_event_handler(start_command, NewMessage(pattern='/start', func=lambda x: x.is_private))
+    bot.add_event_handler(
+        cancel_command, NewMessage(pattern=r'^/cancel$', func=lambda x: x.message.is_reply)
+    )
     bot.add_event_handler(
         handle_messages,
         NewMessage(func=lambda x: x.is_private and not x.message.text.startswith('/')),
