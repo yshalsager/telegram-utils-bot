@@ -33,6 +33,8 @@ async def stream_shell_output(event: NewMessage.Event, cmd: str) -> None:
         f'Elapsed time: {elapsed_time}'
     )
     await status_message.edit(status)
+    if not bool(buffer.strip()):
+        return
     with NamedTemporaryFile(
         mode='w+', prefix=f'{event.date.strftime("%Y%m%d_%H%M%S")}_', suffix='.log'
     ) as temp_file:
