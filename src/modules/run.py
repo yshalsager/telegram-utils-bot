@@ -4,15 +4,23 @@ from tempfile import NamedTemporaryFile
 
 from telethon.errors import MessageNotModifiedError
 from telethon.events import NewMessage
+from telethon.tl.custom import Message
 
 from src import BOT_ADMINS
 from src.modules.base import ModuleBase
 from src.utils.run import MAX_MESSAGE_LENGTH, run_subprocess
 
 
-async def stream_shell_output(event: NewMessage.Event, cmd: str) -> None:
-    status_message = await event.reply('Starting process...')
-    progress_message = await event.reply('<pre>Process output:</pre>')
+async def stream_shell_output(
+    event: NewMessage.Event,
+    cmd: str,
+    status_message: Message | None = None,
+    progress_message: Message | None = None,
+) -> None:
+    if not status_message:
+        status_message = await event.reply('Starting process...')
+    if not progress_message:
+        progress_message = await event.reply('<pre>Process output:</pre>')
     buffer = ''
     code = None
     async for full_log, return_code in run_subprocess(cmd):
