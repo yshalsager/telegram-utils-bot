@@ -79,13 +79,19 @@ class ModuleRegistry:
     def is_module_enabled(self, module_name: str) -> bool:
         return self.modules_status.get(module_name, True)
 
-    def get_applicable_modules(self, event: NewMessage.Event) -> list[ModuleBase]:
+    def get_applicable_modules(
+        self, event: NewMessage.Event, for_inline_query: bool = False
+    ) -> list[ModuleBase]:
         return [
             module
             for module in self.modules
             if self.is_module_enabled(module.name)
-            and module.is_applicable(event)
             and self.permission_manager.has_permission(module.name, event.sender_id)
+            and (
+                module.is_applicable_for_reply(event)
+                if for_inline_query
+                else module.is_applicable(event)
+            )
         ]
 
     def get_module_by_command(self, command: str) -> ModuleBase | None:
@@ -100,3 +106,11 @@ class ModuleRegistry:
             for module in self.modules
             if self.is_module_enabled(module.name)
         }
+
+    def get_applicable_commands(self, event: NewMessage.Event) -> list[str]:
+        return [
+            command
+            for module in self.get_applicable_modules(event, for_inline_query=True)
+            for command in module.commands()
+            if module.commands()[command].get('is_applicable_for_reply', False)
+        ]

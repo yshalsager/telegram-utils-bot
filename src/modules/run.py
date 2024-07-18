@@ -32,11 +32,15 @@ async def stream_shell_output(
                 )
 
     status = 'Process completed' if code == 0 else f'Process failed with return code {code}'
-    start_time = event.date.replace(tzinfo=UTC)
+    start_time = (
+        event.date.replace(tzinfo=UTC)
+        if hasattr(event, 'date')
+        else status_message.date.replace(tzinfo=UTC)
+    )
     end_time = datetime.now(UTC)
     elapsed_time = end_time - start_time
     status += (
-        f'\nStarted at {event.date.strftime("%Y-%m-%d %H:%M:%S")}\n'
+        f'\nStarted at {start_time.strftime("%Y-%m-%d %H:%M:%S")}\n'
         f'Finished at {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")}\n'
         f'Elapsed time: {elapsed_time}'
     )
@@ -44,7 +48,7 @@ async def stream_shell_output(
     if not bool(buffer.strip()):
         return
     with NamedTemporaryFile(
-        mode='w+', prefix=f'{event.date.strftime("%Y%m%d_%H%M%S")}_', suffix='.log'
+        mode='w+', prefix=f'{start_time.strftime("%Y%m%d_%H%M%S")}_', suffix='.log'
     ) as temp_file:
         temp_file.write(buffer)
         temp_file.seek(0)  # Go back to the start of the file to ensure it's read from the beginning

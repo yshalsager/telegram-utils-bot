@@ -8,7 +8,7 @@ from telethon.events import InlineQuery, NewMessage
 class ModuleBase(ABC):
     IS_MODULE = True
     CommandHandlerT = Callable[[NewMessage.Event], Coroutine[Any, Any, None]]
-    CommandsT = dict[str, dict[str, CommandHandlerT | str]]
+    CommandsT = dict[str, dict[str, CommandHandlerT | str | bool]]
 
     @property
     @abstractmethod
@@ -27,6 +27,10 @@ class ModuleBase(ABC):
     @abstractmethod
     def is_applicable(self, event: NewMessage.Event) -> bool:
         pass
+
+    @staticmethod
+    def is_applicable_for_reply(event: NewMessage.Event) -> bool:
+        return False
 
     async def handle(self, event: NewMessage.Event, command: str | None = None) -> bool:
         assert command is not None

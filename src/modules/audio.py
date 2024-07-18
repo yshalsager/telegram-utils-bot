@@ -2,7 +2,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile, _TemporaryFileWrapper
 
 import regex as re
-from telethon.events import NewMessage
+from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
 from src.modules.base import ModuleBase
@@ -10,6 +10,7 @@ from src.modules.run import stream_shell_output
 from src.utils.downloads import get_download_name
 from src.utils.fast_telethon import download_file, upload_file
 from src.utils.progress import progress_callback
+from src.utils.telegram import get_reply_message
 
 
 async def process_audio(
@@ -19,7 +20,7 @@ async def process_audio(
     is_voice: bool = False,
     get_file_name: bool = True,
 ) -> None:
-    reply_message = await event.message.get_reply_message()
+    reply_message = await get_reply_message(event, previous=True)
     if not reply_message.audio:
         await event.reply('The replied message is not an audio file.')
         return
@@ -88,26 +89,33 @@ async def upload_audio(
 
 
 async def convert_to_voice_note(event: NewMessage.Event) -> None:
-    ffmpeg_command = 'ffmpeg -hide_banner -i "{input}" -vn -c:a libopus -b:a 48k "{output}"'
+    ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a libopus -b:a 48k "{output}"'
     await process_audio(event, ffmpeg_command, '.ogg', is_voice=True)
 
 
-async def compress_audio(event: NewMessage.Event) -> None:
-    audio_bitrate = re.search(r'(\d+)$', event.message.text).group(1)
+async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        audio_bitrate = '48'
+    else:
+        audio_bitrate = re.search(r'(\d+)$', event.message.text).group(1)
     ffmpeg_command = (
-        f'ffmpeg -hide_banner -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
+        f'ffmpeg -hide_banner -y -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
     )
     await process_audio(event, ffmpeg_command, '.m4a')
 
 
 handlers = {
-    'compress': compress_audio,
+    'audio compress': compress_audio,
+    'voice': convert_to_voice_note,
 }
 
 
-async def handler(event: NewMessage.Event) -> None:
-    command_with_args = event.message.text.rstrip('audio').split(maxsplit=1)[1]
-    command = command_with_args.split()[0]
+async def handler(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        command = event.data.decode('utf-8').lstrip('m_').replace('_', ' ')
+    else:
+        command_with_args = event.message.text.rstrip('audio').split(maxsplit=1)[1]
+        command = command_with_args.split()[0]
     if command not in handlers:
         await event.reply('Command not found.')
         return
@@ -126,20 +134,25 @@ class Audio(ModuleBase):
 
     def commands(self) -> ModuleBase.CommandsT:
         return {
-            'to_voice': {
+            'voice': {
                 'handler': convert_to_voice_note,
                 'description': 'Convert an audio to voice note',
+                'is_applicable_for_reply': True,
             },
-            'audio': {
+            'audio compress': {
                 'handler': handler,
-                'description': 'Audio processing commands\n'
-                '<code>/audio compress [bitrate]</code> - compress audio to [bitrate] kbps',
+                'description': '[bitrate] - compress audio to [bitrate] kbps',
+                'is_applicable_for_reply': True,
             },
         }
 
     def is_applicable(self, event: NewMessage.Event) -> bool:
         return bool(
-            re.match(r'^/to_voice', event.message.text)
+            re.match(r'^/voice', event.message.text)
             or re.match(r'^/audio\s+compress\s+(\d+)$', event.message.text)
             and event.message.is_reply
         )
+
+    @staticmethod
+    def is_applicable_for_reply(event: NewMessage.Event) -> bool:
+        return bool(event.message.audio)

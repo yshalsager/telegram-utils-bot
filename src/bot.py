@@ -52,7 +52,7 @@ async def handle_module_execution(
     handler_args: tuple[Any, ...],
     response_func: Callable[[str], Coroutine[Any, Any, None]],
 ) -> None:
-    message = await get_reply_message(event)
+    message = await get_reply_message(event) or event.message
     task_id = f'{message.chat_id}_{message.id}'
     task: Task[bool] = create_task(module.handle(*handler_args))
 
@@ -87,11 +87,11 @@ async def handle_commands(event: NewMessage.Event) -> None:
 
 
 async def handle_messages(event: NewMessage.Event) -> None:
-    applicable_modules = modules_registry.get_applicable_modules(event)
-    if applicable_modules:
+    applicable_commands = modules_registry.get_applicable_commands(event)
+    if applicable_commands:
         keyboard = [
-            [Button.inline(module.name, data=f'm_{module.name.lower()}')]
-            for module in applicable_modules
+            [Button.inline(command, data=f'm_{command.replace(' ', '_')}')]
+            for command in applicable_commands
         ]
         await event.reply('Choose an option:', buttons=keyboard)
     else:
@@ -100,15 +100,15 @@ async def handle_messages(event: NewMessage.Event) -> None:
 
 
 async def handle_callback(event: CallbackQuery.Event) -> None:
-    module_name = event.data.decode('utf-8').lstrip('m_')
-    module = modules_registry.get_module_by_command(module_name)
+    command = event.data.decode('utf-8').lstrip('m_').replace('_', ' ')
+    module = modules_registry.get_module_by_command(command)
     if not module or not permission_manager.has_permission(module.name, event.sender_id):
         return
 
     async def response_func(message: str) -> None:
         await event.answer(message, alert=True)
 
-    await handle_module_execution(event, module, (event, module_name), response_func)
+    await handle_module_execution(event, module, (event, command), response_func)
     await sleep(5)
     await event.delete()
 
@@ -117,11 +117,12 @@ async def handle_inline_query(event: InlineQuery.Event) -> None:
     for module in modules_registry.modules:
         if hasattr(module, 'handle_inline_query') and module.is_applicable(event):
             await module.handle_inline_query(event)
+            break
     raise StopPropagation
 
 
 async def start_command(event: NewMessage.Event) -> None:
-    await event.reply('Welcome! Use /help to see available commands.')
+    await event.reply('Welcome! Use /commands to see available commands.')
     raise StopPropagation
 
 

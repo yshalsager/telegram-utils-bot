@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import regex as re
 from telethon.events import CallbackQuery, NewMessage
 
 from src import DOWNLOADS_DIR
@@ -66,7 +65,7 @@ async def upload_file_command(event: NewMessage.Event) -> None:
     await progress_message.edit(f'File successfully uploaded: <pre>{file_path.name}</pre>')
 
 
-class Download(ModuleBase):
+class DownloadUpload(ModuleBase):
     @property
     def name(self) -> str:
         return 'Download'
@@ -80,24 +79,8 @@ class Download(ModuleBase):
             'download': {
                 'handler': download_file_command,
                 'description': 'Download a file: Reply to a message with a file and use <code>/download</code>',
+                'is_applicable_for_reply': True,
             },
-        }
-
-    def is_applicable(self, event: NewMessage.Event) -> bool:
-        return bool(event.message.text.startswith('/download') and event.message.is_reply)
-
-
-class Upload(ModuleBase):
-    @property
-    def name(self) -> str:
-        return 'Upload'
-
-    @property
-    def description(self) -> str:
-        return 'Upload files from local filesystem'
-
-    def commands(self) -> ModuleBase.CommandsT:
-        return {
             'upload': {
                 'handler': upload_file_command,
                 'description': 'Upload a file: <code>/upload [filepath]</code>',
@@ -105,4 +88,8 @@ class Upload(ModuleBase):
         }
 
     def is_applicable(self, event: NewMessage.Event) -> bool:
-        return bool(re.match(r'/upload\s+(.*)$', event.message.text))
+        return bool(event.message.text.startswith('/download') and event.message.is_reply)
+
+    @staticmethod
+    def is_applicable_for_reply(event: NewMessage.Event) -> bool:
+        return bool(event.message.document)
