@@ -25,6 +25,8 @@ async def list_commands(event: NewMessage.Event) -> None:
     all_commands: dict[str, ModuleBase.CommandsT] = bot.modules_registry.get_all_commands()
     help_text = '<b>Available commands</b>:\n\n'
     for module, commands in all_commands.items():
+        if not commands:
+            continue
         help_text += f'<i>{module.upper()}</i>:\n'
         for cmd, data in commands.items():
             help_text += f'/{cmd}: {data['description']}\n'
