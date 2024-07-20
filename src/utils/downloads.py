@@ -54,7 +54,11 @@ async def download_audio(
 
 
 async def upload_audio(
-    event: NewMessage.Event, output_file: Path, progress_message: Message, is_voice: bool
+    event: NewMessage.Event,
+    output_file: Path,
+    progress_message: Message,
+    is_voice: bool,
+    caption: str = '',
 ) -> None:
     with output_file.open('rb') as file_to_upload:
         uploaded_file = await upload_file(
@@ -68,6 +72,7 @@ async def upload_audio(
     await event.client.send_file(
         event.chat_id,
         file=uploaded_file,
+        caption=caption if caption else None,
         voice_note=is_voice,
         reply_to=event.message.id,
     )

@@ -136,7 +136,11 @@ async def split_audio(event: NewMessage.Event) -> None:
         ):
             if output_file.exists() and output_file.stat().st_size:
                 await upload_audio(
-                    event, output_file, progress_message, is_voice=reply_message.voice is not None
+                    event,
+                    output_file,
+                    progress_message,
+                    is_voice=reply_message.voice is not None,
+                    caption=f'<code>{output_file.stem}</code>',
                 )
             else:
                 await status_message.edit(f'Processing failed for {output_file.name}.')
