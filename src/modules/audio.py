@@ -8,6 +8,8 @@ from typing import Any
 
 import orjson
 import regex as re
+from pydub import AudioSegment
+from pydub.silence import split_on_silence
 from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
@@ -258,6 +260,60 @@ async def merge_audio_process(event: CallbackQuery.Event) -> None:
         merge_states.pop(event.sender_id)
 
 
+async def trim_silence(event: NewMessage.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await event.reply('Starting silence trimming process...')
+    progress_message = await event.reply('<pre>Process output:</pre>')
+    extension = reply_message.file.ext
+
+    with (
+        NamedTemporaryFile(suffix=extension) as input_file,
+        NamedTemporaryFile(suffix='.mp3') as output_file,
+    ):
+        output_file_path = Path(output_file.name).parent / output_file.name
+        if reply_message.file.name:
+            output_file_path = output_file_path.with_name(
+                f'trimmed_{reply_message.file.name}'
+            ).with_suffix('.mp3')
+        await download_audio(event, input_file, reply_message, progress_message)
+        await progress_message.edit('Loading file...')
+        sound = AudioSegment.from_file(Path(input_file.name))
+        await progress_message.edit('Splitting...')
+        chunks = split_on_silence(sound, min_silence_len=500, silence_thresh=-40)
+        await progress_message.edit('Combining...')
+        combined = AudioSegment.empty()
+        for chunk in chunks:
+            combined += chunk
+        await progress_message.edit('Exporting...')
+        combined.export(output_file_path, format='mp3')
+        # command = (
+        #     f'ffmpeg -hide_banner -y -i "{input_file.name}" -af '
+        #     f'silenceremove=start_periods=1:start_duration=1:start_threshold=-50dB:'
+        #     f'detection=peak,aformat=dblp,areverse,silenceremove=start_periods=1:start_duration=1:'
+        #     f'start_threshold=-10dB:detection=peak,aformat=dblp,areverse "{output_file_path.name}"'
+        # )
+        # command = (
+        #     f'ffmpeg -hide_banner -y -i "{input_file.name}" -f wav - | sox -t wav - "{output_file_path.name}" '
+        #     f'silence -l 1 0.1 1% -1 1.0 1%'
+        # )
+        #
+        # await stream_shell_output(event, command, status_message, progress_message)
+
+        if not output_file_path.exists() or not output_file_path.stat().st_size:
+            await status_message.edit('Silence trimming failed.')
+            return
+
+        await upload_audio(
+            event,
+            output_file_path,
+            progress_message,
+            is_voice=bool(reply_message.voice),
+            caption='Trimmed audio',
+        )
+
+    await status_message.edit('Audio silence successfully trimmed.')
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
@@ -266,6 +322,7 @@ handlers = {
     'audio merge': merge_audio_initial,
     'audio metadata': set_metadata,
     'audio split': split_audio,
+    'audio trim': trim_silence,
     'voice': convert_to_voice_note,
 }
 
@@ -334,6 +391,11 @@ class Audio(ModuleBase):
                 'description': 'Get audio info',
                 'is_applicable_for_reply': True,
             },
+            'audio trim': {
+                'handler': trim_silence,
+                'description': 'Trim audio silence',
+                'is_applicable_for_reply': True,
+            },
         }
 
     async def is_applicable(self, event: NewMessage.Event) -> bool:
@@ -375,6 +437,10 @@ class Audio(ModuleBase):
             )
             or (
                 re.match(r'^/(audio)\s+(info)$', event.message.text)
+                and (reply_message.audio or reply_message.voice)
+            )
+            or (
+                re.match(r'^/(audio)\s+(trim)$', event.message.text)
                 and (reply_message.audio or reply_message.voice)
             )
         )
