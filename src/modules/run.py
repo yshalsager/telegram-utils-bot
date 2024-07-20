@@ -47,6 +47,8 @@ async def stream_shell_output(
     await status_message.edit(status)
     if not bool(buffer.strip()):
         return
+    if event.sender_id not in BOT_ADMINS:
+        return
     with NamedTemporaryFile(
         mode='w+', prefix=f'{start_time.strftime("%Y%m%d_%H%M%S")}_', suffix='.log'
     ) as temp_file:
