@@ -447,14 +447,11 @@ class Audio(ModuleBase):
 
     @staticmethod
     async def is_applicable_for_reply(event: NewMessage.Event) -> bool:
-        if not event.message.is_reply:
-            return False
-        reply_message = await get_reply_message(event, previous=True)
         return bool(
-            reply_message.audio
-            or reply_message.voice
-            or reply_message.video
-            or reply_message.video_note
+            event.message.audio
+            or event.message.voice
+            or event.message.video
+            or event.message.video_note
         )
 
     @staticmethod
