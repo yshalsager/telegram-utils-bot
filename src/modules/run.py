@@ -1,5 +1,6 @@
+from asyncio import sleep
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from tempfile import NamedTemporaryFile
 
 from telethon.errors import MessageNotModifiedError
@@ -23,13 +24,29 @@ async def stream_shell_output(
         progress_message = await event.reply('<pre>Process output:</pre>')
     buffer = ''
     code = None
+    last_edit_time = datetime.now()
+    edit_interval = timedelta(seconds=2)
+
     async for full_log, return_code in run_subprocess(cmd):
         buffer, code = full_log, return_code
         if bool(buffer.strip()):
-            with suppress(MessageNotModifiedError):
-                await progress_message.edit(
-                    f'<pre>{buffer if len(buffer) < MAX_MESSAGE_LENGTH else buffer[:MAX_MESSAGE_LENGTH]}</pre>'
-                )
+            current_time = datetime.now()
+            if current_time - last_edit_time >= edit_interval:
+                try:
+                    await progress_message.edit(
+                        f'<pre>{buffer if len(buffer) < MAX_MESSAGE_LENGTH else buffer[:MAX_MESSAGE_LENGTH]}</pre>'
+                    )
+                    last_edit_time = current_time
+                except MessageNotModifiedError:
+                    pass
+            else:
+                await sleep(0.1)
+
+    # Final update
+    with suppress(MessageNotModifiedError):
+        await progress_message.edit(
+            f'<pre>{buffer if len(buffer) < MAX_MESSAGE_LENGTH else buffer[:MAX_MESSAGE_LENGTH]}</pre>'
+        )
 
     status = 'Process completed' if code == 0 else f'Process failed with return code {code}'
     start_time = (
