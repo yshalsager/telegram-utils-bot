@@ -165,11 +165,23 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await edit_or_send_as_file(event, progress_message, message)
 
 
+async def set_metadata(event: NewMessage.Event) -> None:
+    title, artist = event.message.text.split('metadata ')[1].split(' - ')
+    reply_message = await get_reply_message(event, previous=True)
+    ffmpeg_command = (
+        'ffmpeg -hide_banner -y -i "{input}" -c copy '
+        f'-metadata title="{title}" -metadata artist="{artist}" '
+        '"{output}"'
+    )
+    await process_audio(event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message)
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
     'audio cut': cut_audio,
     'audio info': get_info,
+    'audio metadata': set_metadata,
     'audio split': split_audio,
     'voice': convert_to_voice_note,
 }
@@ -224,6 +236,11 @@ class Audio(ModuleBase):
                 '(e.g., 30m, 1h, 90s)',
                 # 'is_applicable_for_reply': True,
             },
+            'audio metadata': {
+                'handler': handler,
+                'description': '[title] - [artist] - Set title and artist of an audio file',
+                # 'is_applicable_for_reply': True,
+            },
             'audio info': {
                 'handler': handler,
                 'description': 'Get audio info',
@@ -255,6 +272,10 @@ class Audio(ModuleBase):
             or (
                 re.match(r'^/(audio)\s+(split)\s+(\d+[hms])$', event.message.text)
                 and (event.message.audio or event.message.voice or event.message.video)
+            )
+            or (
+                re.match(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$', event.message.text)
+                and event.message.audio
             )
             or (
                 re.match(r'^/(audio)\s+(info)$', event.message.text)
