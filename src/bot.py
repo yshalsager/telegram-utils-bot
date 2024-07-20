@@ -10,6 +10,7 @@ from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
+import regex as re
 from orjson import orjson
 from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, InlineQuery, NewMessage, StopPropagation
@@ -78,7 +79,12 @@ async def handle_module_execution(
 
 
 async def handle_commands(event: NewMessage.Event) -> None:
-    command = ' '.join(' '.join(event.pattern_match.groups()).split(' ')[:2])
+    command_with_args = re.match(r'^/(\w+)(?:\s+(\w+))?(?:\s+(.+))?$', event.message.text)
+    command = command_with_args.group(1)
+    modifier = command_with_args.group(2)
+    # args = command_with_args.group(3)
+    if modifier:
+        command = f'{command} {modifier}'
     module = modules_registry.get_module_by_command(command)
     if not module or not permission_manager.has_permission(module.name, event.sender_id):
         raise StopPropagation
