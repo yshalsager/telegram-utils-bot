@@ -312,6 +312,54 @@ async def trim_silence(event: NewMessage.Event) -> None:
     await status_message.edit('Silence successfully trimmed.')
 
 
+async def mute_video(event: NewMessage.Event) -> None:
+    ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -c copy -an "{output}"'
+    await process_media(event, ffmpeg_command, '.mp4')
+
+
+async def extract_subtitle(event: NewMessage.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await event.reply('Starting subtitle extraction process...')
+    progress_message = await event.reply('<pre>Process output:</pre>')
+
+    with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
+        await download_audio(event, input_file, reply_message, progress_message)
+
+        output, code = await run_command(
+            f'ffprobe -v quiet -print_format json -show_streams "{input_file.name}"'
+        )
+        if code:
+            await status_message.edit('Failed to get stream info.')
+            return
+
+        streams = orjson.loads(output)['streams']
+        subtitle_streams = [s for s in streams if s['codec_type'] == 'subtitle']
+
+        if not subtitle_streams:
+            await status_message.edit('No subtitle streams found in the video.')
+            return
+
+        for i, stream in enumerate(subtitle_streams):
+            ext = 'srt' if stream['codec_name'] == 'mov_text' else stream['codec_name']
+            output_file = Path(input_file.name).with_suffix(f'.{ext}')
+
+            ffmpeg_command = (
+                f'ffmpeg -hide_banner -y -i "{input_file.name}" '
+                f'-map 0:{stream["index"]} "{output_file}"'
+            )
+            await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+
+            if output_file.exists() and output_file.stat().st_size:
+                caption = f'Subtitle {i + 1}: {stream.get("tags", {}).get("language", "Unknown")}'
+                await event.client.send_file(event.chat_id, output_file, caption=caption)
+            else:
+                await status_message.edit(f'Failed to extract subtitle stream {i + 1}.')
+
+            output_file.unlink(missing_ok=True)
+
+    await status_message.edit('Subtitle extraction completed.')
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
@@ -321,6 +369,8 @@ handlers = {
     'audio metadata': set_metadata,
     'media split': split_media,
     'audio trim': trim_silence,
+    'video mute': mute_video,
+    'video subtitle': extract_subtitle,
     'voice': convert_to_voice_note,
 }
 
@@ -394,6 +444,16 @@ class Media(ModuleBase):
                 'description': 'Trim audio silence',
                 'is_applicable_for_reply': True,
             },
+            'video mute': {
+                'handler': handler,
+                'description': 'Mute video',
+                'is_applicable_for_reply': True,
+            },
+            'video subtitle': {
+                'handler': handler,
+                'description': 'Extract subtitle streams from a video',
+                'is_applicable_for_reply': True,
+            },
         }
 
     async def is_applicable(self, event: NewMessage.Event) -> bool:
@@ -461,6 +521,11 @@ class Media(ModuleBase):
                 re.match(r'^/(audio)\s+(trim)$', event.message.text)
                 and (reply_message.audio or reply_message.voice)
             )
+            or (
+                re.match(r'^/(video)\s+(mute)$', event.message.text)
+                and (reply_message.video or reply_message.video_note)
+            )
+            or (re.match(r'^/(video)\s+(subtitle)$', event.message.text) and reply_message.video)
         )
 
     @staticmethod

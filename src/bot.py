@@ -83,7 +83,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
     command = command_with_args.group(1)
     modifier = command_with_args.group(2)
     # args = command_with_args.group(3)
-    if modifier and command in ('audio', 'media'):
+    if modifier and command in ('audio', 'media', 'video'):
         command = f'{command} {modifier}'
     module = modules_registry.get_module_by_command(command)
     if (
