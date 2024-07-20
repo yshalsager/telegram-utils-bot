@@ -1,28 +1,30 @@
 import asyncio
 import time
 
-from humanize import naturalsize
+from humanize import naturalsize, precisedelta
 from telethon.tl.custom import Message
 
 
 async def progress_callback(current: float, total: float, event: Message, action: str) -> None:
-    # Using a global dictionary to store last update time and current progress for each unique operation
+    # Using a global dictionary to store last update time, current progress, and start time for each unique operation
     if not hasattr(progress_callback, 'last_updates'):
         progress_callback.last_updates = {}  # type: ignore[attr-defined]
 
     key = f'{event.chat_id}:{event.id}'
     now = time.time()
-    last_update, last_current = progress_callback.last_updates.get(key, (0, 0))  # type: ignore[attr-defined]
+    last_update, last_current, start_time = progress_callback.last_updates.get(key, (0, 0, now))  # type: ignore[attr-defined]
 
     if now - last_update > 2 or current == total:
         percentage = current * 100 / total
         speed = (current - last_current) / (now - last_update) if now - last_update > 0 else 0
-        progress_callback.last_updates[key] = (now, current)  # type: ignore[attr-defined]
+        elapsed_time = now - start_time
+        progress_callback.last_updates[key] = (now, current, start_time)  # type: ignore[attr-defined]
 
         text = f'<b>{action}...</b>\n\n'
-        text += f'{naturalsize(current)} of {naturalsize(total)}\n'
+        text += f'{naturalsize(current)} of {naturalsize(total)} '
         if speed > 0:
-            text += f'@ {naturalsize(speed)}/s\n'
+            text += f'🌐 {naturalsize(speed)}/s '
+        text += f'⏰ {precisedelta(elapsed_time)}\n'
         text += '\n'
 
         # Generate a progress bar
