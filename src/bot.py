@@ -6,6 +6,7 @@ import logging
 from asyncio import CancelledError, Task, create_task, run, sleep
 from collections.abc import Callable, Coroutine
 from contextlib import suppress
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
@@ -87,11 +88,14 @@ async def handle_commands(event: NewMessage.Event) -> None:
 
 
 async def handle_messages(event: NewMessage.Event) -> None:
-    applicable_commands = modules_registry.get_applicable_commands(event)
-    if applicable_commands:
+    if applicable_commands := modules_registry.get_applicable_commands(event):
         keyboard = [
-            [Button.inline(command, data=f'm_{command.replace(' ', '_')}')]
-            for command in applicable_commands
+            [
+                Button.inline(command, data=f'm_{command.replace(' ', '_')}')
+                for command in row
+                if command is not None
+            ]
+            for row in list(zip_longest(*[iter(sorted(applicable_commands))] * 3, fillvalue=None))
         ]
         await event.reply('Choose an option:', buttons=keyboard)
     else:
@@ -109,7 +113,7 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
         await event.answer(message, alert=True)
 
     await handle_module_execution(event, module, (event, command), response_func)
-    await sleep(5)
+    await sleep(60)
     await event.delete()
 
 
