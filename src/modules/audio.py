@@ -33,7 +33,7 @@ async def process_audio(
     with NamedTemporaryFile() as temp_file:
         await download_audio(event, temp_file, reply_message, progress_message)
         if get_file_name:
-            input_file_name = get_download_name(reply_message.document, reply_message)
+            input_file_name = get_download_name(reply_message)
             output_file = (Path(temp_file.name).parent / input_file_name).with_suffix(output_suffix)
         else:
             output_file = Path(temp_file.name).with_suffix(output_suffix)
@@ -81,7 +81,7 @@ async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
     await process_audio(event, ffmpeg_command, '.m4a', reply_message=reply_message)
 
 
-async def cut_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def cut_audio(event: NewMessage.Event) -> None:
     start_time, end_time = event.message.text.split()[2:]
     try:
         # Simple validation of time format
@@ -101,6 +101,48 @@ async def cut_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
         ffmpeg_command,
         reply_message.file.ext,
     )
+
+
+async def split_audio(event: NewMessage.Event) -> None:
+    args = event.message.text.split()[2]
+    unit = args[-1]
+    duration = int(args[:-1])
+    if unit == 'h':
+        segment_duration = duration * 3600
+    elif unit == 'm':
+        segment_duration = duration * 60
+    else:
+        segment_duration = duration
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await event.reply('Starting process...')
+    progress_message = await event.reply('<pre>Process output:</pre>')
+
+    with NamedTemporaryFile() as temp_file:
+        await download_audio(event, temp_file, reply_message, progress_message)
+        input_file_name = get_download_name(reply_message)
+        output_file_base = (Path(temp_file.name).parent / input_file_name).with_suffix('')
+
+        output_pattern = f'{output_file_base.stem}_segment_%03d{input_file_name.suffix}'
+        ffmpeg_command = (
+            f'ffmpeg -hide_banner -y -i "{temp_file.name}" -f segment -segment_time {segment_duration} '
+            f'-c copy "{output_file_base.parent / output_pattern}"'
+        )
+        await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+
+        for output_file in sorted(
+            output_file_base.parent.glob(
+                f'{output_file_base.stem}_segment_*{input_file_name.suffix}'
+            )
+        ):
+            if output_file.exists() and output_file.stat().st_size:
+                await upload_audio(
+                    event, output_file, progress_message, is_voice=reply_message.voice is not None
+                )
+            else:
+                await status_message.edit(f'Processing failed for {output_file.name}.')
+            output_file.unlink(missing_ok=True)
+
+    await progress_message.edit('Files successfully split and uploaded.')
 
 
 async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -124,6 +166,7 @@ handlers = {
     'audio convert': convert_to_audio,
     'audio cut': cut_audio,
     'audio info': get_info,
+    'audio split': split_audio,
     'voice': convert_to_voice_note,
 }
 
@@ -168,7 +211,13 @@ class Audio(ModuleBase):
             },
             'audio cut': {
                 'handler': handler,
-                'description': 'HH:MM:SS HH:MM:SS - Cut audio/video from start time to end time',
+                'description': '[HH:MM:SS HH:MM:SS] - Cut audio/video from start time to end time',
+                # 'is_applicable_for_reply': True,
+            },
+            'audio split': {
+                'handler': handler,
+                'description': '[duration]h/m/s - Split audio/video into segments of specified duration '
+                '(e.g., 30m, 1h, 90s)',
                 # 'is_applicable_for_reply': True,
             },
             'audio info': {
@@ -197,6 +246,10 @@ class Audio(ModuleBase):
                     r'^/(audio)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$',
                     event.message.text,
                 )
+                and (event.message.audio or event.message.voice or event.message.video)
+            )
+            or (
+                re.match(r'^/(audio)\s+(split)\s+(\d+[hms])$', event.message.text)
                 and (event.message.audio or event.message.voice or event.message.video)
             )
             or (
