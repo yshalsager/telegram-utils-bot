@@ -1,10 +1,15 @@
+import contextlib
+from collections import defaultdict
 from datetime import datetime
+from enum import Enum, auto
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
 import orjson
 import regex as re
-from telethon.events import CallbackQuery, NewMessage
+from telethon import Button, TelegramClient
+from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 
 from src.modules.base import ModuleBase
@@ -14,6 +19,16 @@ from src.utils.json import json_options, process_dict
 from src.utils.run import run_command
 from src.utils.telegram import edit_or_send_as_file, get_reply_message
 
+
+class MergeState(Enum):
+    IDLE = auto()
+    COLLECTING = auto()
+    MERGING = auto()
+
+
+merge_states: defaultdict[int, dict[str, Any]] = defaultdict(
+    lambda: {'state': MergeState.IDLE, 'files': []}
+)
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
 
 
@@ -176,11 +191,79 @@ async def set_metadata(event: NewMessage.Event) -> None:
     await process_audio(event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message)
 
 
+async def merge_audio_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    merge_states[event.sender_id]['state'] = MergeState.COLLECTING
+    merge_states[event.sender_id]['files'] = []
+
+    reply_message = await get_reply_message(event, previous=True)
+    merge_states[event.sender_id]['files'].append(reply_message.id)
+    await event.reply('Audio merge started. Send more audio files.')
+
+
+async def merge_audio_add(event: NewMessage.Event) -> None:
+    merge_states[event.sender_id]['files'].append(event.id)
+    await event.reply(
+        "Audio file added. Send more or click 'Finish' to merge.",
+        buttons=[Button.inline('Finish', 'finish_merge')],
+    )
+    raise StopPropagation
+
+
+async def merge_audio_process(event: CallbackQuery.Event) -> None:
+    merge_states[event.sender_id]['state'] = MergeState.MERGING
+    files = merge_states[event.sender_id]['files']
+    await event.answer('Merging...')
+
+    if len(files) < 2:
+        await event.answer('Not enough files to merge.')
+        merge_states[event.sender_id]['state'] = MergeState.IDLE
+        return
+
+    status_message = await event.respond('Starting merge process...')
+    progress_message = await event.respond('<pre>Merge output:</pre>')
+
+    temp_files = []
+    try:
+        with NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as file_list:
+            for file_id in files:
+                message = await event.client.get_messages(event.chat_id, ids=file_id)
+                temp_file = NamedTemporaryFile(suffix=message.file.ext, delete=False)
+                temp_files.append(temp_file)
+                await download_audio(event, temp_file, message, progress_message)
+                file_list.write(f"file '{temp_file.name}'\n")
+                temp_file.close()  # Close but don't delete
+
+        with NamedTemporaryFile(suffix=message.file.ext, delete=False) as output_file:
+            ffmpeg_command = f'ffmpeg -hide_banner -y -f concat -safe 0 -i "{file_list.name}" -c copy "{output_file.name}"'
+            await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+            output_file_path = Path(output_file.name)
+            if output_file_path.exists() and output_file_path.stat().st_size:
+                await upload_audio(
+                    event,
+                    output_file_path,
+                    progress_message,
+                    is_voice=message.voice is not None,
+                )
+                await status_message.edit('Files successfully merged.')
+            else:
+                await status_message.edit('Merging failed.')
+
+    finally:
+        # Clean up temporary files
+        with contextlib.suppress(OSError):
+            for temp_file in temp_files:
+                Path(temp_file.name).unlink(missing_ok=True)
+            Path(file_list.name).unlink(missing_ok=True)
+            Path(output_file.name).unlink(missing_ok=True)
+        merge_states.pop(event.sender_id)
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
     'audio cut': cut_audio,
     'audio info': get_info,
+    'audio merge': merge_audio_initial,
     'audio metadata': set_metadata,
     'audio split': split_audio,
     'voice': convert_to_voice_note,
@@ -236,6 +319,11 @@ class Audio(ModuleBase):
                 '(e.g., 30m, 1h, 90s)',
                 # 'is_applicable_for_reply': True,
             },
+            'audio merge': {
+                'handler': merge_audio_initial,
+                'description': 'Start merging multiple audio files',
+                'is_applicable_for_reply': True,
+            },
             'audio metadata': {
                 'handler': handler,
                 'description': '[title] - [artist] - Set title and artist of an audio file',
@@ -248,47 +336,78 @@ class Audio(ModuleBase):
             },
         }
 
-    def is_applicable(self, event: NewMessage.Event) -> bool:
+    async def is_applicable(self, event: NewMessage.Event) -> bool:
+        if not event.message.is_reply:
+            return False
+
+        reply_message = await get_reply_message(event, previous=True)
         return bool(
             (
                 re.match(r'^/(voice)', event.message.text)
-                and (event.message.audio or event.message.video)
+                and (reply_message.audio or reply_message.video)
             )
             or (
                 re.match(r'^/(audio)\s+(compress)\s+(\d+)$', event.message.text)
-                and event.message.audio
+                and reply_message.audio
             )
             or (
                 re.match(r'^/(audio)\s+(convert)$', event.message.text)
-                and (event.message.voice or event.message.video or event.message.video_note)
+                and (reply_message.voice or reply_message.video or reply_message.video_note)
             )
             or (
                 re.match(
                     r'^/(audio)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$',
                     event.message.text,
                 )
-                and (event.message.audio or event.message.voice or event.message.video)
+                and (reply_message.audio or reply_message.voice or reply_message.video)
             )
             or (
                 re.match(r'^/(audio)\s+(split)\s+(\d+[hms])$', event.message.text)
-                and (event.message.audio or event.message.voice or event.message.video)
+                and (reply_message.audio or reply_message.voice or reply_message.video)
             )
             or (
                 re.match(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$', event.message.text)
-                and event.message.audio
+                and reply_message.audio
+            )
+            or (
+                re.match(r'^/(audio)\s+(merge)$', event.message.text)
+                and (reply_message.audio or reply_message.voice)
             )
             or (
                 re.match(r'^/(audio)\s+(info)$', event.message.text)
-                and (event.message.audio or event.message.voice)
+                and (reply_message.audio or reply_message.voice)
             )
-            and event.message.is_reply
         )
 
     @staticmethod
-    def is_applicable_for_reply(event: NewMessage.Event) -> bool:
+    async def is_applicable_for_reply(event: NewMessage.Event) -> bool:
+        if not event.message.is_reply:
+            return False
+        reply_message = await get_reply_message(event, previous=True)
         return bool(
-            event.message.audio
-            or event.message.voice
-            or event.message.video
-            or event.message.video_note
+            reply_message.audio
+            or reply_message.voice
+            or reply_message.video
+            or reply_message.video_note
+        )
+
+    @staticmethod
+    def register_handlers(bot: TelegramClient) -> None:
+        bot.add_event_handler(
+            merge_audio_add,
+            NewMessage(
+                func=lambda e: (
+                    e.is_private
+                    and (e.message.audio or e.message.voice)
+                    and merge_states[e.sender_id]['state'] == MergeState.COLLECTING
+                )
+            ),
+        )
+        bot.add_event_handler(
+            merge_audio_process,
+            CallbackQuery(
+                pattern=b'finish_merge',
+                func=lambda e: e.is_private
+                and merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
+            ),
         )

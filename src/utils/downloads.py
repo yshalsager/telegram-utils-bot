@@ -57,7 +57,7 @@ async def upload_audio(
     event: NewMessage.Event,
     output_file: Path,
     progress_message: Message,
-    is_voice: bool,
+    is_voice: bool = False,
     caption: str = '',
 ) -> None:
     with output_file.open('rb') as file_to_upload:
@@ -74,5 +74,5 @@ async def upload_audio(
         file=uploaded_file,
         caption=caption if caption else None,
         voice_note=is_voice,
-        reply_to=event.message.id,
+        reply_to=event.message.id if hasattr(event, 'message') else None,
     )

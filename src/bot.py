@@ -159,6 +159,17 @@ async def run_bot() -> None:
     logger.info(f'Bot started: {me.first_name} (@{me.username})')
 
     # Register event handlers
+    bot.add_event_handler(start_command, NewMessage(pattern='/start', func=lambda x: x.is_private))
+    bot.add_event_handler(
+        cancel_command, NewMessage(pattern=r'^/cancel$', func=lambda x: x.message.is_reply)
+    )
+
+    # Register module-specific handlers
+    for module in modules_registry.modules:
+        if hasattr(module, 'register_handlers'):
+            module.register_handlers(bot)
+
+    # Register general handlers
     bot.add_event_handler(
         handle_commands,
         NewMessage(
@@ -167,21 +178,12 @@ async def run_bot() -> None:
             and not any(x.message.text.startswith(c) for c in ('/start', '/help', '/cancel')),
         ),
     )
-    bot.add_event_handler(start_command, NewMessage(pattern='/start', func=lambda x: x.is_private))
-    bot.add_event_handler(
-        cancel_command, NewMessage(pattern=r'^/cancel$', func=lambda x: x.message.is_reply)
-    )
     bot.add_event_handler(
         handle_messages,
         NewMessage(func=lambda x: x.is_private and not x.message.text.startswith('/')),
     )
     bot.add_event_handler(handle_callback, CallbackQuery(pattern=r'^m_'))
     bot.add_event_handler(handle_inline_query, InlineQuery(func=lambda x: len(x.text) > 2))
-
-    # Register module-specific handlers
-    for module in modules_registry.modules:
-        if hasattr(module, 'register_handlers'):
-            module.register_handlers(bot)
 
     # Check if the bot is restarting
     await handle_restart()
