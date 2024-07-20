@@ -16,7 +16,7 @@ async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -
         await event.reply('Please reply to a message with a file to download.')
         return
 
-    download_to = DOWNLOADS_DIR / get_download_name(reply_message.document, reply_message)
+    download_to = DOWNLOADS_DIR / get_download_name(reply_message)
     progress_message = await event.reply('Starting file download...')
 
     with download_to.open('wb') as temp_file:

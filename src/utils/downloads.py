@@ -4,29 +4,27 @@ from tempfile import _TemporaryFileWrapper
 
 from telethon.events import NewMessage
 from telethon.tl.custom import Message
-from telethon.tl.types import Document, DocumentAttributeFilename
+from telethon.tl.types import DocumentAttributeFilename
 
 from src.utils.fast_telethon import download_file, upload_file
 from src.utils.progress import progress_callback
 
 
-def get_download_name(
-    original_file: Document, reply_message: Message, new_filename: str = ''
-) -> Path:
-    mime_type = original_file.mime_type.split('/')[1]
+def get_download_name(message: Message, new_filename: str = '') -> Path:
+    mime_type = message.document.mime_type.split('/')[1]
     if mime_type == 'octet-stream':
         mime_type = ''
 
     original_filename = next(
         (
             attr.file_name
-            for attr in original_file.attributes
+            for attr in message.document.attributes
             if isinstance(attr, DocumentAttributeFilename)
         ),
-        Path(reply_message.file.name).name if reply_message.file.name else 'unknown',
+        Path(message.file.name).name if message.file.name else 'unknown',
     )
 
-    if original_file == 'unknown':
+    if original_filename == 'unknown':
         original_filename = f"{datetime.now(UTC).strftime('%Y-%m-%d_%H-%M-%S')}.{mime_type}"
     original_ext = Path(original_filename).suffix or f'.{mime_type}'
 

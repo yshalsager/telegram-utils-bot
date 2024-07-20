@@ -23,7 +23,7 @@ async def rename_file(event: NewMessage.Event) -> None:
         await event.reply("The replied message doesn't contain a file.")
         return
 
-    new_filename_with_ext = get_download_name(reply_message.document, reply_message, new_filename)
+    new_filename_with_ext = get_download_name(reply_message, new_filename)
 
     progress_message = await event.reply('Starting file rename process...')
 
