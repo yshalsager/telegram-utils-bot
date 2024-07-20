@@ -1,9 +1,11 @@
+from collections.abc import Callable
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import orjson
 import regex as re
 from telethon.events import CallbackQuery, NewMessage
+from telethon.tl.custom import Message
 
 from src.modules.base import ModuleBase
 from src.modules.run import stream_shell_output
@@ -12,17 +14,20 @@ from src.utils.json import json_options, process_dict
 from src.utils.run import run_command
 from src.utils.telegram import edit_or_send_as_file, get_reply_message
 
+ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
+
 
 async def process_audio(
     event: NewMessage.Event,
+    check: Callable[[Message], bool],
     ffmpeg_command: str,
     output_suffix: str,
     is_voice: bool = False,
     get_file_name: bool = True,
 ) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    if not reply_message.audio:
-        await event.reply('The replied message is not an audio file.')
+    if not check(reply_message):
+        await event.reply("The replied message doesn't have a valid input file.")
         return
 
     status_message = await event.reply('Starting process...')
@@ -52,9 +57,9 @@ async def process_audio(
     await status_message.edit('File successfully processed.')
 
 
-async def convert_to_voice_note(event: NewMessage.Event) -> None:
+async def convert_to_voice_note(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a libopus -b:a 48k "{output}"'
-    await process_audio(event, ffmpeg_command, '.ogg', is_voice=True)
+    await process_audio(event, lambda m: m.audio, ffmpeg_command, '.ogg', is_voice=True)
 
 
 async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -65,7 +70,20 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ffmpeg_command = (
         f'ffmpeg -hide_banner -y -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
     )
-    await process_audio(event, ffmpeg_command, '.m4a')
+    await process_audio(event, lambda m: m.audio, ffmpeg_command, '.m4a')
+
+
+async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    if reply_message.file and reply_message.file.ext in ['aac', 'm4a', 'mp3']:
+        ffmpeg_command = (
+            'ffmpeg -hide_banner -y -i "{input}" -vn -c:a copy -movflags +faststart "{output}"'
+        )
+    else:
+        ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a aac -b:a 64k -movflags +faststart "{output}"'
+    await process_audio(
+        event, lambda m: (m.voice or m.video or m.video_note), ffmpeg_command, '.m4a'
+    )
 
 
 async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -76,9 +94,7 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     progress_message = await event.reply('Starting process...')
     with NamedTemporaryFile() as temp_file:
         await download_audio(event, temp_file, reply_message, progress_message)
-        output, code = await run_command(
-            f'ffprobe -v quiet -print_format json -show_format -show_streams "{temp_file.name}"',
-        )
+        output, code = await run_command(ffprobe_command.format(input=temp_file.name))
         if code:
             message = f'Failed to get info.\n<pre>{output}</pre>'
         else:
@@ -89,6 +105,7 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 handlers = {
     'audio compress': compress_audio,
+    'audio convert': convert_to_audio,
     'audio info': get_info,
     'voice': convert_to_voice_note,
 }
@@ -127,6 +144,11 @@ class Audio(ModuleBase):
                 'description': '[bitrate] - compress audio to [bitrate] kbps',
                 'is_applicable_for_reply': True,
             },
+            'audio convert': {
+                'handler': handler,
+                'description': 'Convert a video or voice note to an audio',
+                'is_applicable_for_reply': True,
+            },
             'audio info': {
                 'handler': handler,
                 'description': 'Get audio info',
@@ -138,6 +160,7 @@ class Audio(ModuleBase):
         return bool(
             re.match(r'^/voice', event.message.text)
             or re.match(r'^/audio\s+compress\s+(\d+)$', event.message.text)
+            or re.match(r'^/audio\s+convert$', event.message.text)
             or re.match(r'^/audio\s+info$', event.message.text)
             and event.message.is_reply
         )
