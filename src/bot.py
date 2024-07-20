@@ -83,10 +83,14 @@ async def handle_commands(event: NewMessage.Event) -> None:
     command = command_with_args.group(1)
     modifier = command_with_args.group(2)
     # args = command_with_args.group(3)
-    if modifier:
+    if modifier and command in ('audio',):
         command = f'{command} {modifier}'
     module = modules_registry.get_module_by_command(command)
-    if not module or not permission_manager.has_permission(module.name, event.sender_id):
+    if (
+        not module
+        or not permission_manager.has_permission(module.name, event.sender_id)
+        or not await module.is_applicable(event)
+    ):
         raise StopPropagation
 
     await handle_module_execution(event, module, (event, command), event.reply)
@@ -94,7 +98,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
 
 
 async def handle_messages(event: NewMessage.Event) -> None:
-    if applicable_commands := modules_registry.get_applicable_commands(event):
+    if applicable_commands := await modules_registry.get_applicable_commands(event):
         keyboard = [
             [
                 Button.inline(command, data=f'm_{command.replace(' ', '_')}')
@@ -173,6 +177,11 @@ async def run_bot() -> None:
     )
     bot.add_event_handler(handle_callback, CallbackQuery(pattern=r'^m_'))
     bot.add_event_handler(handle_inline_query, InlineQuery(func=lambda x: len(x.text) > 2))
+
+    # Register module-specific handlers
+    for module in modules_registry.modules:
+        if hasattr(module, 'register_handlers'):
+            module.register_handlers(bot)
 
     # Check if the bot is restarting
     await handle_restart()

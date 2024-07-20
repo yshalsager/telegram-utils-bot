@@ -72,7 +72,7 @@ class SubprocessModule(ModuleBase):
     def commands(self) -> ModuleBase.CommandsT:
         return {'shell': {'handler': self.run_command, 'description': 'Run a shell command'}}
 
-    def is_applicable(self, event: NewMessage.Event) -> bool:
+    async def is_applicable(self, event: NewMessage.Event) -> bool:
         # only bot owner can run shell commands
         return bool(event.message.text.startswith('/shell') and event.sender_id == BOT_ADMINS[0])
 

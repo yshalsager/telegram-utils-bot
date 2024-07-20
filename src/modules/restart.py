@@ -32,5 +32,5 @@ class Restart(ModuleBase):
     def commands(self) -> ModuleBase.CommandsT:
         return {'restart': {'handler': restart, 'description': self.description}}
 
-    def is_applicable(self, event: NewMessage.Event) -> bool:
+    async def is_applicable(self, event: NewMessage.Event) -> bool:
         return bool(event.message.text.startswith('/restart'))

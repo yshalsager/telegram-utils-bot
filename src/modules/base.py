@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+from telethon import TelegramClient
 from telethon.events import InlineQuery, NewMessage
 
 
@@ -25,12 +26,24 @@ class ModuleBase(ABC):
         pass
 
     @abstractmethod
-    def is_applicable(self, event: NewMessage.Event) -> bool:
+    async def is_applicable(self, event: NewMessage.Event) -> bool:
         pass
 
     @staticmethod
-    def is_applicable_for_reply(event: NewMessage.Event) -> bool:
+    async def is_applicable_for_reply(event: NewMessage.Event) -> bool:
+        """
+        Check if the module is applicable to be used in CallbackQuery Event
+        :param event: CallbackQuery.Event
+        :return: bool
+        """
         return False
+
+    @staticmethod
+    def register_handlers(bot: TelegramClient) -> None:
+        """
+        Override this method to register custom handlers from the module using `bot.add_event_handler`
+        """
+        return
 
     async def handle(self, event: NewMessage.Event, command: str | None = None) -> bool:
         assert command is not None

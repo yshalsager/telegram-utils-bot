@@ -74,9 +74,9 @@ class Rename(ModuleBase):
         return {
             'rename': {
                 'handler': rename_file,
-                'description': 'Rename a file: /rename <new_filename>',
+                'description': '[new filename] Rename a Telegram file',
             }
         }
 
-    def is_applicable(self, event: NewMessage.Event) -> bool:
+    async def is_applicable(self, event: NewMessage.Event) -> bool:
         return bool(event.message.text.startswith('/rename') and event.message.is_reply)

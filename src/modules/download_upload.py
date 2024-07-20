@@ -87,9 +87,9 @@ class DownloadUpload(ModuleBase):
             },
         }
 
-    def is_applicable(self, event: NewMessage.Event) -> bool:
+    async def is_applicable(self, event: NewMessage.Event) -> bool:
         return bool(event.message.text.startswith('/download') and event.message.is_reply)
 
     @staticmethod
-    def is_applicable_for_reply(event: NewMessage.Event) -> bool:
+    async def is_applicable_for_reply(event: NewMessage.Event) -> bool:
         return bool(event.message.document)

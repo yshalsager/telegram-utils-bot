@@ -54,5 +54,5 @@ class WebSearch(ModuleBase, InlineModule):
 
         await event.answer(inline_results)
 
-    def is_applicable(self, event: events.InlineQuery.Event) -> bool:
+    async def is_applicable(self, event: events.InlineQuery.Event) -> bool:
         return isinstance(event, events.InlineQuery.Event) and event.text.startswith('ddg ')
