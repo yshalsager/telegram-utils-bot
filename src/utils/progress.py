@@ -18,14 +18,17 @@ async def progress_callback(current: float, total: float, event: Message, action
         percentage = current * 100 / total
         speed = (current - last_current) / (now - last_update) if now - last_update > 0 else 0
         elapsed_time = now - start_time
+        remaining_time = (total - current) / speed if speed > 0 else 0
         progress_callback.last_updates[key] = (now, current, start_time)  # type: ignore[attr-defined]
 
         text = f'<b>{action}...</b>\n\n'
         text += f'{naturalsize(current)} of {naturalsize(total)} '
         if speed > 0:
             text += f'🌐 {naturalsize(speed)}/s '
-        text += f'⏰ {precisedelta(elapsed_time)}\n'
-        text += '\n'
+        text += f'⏱️ {precisedelta(elapsed_time)}'
+        if remaining_time > 0:
+            text += f' ⏰ {precisedelta(remaining_time)}'
+        text += '\n\n'
 
         # Generate a progress bar
         bar_length = 20
