@@ -78,7 +78,7 @@ async def handle_module_execution(
 
 
 async def handle_commands(event: NewMessage.Event) -> None:
-    command = ' '.join(event.pattern_match.groups())
+    command = ' '.join(' '.join(event.pattern_match.groups()).split(' ')[:2])
     module = modules_registry.get_module_by_command(command)
     if not module or not permission_manager.has_permission(module.name, event.sender_id):
         raise StopPropagation

@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -19,17 +19,14 @@ ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_stream
 
 async def process_audio(
     event: NewMessage.Event,
-    check: Callable[[Message], bool],
     ffmpeg_command: str,
     output_suffix: str,
+    reply_message: Message | None = None,
     is_voice: bool = False,
     get_file_name: bool = True,
 ) -> None:
-    reply_message = await get_reply_message(event, previous=True)
-    if not check(reply_message):
-        await event.reply("The replied message doesn't have a valid input file.")
-        return
-
+    if not reply_message:
+        reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply('Starting process...')
     progress_message = await event.reply('<pre>Process output:</pre>')
 
@@ -59,7 +56,7 @@ async def process_audio(
 
 async def convert_to_voice_note(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a libopus -b:a 48k "{output}"'
-    await process_audio(event, lambda m: m.audio, ffmpeg_command, '.ogg', is_voice=True)
+    await process_audio(event, ffmpeg_command, '.ogg', is_voice=True)
 
 
 async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -70,7 +67,7 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ffmpeg_command = (
         f'ffmpeg -hide_banner -y -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
     )
-    await process_audio(event, lambda m: m.audio, ffmpeg_command, '.m4a')
+    await process_audio(event, ffmpeg_command, '.m4a')
 
 
 async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -81,16 +78,35 @@ async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
         )
     else:
         ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a aac -b:a 64k -movflags +faststart "{output}"'
+    await process_audio(event, ffmpeg_command, '.m4a', reply_message=reply_message)
+
+
+async def cut_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    start_time, end_time = event.message.text.split()[2:]
+    try:
+        # Simple validation of time format
+        datetime.strptime(start_time, '%H:%M:%S')  # noqa: DTZ007
+        datetime.strptime(end_time, '%H:%M:%S')  # noqa: DTZ007
+    except ValueError:
+        await event.reply('Invalid time format. Use HH:MM:SS for both start and end times.')
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+    ffmpeg_command = (
+        f'ffmpeg -hide_banner -y -ss {start_time} -to {end_time} -i "{{input}}" '
+        f'-c copy -map 0 "{{output}}"'
+    )
     await process_audio(
-        event, lambda m: (m.voice or m.video or m.video_note), ffmpeg_command, '.m4a'
+        event,
+        ffmpeg_command,
+        reply_message.file.ext,
     )
 
 
 async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    # TODO enable for video
+    # TODO rename module to media
     reply_message = await get_reply_message(event, previous=True)
-    if not (reply_message.audio or reply_message.voice):
-        await event.reply('The replied message is not an audio file or voice message.')
-        return
     progress_message = await event.reply('Starting process...')
     with NamedTemporaryFile() as temp_file:
         await download_audio(event, temp_file, reply_message, progress_message)
@@ -106,6 +122,7 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
+    'audio cut': cut_audio,
     'audio info': get_info,
     'voice': convert_to_voice_note,
 }
@@ -115,7 +132,7 @@ async def handler(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         command = event.data.decode('utf-8').lstrip('m_').replace('_', ' ')
     else:
-        command = event.message.text[1:]
+        command = ' '.join(' '.join(event.pattern_match.groups()).split(' ')[:2])
     if command not in handlers:
         await event.reply('Command not found.')
         return
@@ -149,6 +166,11 @@ class Audio(ModuleBase):
                 'description': 'Convert a video or voice note to an audio',
                 'is_applicable_for_reply': True,
             },
+            'audio cut': {
+                'handler': handler,
+                'description': 'HH:MM:SS HH:MM:SS - Cut audio/video from start time to end time',
+                # 'is_applicable_for_reply': True,
+            },
             'audio info': {
                 'handler': handler,
                 'description': 'Get audio info',
@@ -158,13 +180,37 @@ class Audio(ModuleBase):
 
     def is_applicable(self, event: NewMessage.Event) -> bool:
         return bool(
-            re.match(r'^/voice', event.message.text)
-            or re.match(r'^/audio\s+compress\s+(\d+)$', event.message.text)
-            or re.match(r'^/audio\s+convert$', event.message.text)
-            or re.match(r'^/audio\s+info$', event.message.text)
+            (
+                re.match(r'^/(voice)', event.message.text)
+                and (event.message.audio or event.message.video)
+            )
+            or (
+                re.match(r'^/(audio)\s+(compress)\s+(\d+)$', event.message.text)
+                and event.message.audio
+            )
+            or (
+                re.match(r'^/(audio)\s+(convert)$', event.message.text)
+                and (event.message.voice or event.message.video or event.message.video_note)
+            )
+            or (
+                re.match(
+                    r'^/(audio)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$',
+                    event.message.text,
+                )
+                and (event.message.audio or event.message.voice or event.message.video)
+            )
+            or (
+                re.match(r'^/(audio)\s+(info)$', event.message.text)
+                and (event.message.audio or event.message.voice)
+            )
             and event.message.is_reply
         )
 
     @staticmethod
     def is_applicable_for_reply(event: NewMessage.Event) -> bool:
-        return bool(event.message.audio)
+        return bool(
+            event.message.audio
+            or event.message.voice
+            or event.message.video
+            or event.message.video_note
+        )
