@@ -34,7 +34,7 @@ merge_states: defaultdict[int, dict[str, Any]] = defaultdict(
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
 
 
-async def process_audio(
+async def process_media(
     event: NewMessage.Event,
     ffmpeg_command: str,
     output_suffix: str,
@@ -73,7 +73,7 @@ async def process_audio(
 
 async def convert_to_voice_note(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a libopus -b:a 48k "{output}"'
-    await process_audio(event, ffmpeg_command, '.ogg', is_voice=True)
+    await process_media(event, ffmpeg_command, '.ogg', is_voice=True)
 
 
 async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -84,7 +84,7 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ffmpeg_command = (
         f'ffmpeg -hide_banner -y -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
     )
-    await process_audio(event, ffmpeg_command, '.m4a')
+    await process_media(event, ffmpeg_command, '.m4a')
 
 
 async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -95,10 +95,10 @@ async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
         )
     else:
         ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a aac -b:a 64k -movflags +faststart "{output}"'
-    await process_audio(event, ffmpeg_command, '.m4a', reply_message=reply_message)
+    await process_media(event, ffmpeg_command, '.m4a', reply_message=reply_message)
 
 
-async def cut_audio(event: NewMessage.Event) -> None:
+async def cut_media(event: NewMessage.Event) -> None:
     start_time, end_time = event.message.text.split()[2:]
     try:
         # Simple validation of time format
@@ -113,14 +113,14 @@ async def cut_audio(event: NewMessage.Event) -> None:
         f'ffmpeg -hide_banner -y -ss {start_time} -to {end_time} -i "{{input}}" '
         f'-c copy -map 0 "{{output}}"'
     )
-    await process_audio(
+    await process_media(
         event,
         ffmpeg_command,
         reply_message.file.ext,
     )
 
 
-async def split_audio(event: NewMessage.Event) -> None:
+async def split_media(event: NewMessage.Event) -> None:
     args = event.message.text.split()[2]
     unit = args[-1]
     duration = int(args[:-1])
@@ -166,9 +166,7 @@ async def split_audio(event: NewMessage.Event) -> None:
     await progress_message.edit('Files successfully split and uploaded.')
 
 
-async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    # TODO enable for video
-    # TODO rename module to media
+async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     progress_message = await event.reply('Starting process...')
     with NamedTemporaryFile() as temp_file:
@@ -190,7 +188,7 @@ async def set_metadata(event: NewMessage.Event) -> None:
         f'-metadata title="{title}" -metadata artist="{artist}" '
         '"{output}"'
     )
-    await process_audio(event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message)
+    await process_media(event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message)
 
 
 async def merge_audio_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -199,13 +197,13 @@ async def merge_audio_initial(event: NewMessage.Event | CallbackQuery.Event) -> 
 
     reply_message = await get_reply_message(event, previous=True)
     merge_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply('Audio merge started. Send more audio files.')
+    await event.reply('Send more files to merge.')
 
 
 async def merge_audio_add(event: NewMessage.Event) -> None:
     merge_states[event.sender_id]['files'].append(event.id)
     await event.reply(
-        "Audio file added. Send more or click 'Finish' to merge.",
+        "File added. Send more or click 'Finish' to merge.",
         buttons=[Button.inline('Finish', 'finish_merge')],
     )
     raise StopPropagation
@@ -311,17 +309,17 @@ async def trim_silence(event: NewMessage.Event) -> None:
             caption='Trimmed audio',
         )
 
-    await status_message.edit('Audio silence successfully trimmed.')
+    await status_message.edit('Silence successfully trimmed.')
 
 
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
-    'audio cut': cut_audio,
-    'audio info': get_info,
-    'audio merge': merge_audio_initial,
+    'media cut': cut_media,
+    'media info': media_info,
+    'media merge': merge_audio_initial,
     'audio metadata': set_metadata,
-    'audio split': split_audio,
+    'media split': split_media,
     'audio trim': trim_silence,
     'voice': convert_to_voice_note,
 }
@@ -339,20 +337,20 @@ async def handler(event: NewMessage.Event | CallbackQuery.Event) -> None:
     await handlers[command](event)
 
 
-class Audio(ModuleBase):
+class Media(ModuleBase):
     @property
     def name(self) -> str:
-        return 'Audio'
+        return 'Media'
 
     @property
     def description(self) -> str:
-        return 'Audio processing commands'
+        return 'Media processing commands'
 
     def commands(self) -> ModuleBase.CommandsT:
         return {
             'voice': {
                 'handler': convert_to_voice_note,
-                'description': 'Convert an audio to voice note',
+                'description': 'Convert to voice note',
                 'is_applicable_for_reply': True,
             },
             'audio compress': {
@@ -365,20 +363,20 @@ class Audio(ModuleBase):
                 'description': 'Convert a video or voice note to an audio',
                 'is_applicable_for_reply': True,
             },
-            'audio cut': {
+            'media cut': {
                 'handler': handler,
                 'description': '[HH:MM:SS HH:MM:SS] - Cut audio/video from start time to end time',
                 # 'is_applicable_for_reply': True,
             },
-            'audio split': {
+            'media split': {
                 'handler': handler,
                 'description': '[duration]h/m/s - Split audio/video into segments of specified duration '
                 '(e.g., 30m, 1h, 90s)',
                 # 'is_applicable_for_reply': True,
             },
-            'audio merge': {
-                'handler': merge_audio_initial,
-                'description': 'Start merging multiple audio files',
+            'media merge': {
+                'handler': handler,
+                'description': 'Merge multiple files',
                 'is_applicable_for_reply': True,
             },
             'audio metadata': {
@@ -386,13 +384,13 @@ class Audio(ModuleBase):
                 'description': '[title] - [artist] - Set title and artist of an audio file',
                 # 'is_applicable_for_reply': True,
             },
-            'audio info': {
+            'media info': {
                 'handler': handler,
-                'description': 'Get audio info',
+                'description': 'Get media info',
                 'is_applicable_for_reply': True,
             },
             'audio trim': {
-                'handler': trim_silence,
+                'handler': handler,
                 'description': 'Trim audio silence',
                 'is_applicable_for_reply': True,
             },
@@ -406,7 +404,7 @@ class Audio(ModuleBase):
         return bool(
             (
                 re.match(r'^/(voice)', event.message.text)
-                and (reply_message.audio or reply_message.video)
+                and (reply_message.audio or reply_message.video or reply_message.video_note)
             )
             or (
                 re.match(r'^/(audio)\s+(compress)\s+(\d+)$', event.message.text)
@@ -418,26 +416,46 @@ class Audio(ModuleBase):
             )
             or (
                 re.match(
-                    r'^/(audio)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$',
+                    r'^/(media)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$',
                     event.message.text,
                 )
-                and (reply_message.audio or reply_message.voice or reply_message.video)
+                and (
+                    reply_message.audio
+                    or reply_message.voice
+                    or reply_message.video
+                    or reply_message.video_note
+                )
             )
             or (
-                re.match(r'^/(audio)\s+(split)\s+(\d+[hms])$', event.message.text)
-                and (reply_message.audio or reply_message.voice or reply_message.video)
+                re.match(r'^/(media)\s+(split)\s+(\d+[hms])$', event.message.text)
+                and (
+                    reply_message.audio
+                    or reply_message.voice
+                    or reply_message.video
+                    or reply_message.video_note
+                )
             )
             or (
                 re.match(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$', event.message.text)
                 and reply_message.audio
             )
             or (
-                re.match(r'^/(audio)\s+(merge)$', event.message.text)
-                and (reply_message.audio or reply_message.voice)
+                re.match(r'^/(media)\s+(merge)$', event.message.text)
+                and (
+                    reply_message.audio
+                    or reply_message.voice
+                    or reply_message.video
+                    or reply_message.video_note
+                )
             )
             or (
-                re.match(r'^/(audio)\s+(info)$', event.message.text)
-                and (reply_message.audio or reply_message.voice)
+                re.match(r'^/(media)\s+(info)$', event.message.text)
+                and (
+                    reply_message.audio
+                    or reply_message.voice
+                    or reply_message.video
+                    or reply_message.video_note
+                )
             )
             or (
                 re.match(r'^/(audio)\s+(trim)$', event.message.text)
