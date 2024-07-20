@@ -3,6 +3,7 @@ import logging
 from asyncio.subprocess import PIPE, Process
 from collections.abc import AsyncGenerator
 from os import getpgid, killpg, setsid
+from shlex import split as shlex_split
 from signal import SIGKILL
 
 MAX_MESSAGE_LENGTH = 4000  # Max is 4096 but we leave some buffer for formatting
@@ -91,3 +92,14 @@ async def run_subprocess(cmd: str) -> AsyncGenerator[tuple[str, int | None], Non
 
     if return_code is not None:
         yield output, return_code
+
+
+async def run_command(command: str, timeout: int = ADMIN_TIMEOUT_SECONDS) -> tuple[str, int]:
+    args = shlex_split(command)
+    process = await asyncio.create_subprocess_exec(*args, stdout=PIPE, stderr=PIPE)
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    except TimeoutError:
+        return 'Process timed out', -1
+    output = (stdout + stderr).decode('utf-8').strip()
+    return output, (process.returncode or 0)
