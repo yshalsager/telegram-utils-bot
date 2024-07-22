@@ -1,7 +1,11 @@
-from telethon.events import NewMessage, StopPropagation
+from typing import ClassVar
+
+import regex as re
+from telethon.events import NewMessage
 
 from src import BOT_ADMINS, bot
 from src.modules.base import ModuleBase
+from src.utils.command import Command
 
 
 async def list_plugins(event: NewMessage.Event) -> None:
@@ -18,7 +22,6 @@ async def list_plugins(event: NewMessage.Event) -> None:
     await event.reply(
         f'<b>Enabled modules</b>: {enabled_text}\n' f'<b>Disabled modules</b>: {disabled_text}',
     )
-    raise StopPropagation
 
 
 async def list_commands(event: NewMessage.Event) -> None:
@@ -27,44 +30,49 @@ async def list_commands(event: NewMessage.Event) -> None:
     for module, commands in all_commands.items():
         if not commands:
             continue
-        help_text += f'<i>{module.upper()}</i>:\n'
+        help_text += f'<i>{module}</i>:\n'
         for cmd, data in commands.items():
-            help_text += f'/{cmd}: {data['description']}\n'
+            help_text += f'/{cmd}: {data.description}\n'
         help_text += '\n'
     await event.reply(help_text)
-    raise StopPropagation
 
 
 async def manage_plugins(event: NewMessage.Event) -> None:
-    action, module_name = event.pattern_match.groups()
+    action, module_name = event.message.text.split('plugins ')[1].split(' ')
     if action == 'enable':
         bot.modules_registry.enable_module(module_name)
         await event.reply(f'Module {module_name} enabled')
-    elif action == 'disable':
+    if action == 'disable':
         bot.modules_registry.disable_module(module_name)
         await event.reply(f'Module {module_name} disabled')
-    else:
-        await event.reply('Invalid action. Use "enable" or "disable".')
 
 
-bot.bot.add_event_handler(
-    list_plugins,
-    NewMessage(
-        pattern='^/plugins$', func=lambda x: x.is_private and x.message.sender_id in BOT_ADMINS
-    ),
-)
-
-bot.bot.add_event_handler(
-    list_commands,
-    NewMessage(
-        pattern='/commands', func=lambda x: x.is_private and x.message.sender_id in BOT_ADMINS
-    ),
-)
-
-bot.bot.add_event_handler(
-    manage_plugins,
-    NewMessage(
-        pattern=r'^/plugins\s+(enable|disable)\s+(\w+)',
-        func=lambda x: x.is_private and x.message.sender_id in BOT_ADMINS,
-    ),
-)
+class PluginManager(ModuleBase):
+    name = 'Plugin Manager'
+    description = 'Manage bot plugins and commands'
+    commands: ClassVar[ModuleBase.CommandsT] = {
+        'plugins': Command(
+            handler=list_plugins,
+            description='List all plugins and their status',
+            pattern=re.compile(r'^/plugins$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+        'commands': Command(
+            handler=list_commands,
+            description='List all available commands',
+            pattern=re.compile(r'^/commands$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+        'plugins enable': Command(
+            handler=manage_plugins,
+            description='Enable a plugin',
+            pattern=re.compile(r'^/plugins\s+enable\s+(\w+)$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+        'plugins disable': Command(
+            handler=manage_plugins,
+            description='Disable a plugin',
+            pattern=re.compile(r'^/plugins\s+disable\s+(\w+)$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+    }

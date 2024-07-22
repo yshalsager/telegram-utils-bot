@@ -1,15 +1,18 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, ClassVar
 
 from telethon import TelegramClient
 from telethon.events import InlineQuery, NewMessage
+
+from src.utils.command import Command, InlineCommand
+from src.utils.telegram import get_reply_message
 
 
 class ModuleBase(ABC):
     IS_MODULE = True
     CommandHandlerT = Callable[[NewMessage.Event], Coroutine[Any, Any, None]]
-    CommandsT = dict[str, dict[str, CommandHandlerT | str | bool]]
+    CommandsT = dict[str, Command]
 
     @property
     @abstractmethod
@@ -21,22 +24,24 @@ class ModuleBase(ABC):
     def description(self) -> str:
         pass
 
+    @property
     @abstractmethod
     def commands(self) -> CommandsT:
         pass
 
-    @abstractmethod
     async def is_applicable(self, event: NewMessage.Event) -> bool:
-        pass
-
-    @staticmethod
-    async def is_applicable_for_reply(event: NewMessage.Event) -> bool:
-        """
-        Check if the module is applicable to be used in CallbackQuery Event
-        :param event: CallbackQuery.Event
-        :return: bool
-        """
-        return False
+        reply_message = (
+            await get_reply_message(event, previous=True) if event.message.is_reply else None
+        )
+        return any(
+            command.condition(event, reply_message)
+            and (
+                command.pattern.match(event.message.text)
+                if event.message.text
+                else bool(event.message.file)
+            )
+            for command in self.commands.values()
+        )
 
     @staticmethod
     def register_handlers(bot: TelegramClient) -> None:
@@ -47,13 +52,27 @@ class ModuleBase(ABC):
 
     async def handle(self, event: NewMessage.Event, command: str | None = None) -> bool:
         assert command is not None
-        handler = self.commands().get(command, {}).get('handler')
-        if callable(handler):
-            await handler(event)
+        cmd = self.commands.get(command)
+        if cmd and callable(cmd.handler):
+            await cmd.handler(event)
         return True
 
 
-class InlineModule(ABC):
+class InlineModuleBase(ModuleBase):
+    commands: ClassVar[ModuleBase.CommandsT] = {}
+    InlineCommandsT = dict[str, InlineCommand]
+
+    @property
     @abstractmethod
-    async def handle_inline_query(self, event: InlineQuery.Event) -> None:
+    def inline_commands(self) -> InlineCommandsT:
         pass
+
+    async def is_applicable(self, event: InlineQuery.Event) -> bool:
+        return any(command.pattern.match(event.text) for command in self.inline_commands.values())
+
+    async def handle(self, event: InlineQuery.Event, _: str | None = None) -> bool:
+        for command in self.inline_commands.values():
+            if command.pattern.match(event.text) and callable(command.handler):
+                await command.handler(event)
+                return True
+        return False

@@ -2,9 +2,10 @@ import contextlib
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum, auto
+from functools import partial
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any
+from typing import Any, ClassVar
 
 import orjson
 import regex as re
@@ -16,8 +17,10 @@ from telethon.tl.custom import Message
 
 from src.modules.base import ModuleBase
 from src.modules.run import stream_shell_output
-from src.utils.downloads import download_audio, get_download_name, upload_audio
+from src.utils.command import Command
+from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.json import json_options, process_dict
+from src.utils.reply import ReplyState, handle_callback_query_for_reply_state, reply_states
 from src.utils.run import run_command
 from src.utils.telegram import edit_or_send_as_file, get_reply_message
 
@@ -35,26 +38,6 @@ merge_states: defaultdict[int, dict[str, Any]] = defaultdict(
 )
 
 
-class ReplyState(Enum):
-    WAITING = auto()
-    PROCESSING = auto()
-
-
-reply_states: defaultdict[int, dict[str, Any]] = defaultdict(
-    lambda: {'state': ReplyState.WAITING, 'media_message_id': None, 'reply_message_id': None}
-)
-
-
-async def handle_callback_query(event: CallbackQuery.Event, reply_text: str) -> None:
-    await event.answer()
-    bot_reply = await event.reply(
-        reply_text, reply_to=event.message_id, buttons=Button.force_reply()
-    )
-    reply_states[event.sender_id]['state'] = ReplyState.WAITING
-    reply_states[event.sender_id]['reply_message_id'] = bot_reply.id
-    reply_states[event.sender_id]['media_message_id'] = (await event.get_message()).reply_to_msg_id
-
-
 async def process_media(
     event: NewMessage.Event,
     ffmpeg_command: str,
@@ -69,7 +52,7 @@ async def process_media(
     progress_message = await event.reply('<pre>Process output:</pre>')
 
     with NamedTemporaryFile() as temp_file:
-        await download_audio(event, temp_file, reply_message, progress_message)
+        await download_file(event, temp_file, reply_message, progress_message)
         if get_file_name:
             input_file = get_download_name(reply_message)
             output_file = (Path(temp_file.name).parent / input_file).with_suffix(output_suffix)
@@ -89,7 +72,7 @@ async def process_media(
             await status_message.edit('Processing failed.')
             return
 
-        await upload_audio(event, output_file, progress_message, is_voice)
+        await upload_file(event, output_file, progress_message, is_voice)
 
     await status_message.edit('File successfully processed.')
 
@@ -112,9 +95,6 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    if reply_message.audio:
-        await event.reply('This file is already an audio file. No conversion needed.')
-        return
     if reply_message.file and reply_message.file.ext in ['aac', 'm4a', 'mp3']:
         ffmpeg_command = (
             'ffmpeg -hide_banner -y -i "{input}" -vn -c:a copy -movflags +faststart "{output}"'
@@ -126,7 +106,7 @@ async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
 
 async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
-        return await handle_callback_query(
+        return await handle_callback_query_for_reply_state(
             event,
             'Please enter the start and end times in the format: [start time] [end time] '
             '(e.g., <code>00:00:00 00:30:00</code>)',
@@ -163,7 +143,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
-        return await handle_callback_query(
+        return await handle_callback_query_for_reply_state(
             event,
             'Please enter the split duration in the format: [duration]h/m/s (e.g., 30m, 1h, 90s)',
         )
@@ -190,7 +170,7 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     progress_message = await event.reply('<pre>Process output:</pre>')
     with NamedTemporaryFile() as temp_file:
-        await download_audio(event, temp_file, reply_message, progress_message)
+        await download_file(event, temp_file, reply_message, progress_message)
         input_file = get_download_name(reply_message)
         output_file_base = (Path(temp_file.name).parent / input_file).with_suffix('')
 
@@ -205,7 +185,7 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             output_file_base.parent.glob(f'{output_file_base.stem}_segment_*{input_file.suffix}')
         ):
             if output_file.exists() and output_file.stat().st_size:
-                await upload_audio(
+                await upload_file(
                     event,
                     output_file,
                     progress_message,
@@ -226,7 +206,7 @@ async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     progress_message = await event.reply('Starting process...')
     with NamedTemporaryFile() as temp_file:
-        await download_audio(event, temp_file, reply_message, progress_message)
+        await download_file(event, temp_file, reply_message, progress_message)
         output, code = await run_command(ffprobe_command.format(input=temp_file.name))
         if code:
             message = f'Failed to get info.\n<pre>{output}</pre>'
@@ -238,7 +218,7 @@ async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
-        return await handle_callback_query(
+        return await handle_callback_query_for_reply_state(
             event, 'Please enter the title and artist in the format: Title - Artist'
         )
 
@@ -301,7 +281,7 @@ async def merge_audio_process(event: CallbackQuery.Event) -> None:
                 message = await event.client.get_messages(event.chat_id, ids=file_id)
                 temp_file = NamedTemporaryFile(suffix=message.file.ext, delete=False)
                 temp_files.append(temp_file)
-                await download_audio(event, temp_file, message, progress_message)
+                await download_file(event, temp_file, message, progress_message)
                 file_list.write(f"file '{temp_file.name}'\n")
                 temp_file.close()  # Close but don't delete
 
@@ -310,7 +290,7 @@ async def merge_audio_process(event: CallbackQuery.Event) -> None:
             await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
             output_file_path = Path(output_file.name)
             if output_file_path.exists() and output_file_path.stat().st_size:
-                await upload_audio(
+                await upload_file(
                     event,
                     output_file_path,
                     progress_message,
@@ -345,7 +325,7 @@ async def trim_silence(event: NewMessage.Event) -> None:
             output_file_path = output_file_path.with_name(
                 f'trimmed_{reply_message.file.name}'
             ).with_suffix('.mp3')
-        await download_audio(event, input_file, reply_message, progress_message)
+        await download_file(event, input_file, reply_message, progress_message)
         await progress_message.edit('Loading file...')
         sound = AudioSegment.from_file(Path(input_file.name))
         await progress_message.edit('Splitting...')
@@ -373,7 +353,7 @@ async def trim_silence(event: NewMessage.Event) -> None:
             await status_message.edit('Silence trimming failed.')
             return
 
-        await upload_audio(
+        await upload_file(
             event,
             output_file_path,
             progress_message,
@@ -395,7 +375,7 @@ async def extract_subtitle(event: NewMessage.Event) -> None:
     progress_message = await event.reply('<pre>Process output:</pre>')
 
     with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
-        await download_audio(event, input_file, reply_message, progress_message)
+        await download_file(event, input_file, reply_message, progress_message)
 
         output, code = await run_command(
             f'ffprobe -v quiet -print_format json -show_streams "{input_file.name}"'
@@ -462,155 +442,129 @@ async def handler(event: NewMessage.Event | CallbackQuery.Event) -> None:
     await handlers[command](event)
 
 
+def check_media_conditions(
+    event: NewMessage.Event, reply_message: Message | None, **media_types: bool
+) -> bool:
+    if not media_types:
+        return True
+    message = reply_message or event.message
+
+    def check_media(_media_type: str) -> bool:
+        return bool(getattr(message, _media_type, None))
+
+    checks = []
+    for media_type, should_have in media_types.items():
+        if media_type == 'media':
+            checks.append(
+                any(check_media(t) for t in ['audio', 'voice', 'video', 'video_note'])
+                == should_have
+            )
+        elif media_type.startswith('not_'):
+            actual_type = media_type[4:]
+            checks.append(check_media(actual_type) != should_have)
+        elif '_or_' in media_type:
+            types = media_type.split('_or_')
+            checks.append(any(check_media(t) for t in types) == should_have)
+        else:
+            checks.append(check_media(media_type) == should_have)
+
+    return all(checks)
+
+
 class Media(ModuleBase):
-    @property
-    def name(self) -> str:
-        return 'Media'
-
-    @property
-    def description(self) -> str:
-        return 'Media processing commands'
-
-    def commands(self) -> ModuleBase.CommandsT:
-        return {
-            'voice': {
-                'handler': convert_to_voice_note,
-                'description': 'Convert to voice note',
-                'is_applicable_for_reply': True,
-            },
-            'audio compress': {
-                'handler': handler,
-                'description': '[bitrate] - compress audio to [bitrate] kbps',
-                'is_applicable_for_reply': True,
-            },
-            'audio convert': {
-                'handler': handler,
-                'description': 'Convert a video or voice note to an audio',
-                'is_applicable_for_reply': True,
-            },
-            'media cut': {
-                'handler': handler,
-                'description': '[HH:MM:SS HH:MM:SS] - Cut audio/video from start time to end time',
-                'is_applicable_for_reply': True,
-            },
-            'media split': {
-                'handler': handler,
-                'description': '[duration]h/m/s - Split audio/video into segments of specified duration '
-                '(e.g., 30m, 1h, 90s)',
-                'is_applicable_for_reply': True,
-            },
-            'media merge': {
-                'handler': handler,
-                'description': 'Merge multiple files',
-                'is_applicable_for_reply': True,
-            },
-            'audio metadata': {
-                'handler': handler,
-                'description': '[title] - [artist] - Set title and artist of an audio file',
-                'is_applicable_for_reply': True,
-            },
-            'media info': {
-                'handler': handler,
-                'description': 'Get media info',
-                'is_applicable_for_reply': True,
-            },
-            'audio trim': {
-                'handler': handler,
-                'description': 'Trim audio silence',
-                'is_applicable_for_reply': True,
-            },
-            'video mute': {
-                'handler': handler,
-                'description': 'Mute video',
-                'is_applicable_for_reply': True,
-            },
-            'video subtitle': {
-                'handler': handler,
-                'description': 'Extract subtitle streams from a video',
-                'is_applicable_for_reply': True,
-            },
-        }
-
-    async def is_applicable(self, event: NewMessage.Event) -> bool:
-        if not event.message.is_reply:
-            return False
-
-        reply_message = await get_reply_message(event, previous=True)
-        return bool(
-            (
-                re.match(r'^/(voice)', event.message.text)
-                and (reply_message.audio or reply_message.video or reply_message.video_note)
-            )
-            or (
-                re.match(r'^/(audio)\s+(compress)\s+(\d+)$', event.message.text)
-                and reply_message.audio
-            )
-            or (
-                re.match(r'^/(audio)\s+(convert)$', event.message.text)
-                and (reply_message.voice or reply_message.video or reply_message.video_note)
-            )
-            or (
-                re.match(
-                    r'^/(media)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$',
-                    event.message.text,
-                )
-                and (
-                    reply_message.audio
-                    or reply_message.voice
-                    or reply_message.video
-                    or reply_message.video_note
-                )
-            )
-            or (
-                re.match(r'^/(media)\s+(split)\s+(\d+[hms])$', event.message.text)
-                and (
-                    reply_message.audio
-                    or reply_message.voice
-                    or reply_message.video
-                    or reply_message.video_note
-                )
-            )
-            or (
-                re.match(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$', event.message.text)
-                and reply_message.audio
-            )
-            or (
-                re.match(r'^/(media)\s+(merge)$', event.message.text)
-                and (
-                    reply_message.audio
-                    or reply_message.voice
-                    or reply_message.video
-                    or reply_message.video_note
-                )
-            )
-            or (
-                re.match(r'^/(media)\s+(info)$', event.message.text)
-                and (
-                    reply_message.audio
-                    or reply_message.voice
-                    or reply_message.video
-                    or reply_message.video_note
-                )
-            )
-            or (
-                re.match(r'^/(audio)\s+(trim)$', event.message.text)
-                and (reply_message.audio or reply_message.voice)
-            )
-            or (
-                re.match(r'^/(video)\s+(mute)$', event.message.text)
-                and (reply_message.video or reply_message.video_note)
-            )
-            or (re.match(r'^/(video)\s+(subtitle)$', event.message.text) and reply_message.video)
-        )
-
-    @staticmethod
-    async def is_applicable_for_reply(event: NewMessage.Event) -> bool:
-        return bool(
-            event.message.audio
-            or event.message.voice
-            or event.message.video
-            or event.message.video_note
-        )
+    name = 'Media'
+    description = 'Media processing commands'
+    commands: ClassVar[ModuleBase.CommandsT] = {
+        'audio compress': Command(
+            name='audio compress',
+            handler=handler,
+            description='[bitrate] - compress audio to [bitrate] kbps',
+            pattern=re.compile(r'^/(audio)\s+(compress)\s+(\d+)$'),
+            condition=partial(check_media_conditions, audio=True),
+            is_applicable_for_reply=True,
+        ),
+        'audio convert': Command(
+            name='audio convert',
+            handler=handler,
+            description='Convert a video or voice note to an audio',
+            pattern=re.compile(r'^/(audio)\s+(convert)$'),
+            condition=partial(check_media_conditions, not_audio=True),
+            is_applicable_for_reply=True,
+        ),
+        'audio metadata': Command(
+            name='audio metadata',
+            handler=handler,
+            description='[title] - [artist] - Set title and artist of an audio file',
+            pattern=re.compile(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$'),
+            condition=partial(check_media_conditions, audio=True),
+            is_applicable_for_reply=True,
+        ),
+        'audio trim': Command(
+            name='audio trim',
+            handler=handler,
+            description='Trim audio silence',
+            pattern=re.compile(r'^/(audio)\s+(trim)$'),
+            condition=partial(check_media_conditions, audio_or_voice=True),
+            is_applicable_for_reply=True,
+        ),
+        'media cut': Command(
+            name='media cut',
+            handler=handler,
+            description='[HH:MM:SS HH:MM:SS] - Cut audio/video from start time to end time',
+            pattern=re.compile(r'^/(media)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$'),
+            condition=partial(check_media_conditions, media=True),
+            is_applicable_for_reply=True,
+        ),
+        'media split': Command(
+            name='media split',
+            handler=handler,
+            description='[duration]h/m/s - Split audio/video into segments of specified duration '
+            '(e.g., 30m, 1h, 90s)',
+            pattern=re.compile(r'^/(media)\s+(split)\s+(\d+[hms])$'),
+            condition=partial(check_media_conditions, media=True),
+            is_applicable_for_reply=True,
+        ),
+        'media merge': Command(
+            name='media merge',
+            handler=handler,
+            description='Merge multiple files',
+            pattern=re.compile(r'^/(media)\s+(merge)$'),
+            condition=partial(check_media_conditions, media=True),
+            is_applicable_for_reply=True,
+        ),
+        'media info': Command(
+            name='media info',
+            handler=handler,
+            description='Get media info',
+            pattern=re.compile(r'^/(media)\s+(info)$'),
+            condition=partial(check_media_conditions, media=True),
+            is_applicable_for_reply=True,
+        ),
+        'video mute': Command(
+            name='video mute',
+            handler=handler,
+            description='Mute video',
+            pattern=re.compile(r'^/(video)\s+(mute)$'),
+            condition=partial(check_media_conditions, video_or_video_note=True),
+            is_applicable_for_reply=True,
+        ),
+        'video subtitle': Command(
+            name='video subtitle',
+            handler=handler,
+            description='Extract subtitle streams from a video',
+            pattern=re.compile(r'^/(video)\s+(subtitle)$'),
+            condition=partial(check_media_conditions, video=True),
+            is_applicable_for_reply=True,
+        ),
+        'voice': Command(
+            name='voice',
+            handler=convert_to_voice_note,
+            description='Convert to voice note',
+            pattern=re.compile(r'^/(voice)$'),
+            condition=partial(check_media_conditions, not_voice=True),
+            is_applicable_for_reply=True,
+        ),
+    }
 
     @staticmethod
     def register_handlers(bot: TelegramClient) -> None:

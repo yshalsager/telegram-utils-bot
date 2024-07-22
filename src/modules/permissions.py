@@ -1,11 +1,19 @@
+from typing import ClassVar
+
+import regex as re
+from telethon import TelegramClient
 from telethon.events import NewMessage
 
 from src import BOT_ADMINS
-from src.bot import bot, permission_manager
+from src.bot import permission_manager
+from src.modules.base import ModuleBase
+from src.utils.command import Command
 
 
 async def manage_permissions(event: NewMessage.Event) -> None:
-    action, module_name, user_id = event.pattern_match.groups()
+    action, module_name, user_id = re.match(
+        r'^/permissions\s+(add|remove)\s+(\w+)\s+(\d+)$', event.message.text
+    ).groups()
     try:
         user_id = int(user_id)
     except ValueError:
@@ -18,8 +26,6 @@ async def manage_permissions(event: NewMessage.Event) -> None:
     elif action == 'remove':
         permission_manager.remove_user_from_module(module_name, user_id)
         await event.reply(f'User {user_id} removed from module {module_name}')
-    else:
-        await event.reply('Invalid action. Use "add" or "remove".')
 
 
 async def list_permissions(event: NewMessage.Event) -> None:
@@ -75,27 +81,42 @@ async def list_all_users(event: NewMessage.Event) -> None:
     await event.reply(message)
 
 
-bot.add_event_handler(
-    manage_permissions,
-    NewMessage(
-        pattern=r'^/permissions\s+(add|remove)\s+(\w+)\s+(\d+)',
-        func=lambda x: x.is_private and x.sender_id in BOT_ADMINS,
-    ),
-)
+class Permissions(ModuleBase):
+    name = 'Permissions'
+    description = 'Manage user permissions for different modules'
+    commands: ClassVar[ModuleBase.CommandsT] = {
+        'permissions add': Command(
+            handler=manage_permissions,
+            description='Add user permissions for a module',
+            pattern=re.compile(r'^/permissions\s+add\s+(\w+)\s+(\d+)$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+        'permissions remove': Command(
+            handler=manage_permissions,
+            description='Remove user permissions for a module',
+            pattern=re.compile(r'^/permissions\s+remove\s+(\w+)\s+(\d+)$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+        'permissions': Command(
+            handler=list_permissions,
+            description='List all module permissions',
+            pattern=re.compile(r'^/permissions$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+        'users': Command(
+            handler=list_all_users,
+            description='List all users with their permissions',
+            pattern=re.compile(r'^/users$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+    }
 
-bot.add_event_handler(
-    user_permissions,
-    NewMessage(
-        pattern=r'^/permissions\s+(\d+)$', func=lambda x: x.is_private and x.sender_id in BOT_ADMINS
-    ),
-)
-
-bot.add_event_handler(
-    list_permissions,
-    NewMessage(pattern='^/permissions$', func=lambda x: x.is_private and x.sender_id in BOT_ADMINS),
-)
-
-bot.add_event_handler(
-    list_all_users,
-    NewMessage(pattern='^/users$', func=lambda x: x.is_private and x.sender_id in BOT_ADMINS),
-)
+    @staticmethod
+    def register_handlers(bot: TelegramClient) -> None:
+        bot.add_event_handler(
+            user_permissions,
+            NewMessage(
+                pattern=r'^/permissions\s+(\d+)$',
+                func=lambda x: x.is_private and x.sender_id in BOT_ADMINS,
+            ),
+        )

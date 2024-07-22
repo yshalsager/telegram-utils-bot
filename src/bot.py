@@ -16,7 +16,7 @@ from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, InlineQuery, NewMessage, StopPropagation
 
 from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN, PARENT_DIR
-from src.modules.base import ModuleBase
+from src.modules.base import InlineModuleBase, ModuleBase
 from src.utils.modules_registry import ModuleRegistry
 from src.utils.permission_manager import PermissionManager
 from src.utils.telegram import get_reply_message
@@ -85,7 +85,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
     command = command_with_args.group(1)
     modifier = command_with_args.group(2)
     # args = command_with_args.group(3)
-    if modifier and command in ('audio', 'media', 'video'):
+    if modifier and command in ('audio', 'media', 'video', 'tasks', 'plugins', 'permissions'):
         command = f'{command} {modifier}'
     module = modules_registry.get_module_by_command(command)
     if (
@@ -134,8 +134,8 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
 
 async def handle_inline_query(event: InlineQuery.Event) -> None:
     for module in modules_registry.modules:
-        if hasattr(module, 'handle_inline_query') and module.is_applicable(event):
-            await module.handle_inline_query(event)
+        if isinstance(module, InlineModuleBase) and await module.is_applicable(event):
+            await module.handle(event)
             break
     raise StopPropagation
 

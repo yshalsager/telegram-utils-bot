@@ -6,7 +6,8 @@ from telethon.events import NewMessage
 from telethon.tl.custom import Message
 from telethon.tl.types import DocumentAttributeFilename
 
-from src.utils.fast_telethon import download_file, upload_file
+from src.utils.fast_telethon import download_file as fast_download_file
+from src.utils.fast_telethon import upload_file as fast_upload_file
 from src.utils.progress import progress_callback
 
 
@@ -37,13 +38,13 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
     return new_filename_with_ext
 
 
-async def download_audio(
+async def download_file(
     event: NewMessage.Event,
     temp_file: _TemporaryFileWrapper,
     reply_message: Message,
     progress_message: Message,
 ) -> None:
-    await download_file(
+    await fast_download_file(
         event.client,
         reply_message.document,
         temp_file,
@@ -53,7 +54,7 @@ async def download_audio(
     )
 
 
-async def upload_audio(
+async def upload_file(
     event: NewMessage.Event,
     output_file: Path,
     progress_message: Message,
@@ -61,7 +62,7 @@ async def upload_audio(
     caption: str = '',
 ) -> None:
     with output_file.open('rb') as file_to_upload:
-        uploaded_file = await upload_file(
+        uploaded_file = await fast_upload_file(
             event.client,
             file_to_upload,
             output_file.name,

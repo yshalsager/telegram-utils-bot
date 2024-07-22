@@ -1,12 +1,16 @@
 import logging
 from asyncio import Task
 from datetime import UTC, datetime
+from typing import ClassVar
 
+import regex as re
 from humanize import naturaltime
 from telethon.events import NewMessage
 
 from src import BOT_ADMINS
-from src.bot import bot
+from src.modules.base import ModuleBase
+from src.utils.command import Command
+from src.utils.telegram import get_reply_message
 
 
 async def list_tasks(event: NewMessage.Event) -> None:
@@ -14,9 +18,13 @@ async def list_tasks(event: NewMessage.Event) -> None:
     if not active_tasks:
         await event.reply('No active tasks.')
         return
+    reply_message = await get_reply_message(event) or event.message
+    current_task_id = f'{reply_message.chat_id}_{reply_message.id}'
 
     message = '<b>Active tasks:</b>\n\n'
     for task_id, task in active_tasks.items():
+        if task_id == current_task_id:
+            continue
         message += f'📦 <code>{task_id}</code>'
         try:
             task_event: NewMessage.Event
@@ -49,11 +57,15 @@ async def list_tasks(event: NewMessage.Event) -> None:
 
 async def cancel_task(event: NewMessage.Event) -> None:
     """Cancel a specific task."""
-    task_id = event.pattern_match.group(1)
+    message = await get_reply_message(event) or event.message
+    current_task_id = f'{message.chat_id}_{message.id}'
+    task_id = event.message.text.split('cancel ')[1]
     active_tasks = getattr(event.client, 'active_tasks', {})
 
     if task_id == 'all':
         for task_id in list(active_tasks.keys()):
+            if task_id == current_task_id:
+                continue
             task = active_tasks[task_id]
             task.cancel()
             del active_tasks[task_id]
@@ -74,15 +86,20 @@ async def cancel_task(event: NewMessage.Event) -> None:
     del active_tasks[task_id]
 
 
-bot.add_event_handler(
-    list_tasks,
-    NewMessage(pattern=r'^/tasks$', func=lambda e: e.is_private and e.sender_id in BOT_ADMINS),
-)
-
-bot.add_event_handler(
-    cancel_task,
-    NewMessage(
-        pattern=r'^/tasks\s+cancel\s+([\w_]+)$',
-        func=lambda e: e.is_private and e.sender_id in BOT_ADMINS,
-    ),
-)
+class TasksManager(ModuleBase):
+    name = 'Tasks Manager'
+    description = 'Manage tasks running in the bot'
+    commands: ClassVar[ModuleBase.CommandsT] = {
+        'tasks': Command(
+            handler=list_tasks,
+            description='List all active tasks',
+            pattern=re.compile(r'^/tasks$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+        'tasks cancel': Command(
+            handler=cancel_task,
+            description='Cancel a specific task or all tasks',
+            pattern=re.compile(r'^/tasks\s+cancel\s+([\w_]+)$'),
+            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+        ),
+    }

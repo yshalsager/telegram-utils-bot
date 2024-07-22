@@ -33,13 +33,14 @@ def load_modules(directory: str) -> list[ModuleBase]:
     loaded_module_classes: list[ModuleBase] = []
     for module in found_modules:
         for module_class in filter(
-            lambda x: getattr(x, 'IS_MODULE', False) and x.__name__ != 'ModuleBase',
+            lambda x: getattr(x, 'IS_MODULE', False)
+            and x.__name__ not in ('ModuleBase', 'InlineModuleBase'),
             (getattr(module, i) for i in dir(module)),
         ):
             loaded_module_classes.append(module_class())
     logger.info(
         f'loaded modules: {", ".join(
-            [f'{module.name} {list(module.commands().keys())}' for module in loaded_module_classes]
+            [f'{module.name} {list(module.commands.keys())}' for module in loaded_module_classes]
         )}'
     )
     return loaded_module_classes
@@ -79,30 +80,24 @@ class ModuleRegistry:
     def is_module_enabled(self, module_name: str) -> bool:
         return self.modules_status.get(module_name, True)
 
-    async def get_applicable_modules(
-        self, event: NewMessage.Event, for_inline_query: bool = False
-    ) -> list[ModuleBase]:
+    async def get_applicable_modules(self, event: NewMessage.Event) -> list[ModuleBase]:
         return [
             module
             for module in self.modules
             if self.is_module_enabled(module.name)
             and self.permission_manager.has_permission(module.name, event.sender_id)
-            and (
-                await module.is_applicable_for_reply(event)
-                if for_inline_query
-                else await module.is_applicable(event)
-            )
+            and (await module.is_applicable(event))
         ]
 
     def get_module_by_command(self, command: str) -> ModuleBase | None:
         for module in self.modules:
-            if self.is_module_enabled(module.name) and command in module.commands():
+            if self.is_module_enabled(module.name) and command in module.commands:
                 return module
         return None
 
     def get_all_commands(self) -> dict[str, ModuleBase.CommandsT]:
         return {
-            module.name: module.commands()
+            module.name: module.commands
             for module in self.modules
             if self.is_module_enabled(module.name)
         }
@@ -110,7 +105,8 @@ class ModuleRegistry:
     async def get_applicable_commands(self, event: NewMessage.Event) -> list[str]:
         return [
             command
-            for module in await self.get_applicable_modules(event, for_inline_query=True)
-            for command in module.commands()
-            if module.commands()[command].get('is_applicable_for_reply', False)
+            for module in await self.get_applicable_modules(event)
+            for command in module.commands
+            if module.commands[command].is_applicable_for_reply
+            and module.commands[command].condition(event, None)
         ]

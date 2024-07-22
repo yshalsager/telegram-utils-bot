@@ -1,9 +1,12 @@
 from pathlib import Path
+from typing import ClassVar
 
+import regex as re
 from telethon.events import CallbackQuery, NewMessage
 
 from src import DOWNLOADS_DIR
 from src.modules.base import ModuleBase
+from src.utils.command import Command
 from src.utils.downloads import get_download_name
 from src.utils.fast_telethon import download_file, upload_file
 from src.utils.progress import progress_callback
@@ -66,30 +69,22 @@ async def upload_file_command(event: NewMessage.Event) -> None:
 
 
 class DownloadUpload(ModuleBase):
-    @property
-    def name(self) -> str:
-        return 'Download'
-
-    @property
-    def description(self) -> str:
-        return 'Download files from Telegram to local filesystem'
-
-    def commands(self) -> ModuleBase.CommandsT:
-        return {
-            'download': {
-                'handler': download_file_command,
-                'description': 'Download a file: Reply to a message with a file and use <code>/download</code>',
-                'is_applicable_for_reply': True,
-            },
-            'upload': {
-                'handler': upload_file_command,
-                'description': 'Upload a file: <code>/upload [filepath]</code>',
-            },
-        }
-
-    async def is_applicable(self, event: NewMessage.Event) -> bool:
-        return bool(event.message.text.startswith('/download') and event.message.is_reply)
-
-    @staticmethod
-    async def is_applicable_for_reply(event: NewMessage.Event) -> bool:
-        return bool(event.message.document)
+    name = 'Download'
+    description = 'Download / Upload files from Telegram / local filesystem.'
+    commands: ClassVar[ModuleBase.CommandsT] = {
+        'download': Command(
+            handler=download_file_command,
+            description='Download a file: Reply to a message with a file and use <code>/download</code>',
+            pattern=re.compile(r'^/download$'),
+            condition=lambda event, reply_message: (
+                event.is_reply and reply_message and reply_message.file
+            )
+            or event.message.file,
+            is_applicable_for_reply=True,
+        ),
+        'upload': Command(
+            handler=upload_file_command,
+            description='[filepath]: Upload a file from local filesystem',
+            pattern=re.compile(r'^/upload\s+(.+)$'),
+        ),
+    }

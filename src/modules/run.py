@@ -2,13 +2,16 @@ from asyncio import sleep
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from tempfile import NamedTemporaryFile
+from typing import ClassVar
 
+import regex as re
 from telethon.errors import MessageNotModifiedError
 from telethon.events import NewMessage
 from telethon.tl.custom import Message
 
 from src import BOT_ADMINS
 from src.modules.base import ModuleBase
+from src.utils.command import Command
 from src.utils.run import MAX_MESSAGE_LENGTH, run_subprocess
 from src.utils.telegram import delete_message_after
 
@@ -80,27 +83,24 @@ async def stream_shell_output(
         )
 
 
-class SubprocessModule(ModuleBase):
-    @property
-    def name(self) -> str:
-        return 'Subprocess'
+async def run_command(event: NewMessage.Event) -> None:
+    cmd = event.message.text.split(maxsplit=1)[1] if len(event.message.text.split()) > 1 else ''
+    if not cmd:
+        await event.reply('Please provide a command to run.')
+        return
 
-    @property
-    def description(self) -> str:
-        return 'Run a shell command and stream its output.'
+    await stream_shell_output(event, cmd)
 
-    def commands(self) -> ModuleBase.CommandsT:
-        return {'shell': {'handler': self.run_command, 'description': 'Run a shell command'}}
 
-    async def is_applicable(self, event: NewMessage.Event) -> bool:
-        # only bot owner can run shell commands
-        return bool(event.message.text.startswith('/shell') and event.sender_id == BOT_ADMINS[0])
-
-    @staticmethod
-    async def run_command(event: NewMessage.Event) -> None:
-        cmd = event.message.text.split(maxsplit=1)[1] if len(event.message.text.split()) > 1 else ''
-        if not cmd:
-            await event.reply('Please provide a command to run.')
-            return
-
-        await stream_shell_output(event, cmd)
+class Shell(ModuleBase):
+    name = 'Subprocess'
+    description = 'Run a shell command and stream its output.'
+    commands: ClassVar[ModuleBase.CommandsT] = {
+        'shell': Command(
+            handler=run_command,
+            description='Run a shell command',
+            pattern=re.compile(r'^/shell\s+(.+)$'),
+            # only bot owner can run shell commands
+            condition=lambda event, _: event.sender_id == BOT_ADMINS[0],
+        )
+    }

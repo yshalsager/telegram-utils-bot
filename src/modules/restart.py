@@ -3,14 +3,17 @@
 from os import execl
 from pathlib import Path
 from sys import executable
+from typing import ClassVar
 
 import orjson
+import regex as re
 from telethon.events import NewMessage
 
+from src import BOT_ADMINS
 from src.modules.base import ModuleBase
+from src.utils.command import Command
 
 
-# @bot.on(NewMessage(from_users=BOT_ADMINS, pattern=r'/restart'))
 async def restart(event: NewMessage.Event) -> None:
     """Restart the bot."""
     restart_message = await event.reply('Restarting, please wait...')
@@ -21,16 +24,13 @@ async def restart(event: NewMessage.Event) -> None:
 
 
 class Restart(ModuleBase):
-    @property
-    def name(self) -> str:
-        return 'Restart'
-
-    @property
-    def description(self) -> str:
-        return 'Restart the bot.'
-
-    def commands(self) -> ModuleBase.CommandsT:
-        return {'restart': {'handler': restart, 'description': self.description}}
-
-    async def is_applicable(self, event: NewMessage.Event) -> bool:
-        return bool(event.message.text.startswith('/restart'))
+    name = 'Restart'
+    description = 'Restart the bot.'
+    commands: ClassVar[ModuleBase.CommandsT] = {
+        'restart': Command(
+            handler=restart,
+            description='Restart the bot.',
+            pattern=re.compile(r'^/restart$'),
+            condition=lambda event, _: event.sender_id in BOT_ADMINS,
+        )
+    }
