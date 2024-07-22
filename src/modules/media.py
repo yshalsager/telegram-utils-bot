@@ -21,6 +21,8 @@ from src.utils.json import json_options, process_dict
 from src.utils.run import run_command
 from src.utils.telegram import edit_or_send_as_file, get_reply_message
 
+ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
+
 
 class MergeState(Enum):
     IDLE = auto()
@@ -31,7 +33,26 @@ class MergeState(Enum):
 merge_states: defaultdict[int, dict[str, Any]] = defaultdict(
     lambda: {'state': MergeState.IDLE, 'files': []}
 )
-ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
+
+
+class ReplyState(Enum):
+    WAITING = auto()
+    PROCESSING = auto()
+
+
+reply_states: defaultdict[int, dict[str, Any]] = defaultdict(
+    lambda: {'state': ReplyState.WAITING, 'media_message_id': None, 'reply_message_id': None}
+)
+
+
+async def handle_callback_query(event: CallbackQuery.Event, reply_text: str) -> None:
+    await event.answer()
+    bot_reply = await event.reply(
+        reply_text, reply_to=event.message_id, buttons=Button.force_reply()
+    )
+    reply_states[event.sender_id]['state'] = ReplyState.WAITING
+    reply_states[event.sender_id]['reply_message_id'] = bot_reply.id
+    reply_states[event.sender_id]['media_message_id'] = (await event.get_message()).reply_to_msg_id
 
 
 async def process_media(
@@ -50,8 +71,10 @@ async def process_media(
     with NamedTemporaryFile() as temp_file:
         await download_audio(event, temp_file, reply_message, progress_message)
         if get_file_name:
-            input_file_name = get_download_name(reply_message)
-            output_file = (Path(temp_file.name).parent / input_file_name).with_suffix(output_suffix)
+            input_file = get_download_name(reply_message)
+            output_file = (Path(temp_file.name).parent / input_file).with_suffix(output_suffix)
+            if output_file.name == input_file.name:
+                output_file = output_file.with_name(f'_{output_file.name}')
         else:
             output_file = Path(temp_file.name).with_suffix(output_suffix)
 
@@ -89,6 +112,9 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
+    if reply_message.audio:
+        await event.reply('This file is already an audio file. No conversion needed.')
+        return
     if reply_message.file and reply_message.file.ext in ['aac', 'm4a', 'mp3']:
         ffmpeg_command = (
             'ffmpeg -hide_banner -y -i "{input}" -vn -c:a copy -movflags +faststart "{output}"'
@@ -98,31 +124,61 @@ async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
     await process_media(event, ffmpeg_command, '.m4a', reply_message=reply_message)
 
 
-async def cut_media(event: NewMessage.Event) -> None:
-    start_time, end_time = event.message.text.split()[2:]
+async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        return await handle_callback_query(
+            event,
+            'Please enter the start and end times in the format: [start time] [end time] '
+            '(e.g., <code>00:00:00 00:30:00</code>)',
+        )
+    if event.sender_id in reply_states:
+        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
+        reply_message = await event.client.get_messages(
+            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
+        )
+    else:
+        reply_message = await get_reply_message(event, previous=True)
+
+    start_time, end_time = re.search(
+        r'(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})', event.message.text
+    ).groups()
     try:
         # Simple validation of time format
         datetime.strptime(start_time, '%H:%M:%S')  # noqa: DTZ007
         datetime.strptime(end_time, '%H:%M:%S')  # noqa: DTZ007
     except ValueError:
         await event.reply('Invalid time format. Use HH:MM:SS for both start and end times.')
-        return
+        return None
 
-    reply_message = await get_reply_message(event, previous=True)
     ffmpeg_command = (
-        f'ffmpeg -hide_banner -y -ss {start_time} -to {end_time} -i "{{input}}" '
+        f'ffmpeg -hide_banner -y -i "{{input}}" '
+        f'-ss {start_time} -to {end_time} '
         f'-c copy -map 0 "{{output}}"'
     )
-    await process_media(
-        event,
-        ffmpeg_command,
-        reply_message.file.ext,
-    )
+    await process_media(event, ffmpeg_command, reply_message.file.ext, reply_message)
+    if event.sender_id in reply_states:
+        del reply_states[event.sender_id]
+    raise StopPropagation
 
 
-async def split_media(event: NewMessage.Event) -> None:
-    args = event.message.text.split()[2]
-    unit = args[-1]
+async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        return await handle_callback_query(
+            event,
+            'Please enter the split duration in the format: [duration]h/m/s (e.g., 30m, 1h, 90s)',
+        )
+
+    if event.sender_id in reply_states:
+        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
+        reply_message = await event.client.get_messages(
+            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
+        )
+        args = event.message.text
+    else:
+        reply_message = await get_reply_message(event, previous=True)
+        args = event.message.text.split()[2]
+
+    unit = args[-1] if args[-1].isalpha() else 's'
     duration = int(args[:-1])
     if unit == 'h':
         segment_duration = duration * 3600
@@ -130,16 +186,15 @@ async def split_media(event: NewMessage.Event) -> None:
         segment_duration = duration * 60
     else:
         segment_duration = duration
-    reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply('Starting process...')
-    progress_message = await event.reply('<pre>Process output:</pre>')
 
+    progress_message = await event.reply('<pre>Process output:</pre>')
     with NamedTemporaryFile() as temp_file:
         await download_audio(event, temp_file, reply_message, progress_message)
-        input_file_name = get_download_name(reply_message)
-        output_file_base = (Path(temp_file.name).parent / input_file_name).with_suffix('')
+        input_file = get_download_name(reply_message)
+        output_file_base = (Path(temp_file.name).parent / input_file).with_suffix('')
 
-        output_pattern = f'{output_file_base.stem}_segment_%03d{input_file_name.suffix}'
+        output_pattern = f'{output_file_base.stem}_segment_%03d{input_file.suffix}'
         ffmpeg_command = (
             f'ffmpeg -hide_banner -y -i "{temp_file.name}" -f segment -segment_time {segment_duration} '
             f'-c copy "{output_file_base.parent / output_pattern}"'
@@ -147,9 +202,7 @@ async def split_media(event: NewMessage.Event) -> None:
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
 
         for output_file in sorted(
-            output_file_base.parent.glob(
-                f'{output_file_base.stem}_segment_*{input_file_name.suffix}'
-            )
+            output_file_base.parent.glob(f'{output_file_base.stem}_segment_*{input_file.suffix}')
         ):
             if output_file.exists() and output_file.stat().st_size:
                 await upload_audio(
@@ -164,6 +217,9 @@ async def split_media(event: NewMessage.Event) -> None:
             output_file.unlink(missing_ok=True)
 
     await progress_message.edit('Files successfully split and uploaded.')
+    if event.sender_id in reply_states:
+        del reply_states[event.sender_id]
+    raise StopPropagation
 
 
 async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -180,15 +236,31 @@ async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await edit_or_send_as_file(event, progress_message, message)
 
 
-async def set_metadata(event: NewMessage.Event) -> None:
-    title, artist = event.message.text.split('metadata ')[1].split(' - ')
-    reply_message = await get_reply_message(event, previous=True)
+async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        return await handle_callback_query(
+            event, 'Please enter the title and artist in the format: Title - Artist'
+        )
+
+    if event.sender_id in reply_states:
+        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
+        reply_message = await event.client.get_messages(
+            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
+        )
+        title, artist = event.message.text.split(' - ')
+    else:
+        reply_message = await get_reply_message(event, previous=True)
+        title, artist = event.message.text.split('metadata ')[1].split(' - ')
+
     ffmpeg_command = (
         'ffmpeg -hide_banner -y -i "{input}" -c copy '
         f'-metadata title="{title}" -metadata artist="{artist}" '
         '"{output}"'
     )
     await process_media(event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message)
+    if event.sender_id in reply_states:
+        del reply_states[event.sender_id]
+    raise StopPropagation
 
 
 async def merge_audio_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -377,7 +449,10 @@ handlers = {
 
 async def handler(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
-        command = event.data.decode('utf-8').lstrip('m_').replace('_', ' ')
+        command = event.data.decode('utf-8')
+        if command.startswith('m_'):
+            command = command[2:]
+        command = command.replace('_', ' ')
     else:
         command = ' '.join(' '.join(event.pattern_match.groups()).split(' ')[:2])
     if command not in handlers:
@@ -416,13 +491,13 @@ class Media(ModuleBase):
             'media cut': {
                 'handler': handler,
                 'description': '[HH:MM:SS HH:MM:SS] - Cut audio/video from start time to end time',
-                # 'is_applicable_for_reply': True,
+                'is_applicable_for_reply': True,
             },
             'media split': {
                 'handler': handler,
                 'description': '[duration]h/m/s - Split audio/video into segments of specified duration '
                 '(e.g., 30m, 1h, 90s)',
-                # 'is_applicable_for_reply': True,
+                'is_applicable_for_reply': True,
             },
             'media merge': {
                 'handler': handler,
@@ -432,7 +507,7 @@ class Media(ModuleBase):
             'audio metadata': {
                 'handler': handler,
                 'description': '[title] - [artist] - Set title and artist of an audio file',
-                # 'is_applicable_for_reply': True,
+                'is_applicable_for_reply': True,
             },
             'media info': {
                 'handler': handler,
@@ -555,5 +630,44 @@ class Media(ModuleBase):
                 pattern=b'finish_merge',
                 func=lambda e: e.is_private
                 and merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
+            ),
+        )
+        bot.add_event_handler(
+            set_metadata,
+            NewMessage(
+                func=lambda e: (
+                    e.is_private
+                    and e.is_reply
+                    and e.sender_id in reply_states
+                    and re.match(r'^.+\s+-\s+.+$', e.message.text)
+                    and reply_states[e.sender_id]['state'] == ReplyState.WAITING
+                    and e.message.reply_to_msg_id == reply_states[e.sender_id]['reply_message_id']
+                )
+            ),
+        )
+        bot.add_event_handler(
+            split_media,
+            NewMessage(
+                func=lambda e: (
+                    e.is_private
+                    and e.is_reply
+                    and e.sender_id in reply_states
+                    and re.match(r'^(\d+[hms])$', e.message.text)
+                    and reply_states[e.sender_id]['state'] == ReplyState.WAITING
+                    and e.message.reply_to_msg_id == reply_states[e.sender_id]['reply_message_id']
+                )
+            ),
+        )
+        bot.add_event_handler(
+            cut_media,
+            NewMessage(
+                func=lambda e: (
+                    e.is_private
+                    and e.is_reply
+                    and e.sender_id in reply_states
+                    and re.match(r'^(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$', e.message.text)
+                    and reply_states[e.sender_id]['state'] == ReplyState.WAITING
+                    and e.message.reply_to_msg_id == reply_states[e.sender_id]['reply_message_id']
+                )
             ),
         )

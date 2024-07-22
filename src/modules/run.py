@@ -10,6 +10,7 @@ from telethon.tl.custom import Message
 from src import BOT_ADMINS
 from src.modules.base import ModuleBase
 from src.utils.run import MAX_MESSAGE_LENGTH, run_subprocess
+from src.utils.telegram import delete_message_after
 
 
 async def stream_shell_output(
@@ -62,6 +63,8 @@ async def stream_shell_output(
         f'Elapsed time: {elapsed_time}'
     )
     await status_message.edit(status)
+    event.client.loop.create_task(delete_message_after(progress_message))
+
     if not bool(buffer.strip()):
         return
     if event.sender_id not in BOT_ADMINS:

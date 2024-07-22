@@ -66,6 +66,8 @@ async def handle_module_execution(
         await task
     except CancelledError:
         await response_func('Operation cancelled.')
+    except StopPropagation:
+        pass
     except Exception as e:  # noqa: BLE001
         logger.error(f'Error in module {module.name}: {e!s}')
         await response_func(f'An error occurred: {e!s}')
@@ -114,7 +116,10 @@ async def handle_messages(event: NewMessage.Event) -> None:
 
 
 async def handle_callback(event: CallbackQuery.Event) -> None:
-    command = event.data.decode('utf-8').lstrip('m_').replace('_', ' ')
+    command = event.data.decode('utf-8')
+    if command.startswith('m_'):
+        command = command[2:]
+    command = command.replace('_', ' ')
     module = modules_registry.get_module_by_command(command)
     if not module or not permission_manager.has_permission(module.name, event.sender_id):
         return

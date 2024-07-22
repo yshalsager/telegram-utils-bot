@@ -1,3 +1,4 @@
+from asyncio import sleep
 from io import BytesIO
 
 from telethon.errors import MessageTooLongError
@@ -21,3 +22,8 @@ async def edit_or_send_as_file(event: NewMessage.Event, message: Message, text: 
         file = BytesIO(text.encode())
         file.name = 'output.txt'
         await event.client.send_file(message.chat_id, file, reply_to=message.id)
+
+
+async def delete_message_after(message: Message, seconds: int = 10) -> None:
+    await sleep(seconds)
+    await message.delete()
