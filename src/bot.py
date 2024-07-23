@@ -103,7 +103,7 @@ async def handle_messages(event: NewMessage.Event) -> None:
     if applicable_commands := await modules_registry.get_applicable_commands(event):
         keyboard = [
             [
-                Button.inline(command, data=f'm_{command.replace(' ', '_')}')
+                Button.inline(command, data=f'm|{command.replace(' ', '_')}')
                 for command in row
                 if command is not None
             ]
@@ -117,10 +117,10 @@ async def handle_messages(event: NewMessage.Event) -> None:
 
 async def handle_callback(event: CallbackQuery.Event) -> None:
     command = event.data.decode('utf-8')
-    if command.startswith('m_'):
+    if command.startswith('m|'):
         command = command[2:]
     command = command.replace('_', ' ')
-    module = modules_registry.get_module_by_command(command)
+    module = modules_registry.get_module_by_command(command.split('|')[0])
     if not module or not permission_manager.has_permission(module.name, event.sender_id):
         return
 
@@ -187,7 +187,7 @@ async def run_bot() -> None:
         handle_messages,
         NewMessage(func=lambda x: x.is_private and not x.message.text.startswith('/')),
     )
-    bot.add_event_handler(handle_callback, CallbackQuery(pattern=r'^m_'))
+    bot.add_event_handler(handle_callback, CallbackQuery(pattern=r'^m|'))
     bot.add_event_handler(handle_inline_query, InlineQuery(func=lambda x: len(x.text) > 2))
 
     # Check if the bot is restarting

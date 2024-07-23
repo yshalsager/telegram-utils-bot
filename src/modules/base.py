@@ -52,6 +52,8 @@ class ModuleBase(ABC):
 
     async def handle(self, event: NewMessage.Event, command: str | None = None) -> bool:
         assert command is not None
+        if '|' in command:
+            command, _ = command.split('|', 1)
         cmd = self.commands.get(command)
         if cmd and callable(cmd.handler):
             await cmd.handler(event)

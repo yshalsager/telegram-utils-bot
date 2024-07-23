@@ -113,7 +113,21 @@ async def convert_to_voice_note(event: NewMessage.Event | CallbackQuery.Event) -
 
 async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
-        audio_bitrate = '48'
+        if event.data.decode().startswith('m|audio_compress|'):
+            audio_bitrate = event.data.decode().split('|')[-1]
+        else:
+            buttons = [
+                [
+                    Button.inline(f'{bitrate}kbps', f'm|audio_compress|{bitrate}')
+                    for bitrate in [16, 32, 48]
+                ],
+                [
+                    Button.inline(f'{bitrate}kbps', f'm|audio_compress|{bitrate}')
+                    for bitrate in [64, 96, 128]
+                ],
+            ]
+            await event.edit('Choose the desired bitrate:', buttons=buttons)
+            return
     else:
         audio_bitrate = re.search(r'(\d+)$', event.message.text).group(1)
     ffmpeg_command = (
@@ -697,9 +711,11 @@ handlers = {
 async def handler(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         command = event.data.decode('utf-8')
-        if command.startswith('m_'):
+        if command.startswith('m|'):
             command = command[2:]
         command = command.replace('_', ' ')
+        if '|' in command:
+            command, _ = command.split('|', 1)
     else:
         command = ' '.join(' '.join(event.pattern_match.groups()).split(' ')[:2])
     if command not in handlers:
