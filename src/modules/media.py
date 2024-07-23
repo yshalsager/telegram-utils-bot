@@ -39,6 +39,27 @@ merge_states: defaultdict[int, dict[str, Any]] = defaultdict(
 )
 
 
+async def get_media_bitrate(file_path: str) -> tuple[int, int]:
+    async def get_bitrate(stream_specifier: str) -> int:
+        _output, _ = await run_command(
+            f'ffprobe -v error -select_streams {stream_specifier} -show_entries '
+            f'stream=bit_rate -of csv=p=0 "{file_path}"'
+        )
+        return int(_output.strip() or 0)
+
+    video_bitrate = await get_bitrate('v:0')
+    audio_bitrate = await get_bitrate('a:0')
+
+    if video_bitrate == 0 and audio_bitrate == 0:
+        output, _ = await run_command(
+            f'ffprobe -v error -show_entries format=bit_rate -of csv=p=0 "{file_path}"'
+        )
+        # Assume it's all audio if we couldn't get separate streams
+        audio_bitrate = int(output.strip() or 0)
+
+    return video_bitrate, audio_bitrate
+
+
 async def process_media(
     event: NewMessage.Event,
     ffmpeg_command: str,
@@ -46,6 +67,7 @@ async def process_media(
     reply_message: Message | None = None,
     is_voice: bool = False,
     get_file_name: bool = True,
+    get_bitrate: bool = False,
 ) -> None:
     if not reply_message:
         reply_message = await get_reply_message(event, previous=True)
@@ -62,13 +84,18 @@ async def process_media(
         else:
             output_file = Path(temp_file.name).with_suffix(output_suffix)
 
-        await stream_shell_output(
-            event,
-            ffmpeg_command.format(input=temp_file.name, output=output_file),
-            status_message,
-            progress_message,
-        )
+        if get_bitrate:
+            video_bitrate, audio_bitrate = await get_media_bitrate(temp_file.name)
+            ffmpeg_command = ffmpeg_command.format(
+                input=temp_file.name,
+                output=output_file,
+                video_bitrate=video_bitrate,
+                audio_bitrate=audio_bitrate,
+            )
+        else:
+            ffmpeg_command = ffmpeg_command.format(input=temp_file.name, output=output_file)
 
+        await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         if not output_file.exists() or not output_file.stat().st_size:
             await status_message.edit('Processing failed.')
             return
@@ -97,12 +124,14 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     if reply_message.file and reply_message.file.ext in ['aac', 'm4a', 'mp3']:
-        ffmpeg_command = (
-            'ffmpeg -hide_banner -y -i "{input}" -vn -c:a copy -movflags +faststart "{output}"'
-        )
+        ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a copy "{output}"'
     else:
-        ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a aac -b:a 64k -movflags +faststart "{output}"'
-    await process_media(event, ffmpeg_command, '.m4a', reply_message=reply_message)
+        ffmpeg_command = (
+            'ffmpeg -hide_banner -y -i "{input}" -vn -c:a aac -b:a {audio_bitrate} "{output}"'
+        )
+    await process_media(
+        event, ffmpeg_command, '.m4a', reply_message=reply_message, get_bitrate=True
+    )
 
 
 async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -465,13 +494,58 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.reply(f'The file is already in {target_format} format. Skipping conversion.')
         return None
 
-    ffmpeg_command = (
-        'ffmpeg -hide_banner -y -i "{input}" "{output}"'
-        if target_format in ALLOWED_AUDIO_FORMATS
-        else 'ffmpeg -hide_banner -y -i "{input}" -c:v libx264 -c:a aac "{output}"'
-    )
+    if target_format in ALLOWED_AUDIO_FORMATS:
+        ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -b:a {audio_bitrate} "{output}"'
+    else:
+        ffmpeg_command = (
+            'ffmpeg -hide_banner -y -i "{input}" -c:v libx264 -b:v {video_bitrate} '
+            '-c:a aac -b:a {audio_bitrate} "{output}"'
+        )
 
-    await process_media(event, ffmpeg_command, f'.{target_format}', reply_message=reply_message)
+    await process_media(
+        event, ffmpeg_command, f'.{target_format}', reply_message=reply_message, get_bitrate=True
+    )
+    if event.sender_id in reply_states:
+        del reply_states[event.sender_id]
+    raise StopPropagation
+
+
+ALLOWED_VIDEO_QUALITIES = {144, 240, 360, 480, 720}
+
+
+async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        return await handle_callback_query_for_reply_state(
+            event,
+            f'Please specify the target quality ({'/'.join(map(str, ALLOWED_VIDEO_QUALITIES))})',
+        )
+
+    if event.sender_id in reply_states:
+        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
+        reply_message = await event.client.get_messages(
+            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
+        )
+        quality = event.message.text
+    else:
+        reply_message = await get_reply_message(event, previous=True)
+        quality = event.message.text.split('resize ')[1]
+
+    quality = int(quality)
+    if quality not in ALLOWED_VIDEO_QUALITIES:
+        await event.reply(
+            f'Invalid quality. Please choose from {", ".join(map(str, ALLOWED_VIDEO_QUALITIES))}.'
+        )
+        return None
+
+    ffmpeg_command = (
+        f'ffmpeg -hide_banner -y -i "{{input}}" -filter_complex '
+        f'"scale=width=-1:height={quality}:force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2" '
+        f'-c:v libx264 -b:v {{video_bitrate}} -maxrate {{video_bitrate}} -bufsize {{video_bitrate}} '
+        f'-c:a copy "{{output}}"'
+    )
+    await process_media(
+        event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
+    )
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
     raise StopPropagation
@@ -488,6 +562,7 @@ handlers = {
     'media split': split_media,
     'audio trim': trim_silence,
     'video mute': mute_video,
+    'video resize': resize_video,
     'video subtitle': extract_subtitle,
     'voice': convert_to_voice_note,
 }
@@ -593,6 +668,16 @@ class Media(ModuleBase):
             condition=partial(has_media_or_reply_with_media, video_or_video_note=True),
             is_applicable_for_reply=True,
         ),
+        'video resize': Command(
+            name='video resize',
+            handler=handler,
+            description='[quality] - Resize video to specified quality (144/240/360/480/720)',
+            pattern=re.compile(
+                rf'^/(video)\s+(resize)\s+({'|'.join(map(str, ALLOWED_VIDEO_QUALITIES))})$'
+            ),
+            condition=partial(has_media_or_reply_with_media, video=True),
+            is_applicable_for_reply=True,
+        ),
         'video subtitle': Command(
             name='video subtitle',
             handler=handler,
@@ -634,7 +719,13 @@ class Media(ModuleBase):
         bot.add_event_handler(
             convert_media,
             NewMessage(
-                func=lambda e: (is_valid_reply_state(e) and re.match(r'^(\w+)$', e.message.text))
+                func=lambda e: (
+                    is_valid_reply_state(e)
+                    and re.match(
+                        rf'^({'|'.join(map(str, ALLOWED_AUDIO_FORMATS | ALLOWED_VIDEO_FORMATS))})$',
+                        e.message.text,
+                    )
+                )
             ),
         )
         bot.add_event_handler(
@@ -659,6 +750,17 @@ class Media(ModuleBase):
                 func=lambda e: (
                     is_valid_reply_state(e)
                     and re.match(r'^(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$', e.message.text)
+                )
+            ),
+        )
+        bot.add_event_handler(
+            resize_video,
+            NewMessage(
+                func=lambda e: (
+                    is_valid_reply_state(e)
+                    and re.match(
+                        rf'^({"|".join(map(str, ALLOWED_VIDEO_QUALITIES))})$', e.message.text
+                    )
                 )
             ),
         )
