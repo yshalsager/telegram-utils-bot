@@ -34,9 +34,10 @@ class MergeState(Enum):
     MERGING = auto()
 
 
-merge_states: defaultdict[int, dict[str, Any]] = defaultdict(
-    lambda: {'state': MergeState.IDLE, 'files': []}
-)
+StateT = defaultdict[int, dict[str, Any]]
+
+merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
+video_update_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 
 
 async def get_media_bitrate(file_path: str) -> tuple[int, int]:
@@ -551,6 +552,49 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     raise StopPropagation
 
 
+async def video_update_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    video_update_states[event.sender_id]['state'] = MergeState.COLLECTING
+    video_update_states[event.sender_id]['files'] = []
+    reply_message = await get_reply_message(event, previous=True)
+    video_update_states[event.sender_id]['files'].append(reply_message.id)
+    await event.reply(
+        'Send the new audio file.', reply_to=reply_message.id, buttons=Button.force_reply()
+    )
+
+
+async def video_update_process(event: NewMessage.Event) -> None:
+    video_update_states[event.sender_id]['state'] = MergeState.MERGING
+    video_message = await event.client.get_messages(
+        event.chat_id, ids=video_update_states[event.sender_id]['files'][0]
+    )
+    audio_message = event.message
+    status_message = await event.reply('Starting audio update process...')
+    progress_message = await event.respond('<pre>Process output:</pre>')
+
+    with (
+        NamedTemporaryFile(suffix=video_message.file.ext) as video_file,
+        NamedTemporaryFile(suffix=audio_message.file.ext) as audio_file,
+        NamedTemporaryFile(suffix=video_message.file.ext) as output_file,
+    ):
+        await download_file(event, video_file, video_message, progress_message)
+        await download_file(event, audio_file, audio_message, progress_message)
+
+        ffmpeg_command = (
+            f'ffmpeg -hide_banner -y -i "{video_file.name}" -i "{audio_file.name}" '
+            f'-map "0:v" -map "1:a" -c:v copy -c:a copy "{output_file.name}"'
+        )
+        await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+        if not Path(output_file.name).exists() or not Path(output_file.name).stat().st_size:
+            await status_message.edit('Audio update failed.')
+            return
+
+        await upload_file(event, Path(output_file.name), progress_message)
+
+    await status_message.edit('Video audio successfully updated.')
+    video_update_states.pop(event.sender_id)
+    raise StopPropagation
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
@@ -564,6 +608,7 @@ handlers = {
     'video mute': mute_video,
     'video resize': resize_video,
     'video subtitle': extract_subtitle,
+    'video update': video_update_initial,
     'voice': convert_to_voice_note,
 }
 
@@ -686,6 +731,14 @@ class Media(ModuleBase):
             condition=partial(has_media_or_reply_with_media, video=True),
             is_applicable_for_reply=True,
         ),
+        'video update': Command(
+            name='video update',
+            handler=handler,
+            description='Replace audio track of a video without re-encoding',
+            pattern=re.compile(r'^/(video)\s+(update)$'),
+            condition=partial(has_media_or_reply_with_media, video=True),
+            is_applicable_for_reply=True,
+        ),
         'voice': Command(
             name='voice',
             handler=convert_to_voice_note,
@@ -761,6 +814,17 @@ class Media(ModuleBase):
                     and re.match(
                         rf'^({"|".join(map(str, ALLOWED_VIDEO_QUALITIES))})$', e.message.text
                     )
+                )
+            ),
+        )
+        bot.add_event_handler(
+            video_update_process,
+            NewMessage(
+                func=lambda e: (
+                    e.is_private
+                    and e.sender_id in video_update_states
+                    and video_update_states[e.sender_id]['state'] == MergeState.COLLECTING
+                    and (e.audio or e.voice)
                 )
             ),
         )
