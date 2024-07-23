@@ -12,6 +12,7 @@ from telethon.tl.custom import Message
 from src import BOT_ADMINS
 from src.modules.base import ModuleBase
 from src.utils.command import Command
+from src.utils.filters import is_owner_in_private
 from src.utils.run import MAX_MESSAGE_LENGTH, run_subprocess
 from src.utils.telegram import delete_message_after
 
@@ -100,7 +101,6 @@ class Shell(ModuleBase):
             handler=run_command,
             description='Run a shell command',
             pattern=re.compile(r'^/shell\s+(.+)$'),
-            # only bot owner can run shell commands
-            condition=lambda event, _: event.sender_id == BOT_ADMINS[0],
+            condition=is_owner_in_private,
         )
     }

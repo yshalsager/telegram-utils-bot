@@ -9,6 +9,7 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import get_download_name
 from src.utils.fast_telethon import download_file, upload_file
+from src.utils.filters import has_file_or_reply_with_file
 from src.utils.progress import progress_callback
 from src.utils.telegram import get_reply_message
 
@@ -76,10 +77,7 @@ class DownloadUpload(ModuleBase):
             handler=download_file_command,
             description='Download a file: Reply to a message with a file and use <code>/download</code>',
             pattern=re.compile(r'^/download$'),
-            condition=lambda event, reply_message: (
-                event.is_reply and reply_message and reply_message.file
-            )
-            or event.message.file,
+            condition=has_file_or_reply_with_file,
             is_applicable_for_reply=True,
         ),
         'upload': Command(

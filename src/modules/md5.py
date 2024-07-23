@@ -9,6 +9,7 @@ from telethon.events import CallbackQuery, NewMessage
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.fast_telethon import download_file
+from src.utils.filters import has_file_or_reply_with_file
 from src.utils.progress import progress_callback
 from src.utils.telegram import get_reply_message
 
@@ -47,10 +48,7 @@ class MD5Hash(ModuleBase):
             handler=calculate_md5,
             description='Calculate MD5 hash of a Telegram file',
             pattern=re.compile(r'^/md5$'),
-            condition=lambda event, reply_message: (
-                event.message.is_reply and reply_message and reply_message.file
-            )
-            or event.message.file,
+            condition=has_file_or_reply_with_file,
             is_applicable_for_reply=True,
         )
     }

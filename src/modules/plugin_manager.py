@@ -3,9 +3,10 @@ from typing import ClassVar
 import regex as re
 from telethon.events import NewMessage
 
-from src import BOT_ADMINS, bot
+from src import bot
 from src.modules.base import ModuleBase
 from src.utils.command import Command
+from src.utils.filters import is_admin_in_private
 
 
 async def list_plugins(event: NewMessage.Event) -> None:
@@ -55,24 +56,24 @@ class PluginManager(ModuleBase):
             handler=list_plugins,
             description='List all plugins and their status',
             pattern=re.compile(r'^/plugins$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
         'commands': Command(
             handler=list_commands,
             description='List all available commands',
             pattern=re.compile(r'^/commands$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
         'plugins enable': Command(
             handler=manage_plugins,
             description='Enable a plugin',
             pattern=re.compile(r'^/plugins\s+enable\s+(\w+)$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
         'plugins disable': Command(
             handler=manage_plugins,
             description='Disable a plugin',
             pattern=re.compile(r'^/plugins\s+disable\s+(\w+)$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
     }

@@ -7,9 +7,9 @@ import regex as re
 from humanize import naturaltime
 from telethon.events import NewMessage
 
-from src import BOT_ADMINS
 from src.modules.base import ModuleBase
 from src.utils.command import Command
+from src.utils.filters import is_admin_in_private
 from src.utils.telegram import get_reply_message
 
 
@@ -94,12 +94,12 @@ class TasksManager(ModuleBase):
             handler=list_tasks,
             description='List all active tasks',
             pattern=re.compile(r'^/tasks$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
         'tasks cancel': Command(
             handler=cancel_task,
             description='Cancel a specific task or all tasks',
             pattern=re.compile(r'^/tasks\s+cancel\s+([\w_]+)$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
     }

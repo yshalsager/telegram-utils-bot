@@ -4,10 +4,10 @@ import regex as re
 from telethon import TelegramClient
 from telethon.events import NewMessage
 
-from src import BOT_ADMINS
 from src.bot import permission_manager
 from src.modules.base import ModuleBase
 from src.utils.command import Command
+from src.utils.filters import is_admin_in_private
 
 
 async def manage_permissions(event: NewMessage.Event) -> None:
@@ -89,25 +89,25 @@ class Permissions(ModuleBase):
             handler=manage_permissions,
             description='Add user permissions for a module',
             pattern=re.compile(r'^/permissions\s+add\s+(\w+)\s+(\d+)$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
         'permissions remove': Command(
             handler=manage_permissions,
             description='Remove user permissions for a module',
             pattern=re.compile(r'^/permissions\s+remove\s+(\w+)\s+(\d+)$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
         'permissions': Command(
             handler=list_permissions,
             description='List all module permissions',
             pattern=re.compile(r'^/permissions$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
         'users': Command(
             handler=list_all_users,
             description='List all users with their permissions',
             pattern=re.compile(r'^/users$'),
-            condition=lambda event, _: event.is_private and event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         ),
     }
 
@@ -117,6 +117,6 @@ class Permissions(ModuleBase):
             user_permissions,
             NewMessage(
                 pattern=r'^/permissions\s+(\d+)$',
-                func=lambda x: x.is_private and x.sender_id in BOT_ADMINS,
+                func=lambda e: is_admin_in_private(e, e.message),
             ),
         )

@@ -10,6 +10,7 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import get_download_name, upload_file
 from src.utils.fast_telethon import download_file
+from src.utils.filters import has_file_or_reply_with_file, is_valid_reply_state
 from src.utils.progress import progress_callback
 from src.utils.reply import ReplyState, handle_callback_query_for_reply_state, reply_states
 from src.utils.telegram import get_reply_message
@@ -68,10 +69,7 @@ class Rename(ModuleBase):
             handler=rename,
             description='[new filename] Rename a Telegram file',
             pattern=re.compile(r'^/rename\s+(.+)$'),
-            condition=lambda event, reply_message: (
-                event.message.is_reply and reply_message and reply_message.file
-            )
-            or event.message.file,
+            condition=has_file_or_reply_with_file,
             is_applicable_for_reply=True,
         )
     }
@@ -80,13 +78,5 @@ class Rename(ModuleBase):
     def register_handlers(bot: TelegramClient) -> None:
         bot.add_event_handler(
             rename,
-            NewMessage(
-                func=lambda e: (
-                    e.is_private
-                    and e.is_reply
-                    and e.sender_id in reply_states
-                    and reply_states[e.sender_id]['state'] == ReplyState.WAITING
-                    and e.message.reply_to_msg_id == reply_states[e.sender_id]['reply_message_id']
-                )
-            ),
+            NewMessage(func=lambda e: is_valid_reply_state(e)),
         )

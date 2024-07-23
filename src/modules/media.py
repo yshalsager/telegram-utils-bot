@@ -19,6 +19,7 @@ from src.modules.base import ModuleBase
 from src.modules.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
+from src.utils.filters import has_media_or_reply_with_media, is_valid_reply_state
 from src.utils.json import json_options, process_dict
 from src.utils.reply import ReplyState, handle_callback_query_for_reply_state, reply_states
 from src.utils.run import run_command
@@ -442,35 +443,6 @@ async def handler(event: NewMessage.Event | CallbackQuery.Event) -> None:
     await handlers[command](event)
 
 
-def check_media_conditions(
-    event: NewMessage.Event, reply_message: Message | None, **media_types: bool
-) -> bool:
-    if not media_types:
-        return True
-    message = reply_message or event.message
-
-    def check_media(_media_type: str) -> bool:
-        return bool(getattr(message, _media_type, None))
-
-    checks = []
-    for media_type, should_have in media_types.items():
-        if media_type == 'media':
-            checks.append(
-                any(check_media(t) for t in ['audio', 'voice', 'video', 'video_note'])
-                == should_have
-            )
-        elif media_type.startswith('not_'):
-            actual_type = media_type[4:]
-            checks.append(check_media(actual_type) != should_have)
-        elif '_or_' in media_type:
-            types = media_type.split('_or_')
-            checks.append(any(check_media(t) for t in types) == should_have)
-        else:
-            checks.append(check_media(media_type) == should_have)
-
-    return all(checks)
-
-
 class Media(ModuleBase):
     name = 'Media'
     description = 'Media processing commands'
@@ -480,7 +452,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[bitrate] - compress audio to [bitrate] kbps',
             pattern=re.compile(r'^/(audio)\s+(compress)\s+(\d+)$'),
-            condition=partial(check_media_conditions, audio=True),
+            condition=partial(has_media_or_reply_with_media, audio=True),
             is_applicable_for_reply=True,
         ),
         'audio convert': Command(
@@ -488,7 +460,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Convert a video or voice note to an audio',
             pattern=re.compile(r'^/(audio)\s+(convert)$'),
-            condition=partial(check_media_conditions, not_audio=True),
+            condition=partial(has_media_or_reply_with_media, not_audio=True),
             is_applicable_for_reply=True,
         ),
         'audio metadata': Command(
@@ -496,7 +468,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[title] - [artist] - Set title and artist of an audio file',
             pattern=re.compile(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$'),
-            condition=partial(check_media_conditions, audio=True),
+            condition=partial(has_media_or_reply_with_media, audio=True),
             is_applicable_for_reply=True,
         ),
         'audio trim': Command(
@@ -504,7 +476,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Trim audio silence',
             pattern=re.compile(r'^/(audio)\s+(trim)$'),
-            condition=partial(check_media_conditions, audio_or_voice=True),
+            condition=partial(has_media_or_reply_with_media, audio_or_voice=True),
             is_applicable_for_reply=True,
         ),
         'media cut': Command(
@@ -512,7 +484,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[HH:MM:SS HH:MM:SS] - Cut audio/video from start time to end time',
             pattern=re.compile(r'^/(media)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$'),
-            condition=partial(check_media_conditions, media=True),
+            condition=partial(has_media_or_reply_with_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media split': Command(
@@ -521,7 +493,7 @@ class Media(ModuleBase):
             description='[duration]h/m/s - Split audio/video into segments of specified duration '
             '(e.g., 30m, 1h, 90s)',
             pattern=re.compile(r'^/(media)\s+(split)\s+(\d+[hms])$'),
-            condition=partial(check_media_conditions, media=True),
+            condition=partial(has_media_or_reply_with_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media merge': Command(
@@ -529,7 +501,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Merge multiple files',
             pattern=re.compile(r'^/(media)\s+(merge)$'),
-            condition=partial(check_media_conditions, media=True),
+            condition=partial(has_media_or_reply_with_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media info': Command(
@@ -537,7 +509,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Get media info',
             pattern=re.compile(r'^/(media)\s+(info)$'),
-            condition=partial(check_media_conditions, media=True),
+            condition=partial(has_media_or_reply_with_media, any=True),
             is_applicable_for_reply=True,
         ),
         'video mute': Command(
@@ -545,7 +517,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Mute video',
             pattern=re.compile(r'^/(video)\s+(mute)$'),
-            condition=partial(check_media_conditions, video_or_video_note=True),
+            condition=partial(has_media_or_reply_with_media, video_or_video_note=True),
             is_applicable_for_reply=True,
         ),
         'video subtitle': Command(
@@ -553,7 +525,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Extract subtitle streams from a video',
             pattern=re.compile(r'^/(video)\s+(subtitle)$'),
-            condition=partial(check_media_conditions, video=True),
+            condition=partial(has_media_or_reply_with_media, video=True),
             is_applicable_for_reply=True,
         ),
         'voice': Command(
@@ -561,7 +533,7 @@ class Media(ModuleBase):
             handler=convert_to_voice_note,
             description='Convert to voice note',
             pattern=re.compile(r'^/(voice)$'),
-            condition=partial(check_media_conditions, not_voice=True),
+            condition=partial(has_media_or_reply_with_media, not_voice=True),
             is_applicable_for_reply=True,
         ),
     }
@@ -590,12 +562,7 @@ class Media(ModuleBase):
             set_metadata,
             NewMessage(
                 func=lambda e: (
-                    e.is_private
-                    and e.is_reply
-                    and e.sender_id in reply_states
-                    and re.match(r'^.+\s+-\s+.+$', e.message.text)
-                    and reply_states[e.sender_id]['state'] == ReplyState.WAITING
-                    and e.message.reply_to_msg_id == reply_states[e.sender_id]['reply_message_id']
+                    is_valid_reply_state(e) and re.match(r'^.+\s+-\s+.+$', e.message.text)
                 )
             ),
         )
@@ -603,12 +570,7 @@ class Media(ModuleBase):
             split_media,
             NewMessage(
                 func=lambda e: (
-                    e.is_private
-                    and e.is_reply
-                    and e.sender_id in reply_states
-                    and re.match(r'^(\d+[hms])$', e.message.text)
-                    and reply_states[e.sender_id]['state'] == ReplyState.WAITING
-                    and e.message.reply_to_msg_id == reply_states[e.sender_id]['reply_message_id']
+                    is_valid_reply_state(e) and re.match(r'^(\d+[hms])$', e.message.text)
                 )
             ),
         )
@@ -616,12 +578,8 @@ class Media(ModuleBase):
             cut_media,
             NewMessage(
                 func=lambda e: (
-                    e.is_private
-                    and e.is_reply
-                    and e.sender_id in reply_states
+                    is_valid_reply_state(e)
                     and re.match(r'^(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$', e.message.text)
-                    and reply_states[e.sender_id]['state'] == ReplyState.WAITING
-                    and e.message.reply_to_msg_id == reply_states[e.sender_id]['reply_message_id']
                 )
             ),
         )

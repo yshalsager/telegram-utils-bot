@@ -6,6 +6,7 @@ from telethon.events import NewMessage
 
 from src.modules.base import ModuleBase
 from src.utils.command import Command
+from src.utils.filters import is_reply_in_private
 from src.utils.json import json_options, process_dict
 
 
@@ -24,6 +25,6 @@ class Debug(ModuleBase):
             handler=to_json,
             description='Show replied to message info in JSON format.',
             pattern=re.compile(r'^/json$'),
-            condition=lambda event, _: event.message.is_reply,
+            condition=is_reply_in_private,
         )
     }

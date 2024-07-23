@@ -9,9 +9,9 @@ import orjson
 import regex as re
 from telethon.events import NewMessage
 
-from src import BOT_ADMINS
 from src.modules.base import ModuleBase
 from src.utils.command import Command
+from src.utils.filters import is_admin_in_private
 
 
 async def restart(event: NewMessage.Event) -> None:
@@ -31,6 +31,6 @@ class Restart(ModuleBase):
             handler=restart,
             description='Restart the bot.',
             pattern=re.compile(r'^/restart$'),
-            condition=lambda event, _: event.sender_id in BOT_ADMINS,
+            condition=is_admin_in_private,
         )
     }
