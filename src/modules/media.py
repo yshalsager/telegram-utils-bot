@@ -558,7 +558,9 @@ async def video_update_initial(event: NewMessage.Event | CallbackQuery.Event) ->
     reply_message = await get_reply_message(event, previous=True)
     video_update_states[event.sender_id]['files'].append(reply_message.id)
     await event.reply(
-        'Send the new audio file.', reply_to=reply_message.id, buttons=Button.force_reply()
+        'Send the media file with audio to use.',
+        reply_to=reply_message.id,
+        buttons=Button.force_reply(),
     )
 
 
@@ -867,7 +869,7 @@ class Media(ModuleBase):
                     e.is_private
                     and e.sender_id in video_update_states
                     and video_update_states[e.sender_id]['state'] == MergeState.COLLECTING
-                    and (e.audio or e.voice)
+                    and (e.audio or e.voice or e.video)
                 )
             ),
         )
