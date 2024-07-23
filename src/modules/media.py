@@ -597,6 +597,49 @@ async def video_update_process(event: NewMessage.Event) -> None:
     raise StopPropagation
 
 
+async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        return await handle_callback_query_for_reply_state(
+            event,
+            'Please specify the amplification factor (e.g., 1.5 for 50% increase)',
+        )
+
+    if event.sender_id in reply_states:
+        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
+        reply_message = await event.client.get_messages(
+            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
+        )
+        amplification_factor = float(event.message.text)
+    else:
+        reply_message = await get_reply_message(event, previous=True)
+        amplification_factor = float(event.message.text.split('amplify ')[1])
+
+    if amplification_factor <= 1:
+        await event.reply('Amplification factor must be greater than 1.')
+        return None
+    if amplification_factor > 4:
+        amplification_factor = 4
+
+    ffmpeg_command = (
+        'ffmpeg -hide_banner -y -i "{input}" '
+        f'-filter:a "volume={amplification_factor}" '
+        '-b:a {audio_bitrate}'
+    )
+
+    if bool(reply_message.video or reply_message.video_note):
+        ffmpeg_command += ' -c:v copy'
+    else:
+        ffmpeg_command += ' -vn'
+    ffmpeg_command += ' "{output}"'
+
+    await process_media(
+        event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
+    )
+    if event.sender_id in reply_states:
+        del reply_states[event.sender_id]
+    raise StopPropagation
+
+
 async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply('Starting thumbnail generation process...')
@@ -634,13 +677,14 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
+    'audio metadata': set_metadata,
+    'audio trim': trim_silence,
+    'media amplify': amplify_sound,
     'media convert': convert_media,
     'media cut': cut_media,
     'media info': media_info,
     'media merge': merge_media_initial,
-    'audio metadata': set_metadata,
     'media split': split_media,
-    'audio trim': trim_silence,
     'video mute': mute_video,
     'video resize': resize_video,
     'video subtitle': extract_subtitle,
@@ -699,6 +743,14 @@ class Media(ModuleBase):
             description='Trim audio silence',
             pattern=re.compile(r'^/(audio)\s+(trim)$'),
             condition=partial(has_media_or_reply_with_media, audio_or_voice=True),
+            is_applicable_for_reply=True,
+        ),
+        'media amplify': Command(
+            name='audio amplify',
+            handler=handler,
+            description='[factor] - Amplify audio volume by the specified factor (e.g., 1.5 for 50% increase)',
+            pattern=re.compile(r'^/(media)\s+(amplify)\s+(\d+(\.\d+)?)$'),
+            condition=partial(has_media_or_reply_with_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media convert': Command(
@@ -870,6 +922,14 @@ class Media(ModuleBase):
                     and e.sender_id in video_update_states
                     and video_update_states[e.sender_id]['state'] == MergeState.COLLECTING
                     and (e.audio or e.voice or e.video)
+                )
+            ),
+        )
+        bot.add_event_handler(
+            amplify_sound,
+            NewMessage(
+                func=lambda e: (
+                    is_valid_reply_state(e) and re.match(r'^\d+(\.\d+)?$', e.message.text)
                 )
             ),
         )
