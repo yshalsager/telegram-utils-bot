@@ -595,6 +595,40 @@ async def video_update_process(event: NewMessage.Event) -> None:
     raise StopPropagation
 
 
+async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await event.reply('Starting thumbnail generation process...')
+    progress_message = await event.reply('<pre>Process output:</pre>')
+
+    with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
+        await download_file(event, input_file, reply_message, progress_message)
+        duration_output, _ = await run_command(
+            f'ffprobe -v error -show_entries format=duration -of '
+            f'default=noprint_wrappers=1:nokey=1 "{input_file.name}"'
+        )
+        duration = float(duration_output.strip())
+
+        # Calculate timestamps for each thumbnail
+        interval = duration / 16
+        timestamps = [i * interval for i in range(16)]
+        # Generate thumbnail grid
+        output_file = Path(input_file.name).with_suffix('.jpg')
+        select_frames = '+'.join([f'eq(n,{int(t * 25)})' for t in timestamps])  # Assuming 25 fps
+        ffmpeg_command = (
+            f'ffmpeg -hide_banner -y -i "{input_file.name}" '
+            f'-vf "select=\'{select_frames}\',scale=480:-1,tile=4x4" '
+            f'-frames:v 1 "{output_file}"'
+        )
+
+        await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+        if not output_file.exists() or not output_file.stat().st_size:
+            await status_message.edit('Thumbnail generation failed.')
+            return
+        await upload_file(event, output_file, progress_message)
+
+    await status_message.edit('Video thumbnails successfully generated.')
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
@@ -608,6 +642,7 @@ handlers = {
     'video mute': mute_video,
     'video resize': resize_video,
     'video subtitle': extract_subtitle,
+    'video thumbnails': video_thumbnails,
     'video update': video_update_initial,
     'voice': convert_to_voice_note,
 }
@@ -728,6 +763,14 @@ class Media(ModuleBase):
             handler=handler,
             description='Extract subtitle streams from a video',
             pattern=re.compile(r'^/(video)\s+(subtitle)$'),
+            condition=partial(has_media_or_reply_with_media, video=True),
+            is_applicable_for_reply=True,
+        ),
+        'video thumbnails': Command(
+            name='video thumbnails',
+            handler=handler,
+            description='Generate a grid of 16 thumbnails from a video',
+            pattern=re.compile(r'^/(video)\s+(thumbnails)$'),
             condition=partial(has_media_or_reply_with_media, video=True),
             is_applicable_for_reply=True,
         ),
