@@ -244,7 +244,7 @@ async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
     raise StopPropagation
 
 
-async def merge_audio_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def merge_media_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
     merge_states[event.sender_id]['state'] = MergeState.COLLECTING
     merge_states[event.sender_id]['files'] = []
 
@@ -253,7 +253,7 @@ async def merge_audio_initial(event: NewMessage.Event | CallbackQuery.Event) -> 
     await event.reply('Send more files to merge.')
 
 
-async def merge_audio_add(event: NewMessage.Event) -> None:
+async def merge_media_add(event: NewMessage.Event) -> None:
     merge_states[event.sender_id]['files'].append(event.id)
     await event.reply(
         "File added. Send more or click 'Finish' to merge.",
@@ -262,7 +262,7 @@ async def merge_audio_add(event: NewMessage.Event) -> None:
     raise StopPropagation
 
 
-async def merge_audio_process(event: CallbackQuery.Event) -> None:
+async def merge_media_process(event: CallbackQuery.Event) -> None:
     merge_states[event.sender_id]['state'] = MergeState.MERGING
     files = merge_states[event.sender_id]['files']
     await event.answer('Merging...')
@@ -413,12 +413,77 @@ async def extract_subtitle(event: NewMessage.Event) -> None:
     await status_message.edit('Subtitle extraction completed.')
 
 
+ALLOWED_AUDIO_FORMATS = {
+    'mp3',
+    'aac',
+    'm4a',
+    'm4b',
+    'ogg',
+    'opus',
+    'wav',
+    'flac',
+    'ra',
+    'rm',
+    'rma',
+    'wma',
+    'amr',
+    'aif',
+    'dts',
+    'mpeg',
+}
+ALLOWED_VIDEO_FORMATS = {'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'mpeg', 'mpg', 'wmv', 'm4v'}
+
+
+async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        return await handle_callback_query_for_reply_state(
+            event,
+            'Please specify the target format (e.g., mp4, mp3, etc.)',
+        )
+
+    if event.sender_id in reply_states:
+        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
+        reply_message = await event.client.get_messages(
+            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
+        )
+        target_format = event.message.text.lower()
+    else:
+        reply_message = await get_reply_message(event, previous=True)
+        target_format = event.message.text.split('convert ')[1].lower()
+
+    if target_format[0] == '.':
+        target_format = target_format[1:]
+
+    if target_format not in ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS:
+        await event.reply(
+            'Unsupported media type for conversion.\n'
+            f'Allowed formats: {", ".join(ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS)}'
+        )
+        return None
+
+    if reply_message.file.ext == target_format:
+        await event.reply(f'The file is already in {target_format} format. Skipping conversion.')
+        return None
+
+    ffmpeg_command = (
+        'ffmpeg -hide_banner -y -i "{input}" "{output}"'
+        if target_format in ALLOWED_AUDIO_FORMATS
+        else 'ffmpeg -hide_banner -y -i "{input}" -c:v libx264 -c:a aac "{output}"'
+    )
+
+    await process_media(event, ffmpeg_command, f'.{target_format}', reply_message=reply_message)
+    if event.sender_id in reply_states:
+        del reply_states[event.sender_id]
+    raise StopPropagation
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
+    'media convert': convert_media,
     'media cut': cut_media,
     'media info': media_info,
-    'media merge': merge_audio_initial,
+    'media merge': merge_media_initial,
     'audio metadata': set_metadata,
     'media split': split_media,
     'audio trim': trim_silence,
@@ -477,6 +542,14 @@ class Media(ModuleBase):
             description='Trim audio silence',
             pattern=re.compile(r'^/(audio)\s+(trim)$'),
             condition=partial(has_media_or_reply_with_media, audio_or_voice=True),
+            is_applicable_for_reply=True,
+        ),
+        'media convert': Command(
+            name='media convert',
+            handler=handler,
+            description='[format] - Convert media to specified format',
+            pattern=re.compile(r'^/(media)\s+(convert)\s+(\w+)$'),
+            condition=partial(has_media_or_reply_with_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media cut': Command(
@@ -541,7 +614,7 @@ class Media(ModuleBase):
     @staticmethod
     def register_handlers(bot: TelegramClient) -> None:
         bot.add_event_handler(
-            merge_audio_add,
+            merge_media_add,
             NewMessage(
                 func=lambda e: (
                     e.is_private
@@ -551,11 +624,17 @@ class Media(ModuleBase):
             ),
         )
         bot.add_event_handler(
-            merge_audio_process,
+            merge_media_process,
             CallbackQuery(
                 pattern=b'finish_merge',
                 func=lambda e: e.is_private
                 and merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
+            ),
+        )
+        bot.add_event_handler(
+            convert_media,
+            NewMessage(
+                func=lambda e: (is_valid_reply_state(e) and re.match(r'^(\w+)$', e.message.text))
             ),
         )
         bot.add_event_handler(
