@@ -37,7 +37,7 @@ class ModuleBase(ABC):
             command.condition(event, reply_message)
             and (
                 command.pattern.match(event.message.text)
-                if event.message.text
+                if (event.message.text and not event.message.file)
                 else bool(event.message.file)
             )
             for command in self.commands.values()
