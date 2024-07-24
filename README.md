@@ -74,7 +74,8 @@ A versatile modular Telegram bot with multiple features.
 - Start the bot by sending `/start` in private or adding it to a group.
 - Use `/commands` to get a list of available commands and their usage.
 - For file conversions, simply send a file to the bot and follow the prompts.
-- Use inline queries for web searches by typing `@your_bot_username` followed by your search query.
+- Use inline queries for web searches by typing `@your_bot_username` followed by your search query. You can list all
+  inline command using `@your_bot_username commands`.
 
 ## Setup
 

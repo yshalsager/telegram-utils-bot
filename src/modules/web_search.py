@@ -8,7 +8,7 @@ import regex as re
 import wikipedia
 from search_engine_parser.core.base import SearchResult
 from search_engine_parser.core.engines.duckduckgo import Search as DuckDuckGoSearch
-from telethon import events
+from telethon import Button, events
 from telethon.errors import QueryIdInvalidError
 
 from src.modules.base import InlineModuleBase
@@ -17,6 +17,27 @@ from src.utils.http import fetch_json
 from src.utils.quran import surah_names
 
 ddg_search = DuckDuckGoSearch()
+
+
+async def list_all_inline_commands(event: events.InlineQuery.Event) -> None:
+    buttons = []
+    for cmd, command_obj in list(WebSearch.inline_commands.items())[1:]:  # Skip the first item
+        button_text = f'{cmd}: {command_obj.name}'
+        switch_inline_query = f'{cmd} '
+        buttons.append(Button.switch_inline(button_text, switch_inline_query, same_peer=True))
+
+    # Create a grid of buttons, 2 buttons per row
+    button_grid = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+
+    result = await event.builder.article(
+        title='Available Inline Commands',
+        description='Click a button to start using a command',
+        text='Here are the available web search commands:',
+        buttons=button_grid,
+    )
+
+    with suppress(QueryIdInvalidError):
+        await event.answer([result])
 
 
 async def handle_duckduckgo_search(event: events.InlineQuery.Event) -> None:
@@ -194,6 +215,11 @@ class WebSearch(InlineModuleBase):
     name = 'Web Search'
     description = 'Search the web using search engines'
     inline_commands: ClassVar[InlineModuleBase.InlineCommandsT] = {
+        'commands': InlineCommand(
+            pattern=re.compile(r'^commands$'),
+            handler=list_all_inline_commands,
+            name='List commands',
+        ),
         'ddg': InlineCommand(
             pattern=re.compile(r'^ddg\s+(.+)$'),
             handler=handle_duckduckgo_search,
