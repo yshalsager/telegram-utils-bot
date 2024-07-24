@@ -130,3 +130,42 @@ python3 -m src
 - [Quran.com](https://quran.com/)
 - [Sunnah.one](https://sunnah.one/)
 - [Exchange Rate API](https://exchangerate-api.com/)
+
+## Development
+
+This project uses several tools to streamline the development process:
+
+### mise
+
+We use [mise](https://mise.jdx.dev/) for managing project-level dependencies and environment variables. mise helps
+ensure consistent development environments across different machines.
+
+To get started with mise:
+
+1. Install mise by following the instructions on the [official website](https://mise.jdx.dev/).
+2. Run `mise install` in the project root to set up the development environment.
+
+### Poetry
+
+[Poetry](https://python-poetry.org/) is used for dependency management and packaging. It provides a clean,
+version-controlled way to manage project dependencies.
+
+To set up the project with Poetry:
+
+1. Install Poetry by following the instructions on the [official website](https://python-poetry.org/docs/#installation).
+2. Run `poetry install` to install project dependencies.
+
+### Jurigged for Live Reload
+
+We use [Jurigged](https://github.com/breuleux/jurigged) for live code reloading during development. This allows you to
+see changes in your code immediately without manually restarting the application.
+
+To use Jurigged:
+
+1. Make sure you have installed the project dependencies using Poetry, including dev
+   dependencies `poetry install --with dev`.
+2. Run the bot with Jurigged:
+
+```bash
+poetry run jurigged -v -m src
+```
