@@ -861,14 +861,14 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
 async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|media_transcribe|'):
+        if event.data.decode().startswith('m|transcribe|'):
             transcription_method = event.data.decode().split('|')[-1]
             delete_message_after_process = True
         else:
             buttons = [
                 [
-                    Button.inline('Whisper', 'm|media_transcribe|whisper'),
-                    Button.inline('Wit', 'm|media_transcribe|wit'),
+                    Button.inline('Whisper', 'm|transcribe|whisper'),
+                    Button.inline('Wit', 'm|transcribe|wit'),
                 ]
             ]
             await event.edit('Choose the transcription method:', buttons=buttons)
@@ -933,7 +933,7 @@ handlers = {
     'media info': media_info,
     'media merge': merge_media_initial,
     'media split': split_media,
-    'media transcribe': transcribe_media,
+    'transcribe': transcribe_media,
     'video compress': compress_video,
     'video mute': mute_video,
     'video resize': resize_video,
@@ -1047,8 +1047,8 @@ class Media(ModuleBase):
             condition=partial(has_media_or_reply_with_media, any=True),
             is_applicable_for_reply=True,
         ),
-        'media transcribe': Command(
-            name='media transcribe',
+        'transcribe': Command(
+            name='transcribe',
             handler=handler,
             description='[wit|whisper]: Transcribe audio or video to text and subtitle formats',
             pattern=re.compile(r'^/(media)\s+(transcribe)\s+(wit|whisper)$'),

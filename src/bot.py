@@ -36,6 +36,7 @@ commands_with_modifiers = (
     'plugins',
     'permissions',
     'upload',
+    'transcribe',
 )
 
 
