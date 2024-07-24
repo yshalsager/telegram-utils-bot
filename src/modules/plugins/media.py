@@ -885,7 +885,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 )
             else:
                 await status_message.edit(f'Failed to transcribe {renamed_file.name}')
-
+    output_dir.unlink(missing_ok=True)
     await status_message.edit('Transcription completed.')
 
 

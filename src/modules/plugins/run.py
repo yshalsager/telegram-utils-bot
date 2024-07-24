@@ -85,12 +85,7 @@ async def stream_shell_output(
 
 
 async def run_command(event: NewMessage.Event) -> None:
-    cmd = event.message.text.split(maxsplit=1)[1] if len(event.message.text.split()) > 1 else ''
-    if not cmd:
-        await event.reply('Please provide a command to run.')
-        return
-
-    await stream_shell_output(event, cmd)
+    await stream_shell_output(event, event.message.text.replace('/shell ', '', 1))
 
 
 class Shell(ModuleBase):
