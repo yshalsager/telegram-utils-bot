@@ -23,7 +23,7 @@ from src.utils.filters import has_media_or_reply_with_media, is_valid_reply_stat
 from src.utils.json import json_options, process_dict
 from src.utils.reply import ReplyState, handle_callback_query_for_reply_state, reply_states
 from src.utils.run import run_command
-from src.utils.telegram import edit_or_send_as_file, get_reply_message
+from src.utils.telegram import delete_message_after, edit_or_send_as_file, get_reply_message
 
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
 
@@ -69,6 +69,7 @@ async def process_media(
     is_voice: bool = False,
     get_file_name: bool = True,
     get_bitrate: bool = False,
+    feedback_text: str = 'File successfully processed.',
 ) -> None:
     if not reply_message:
         reply_message = await get_reply_message(event, previous=True)
@@ -103,18 +104,26 @@ async def process_media(
 
         await upload_file(event, output_file, progress_message, is_voice)
 
-    await status_message.edit('File successfully processed.')
+    await status_message.edit(feedback_text)
 
 
 async def convert_to_voice_note(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a libopus -b:a 48k "{output}"'
-    await process_media(event, ffmpeg_command, '.ogg', is_voice=True)
+    await process_media(
+        event,
+        ffmpeg_command,
+        '.ogg',
+        is_voice=True,
+        feedback_text='Converted to voice note successfully.',
+    )
 
 
 async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
         if event.data.decode().startswith('m|audio_compress|'):
             audio_bitrate = event.data.decode().split('|')[-1]
+            delete_message_after_process = True
         else:
             buttons = [
                 [
@@ -133,7 +142,11 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ffmpeg_command = (
         f'ffmpeg -hide_banner -y -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
     )
-    await process_media(event, ffmpeg_command, '.m4a')
+    await process_media(
+        event, ffmpeg_command, '.m4a', feedback_text='Audio successfully compressed.'
+    )
+    if delete_message_after_process:
+        await delete_message_after(await event.get_message())
 
 
 async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -145,7 +158,12 @@ async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
             'ffmpeg -hide_banner -y -i "{input}" -vn -c:a aac -b:a {audio_bitrate} "{output}"'
         )
     await process_media(
-        event, ffmpeg_command, '.m4a', reply_message=reply_message, get_bitrate=True
+        event,
+        ffmpeg_command,
+        '.m4a',
+        reply_message=reply_message,
+        get_bitrate=True,
+        feedback_text='Converted to audio successfully.',
     )
 
 
@@ -180,7 +198,13 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         f'-ss {start_time} -to {end_time} '
         f'-c copy -map 0 "{{output}}"'
     )
-    await process_media(event, ffmpeg_command, reply_message.file.ext, reply_message)
+    await process_media(
+        event,
+        ffmpeg_command,
+        reply_message.file.ext,
+        reply_message,
+        feedback_text='Media cut successfully.',
+    )
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
     raise StopPropagation
@@ -282,7 +306,13 @@ async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
         f'-metadata title="{title}" -metadata artist="{artist}" '
         '"{output}"'
     )
-    await process_media(event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message)
+    await process_media(
+        event,
+        ffmpeg_command,
+        reply_message.file.ext,
+        reply_message=reply_message,
+        feedback_text='Audio metadata set successfully.',
+    )
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
     raise StopPropagation
@@ -411,7 +441,12 @@ async def trim_silence(event: NewMessage.Event) -> None:
 
 async def mute_video(event: NewMessage.Event) -> None:
     ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -c copy -an "{output}"'
-    await process_media(event, ffmpeg_command, '.mp4')
+    await process_media(
+        event,
+        ffmpeg_command,
+        '.mp4',
+        feedback_text='Audio has been removed from video successfully.',
+    )
 
 
 async def extract_subtitle(event: NewMessage.Event) -> None:
@@ -518,7 +553,12 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         )
 
     await process_media(
-        event, ffmpeg_command, f'.{target_format}', reply_message=reply_message, get_bitrate=True
+        event,
+        ffmpeg_command,
+        f'.{target_format}',
+        reply_message=reply_message,
+        get_bitrate=True,
+        feedback_text=f'Media converted to {target_format} successfully.',
     )
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
