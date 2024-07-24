@@ -803,6 +803,53 @@ async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
         event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
+async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
+    if isinstance(event, CallbackQuery.Event):
+        if event.data.decode().startswith('m|video_x265|'):
+            crf = int(event.data.decode().split('|')[-1])
+            delete_message_after_process = True
+        else:
+            buttons = [
+                [Button.inline(f'CRF {crf}', f'm|video_x265|{crf}') for crf in range(20, 25, 2)],
+                [Button.inline(f'CRF {crf}', f'm|video_x265|{crf}') for crf in range(25, 29, 2)],
+            ]
+            await event.edit(
+                'Choose the CRF value (20-28, lower is better quality but larger file size):',
+                buttons=buttons,
+            )
+            return
+    else:
+        crf = int(event.message.text.split('x265 ')[1])
+
+    if crf < 20 or crf > 28:
+        await event.reply('CRF value must be between 20 and 28.')
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+    ffmpeg_command = (
+        'ffmpeg -hide_banner -y -i "{input}" '
+        f'-c:v libx265 -crf {crf} -preset ultrafast '
+        '-c:a aac -b:a 48k '
+        '-movflags +faststart '
+        '"{output}"'
+    )
+    data = await process_media(
+        event,
+        ffmpeg_command,
+        reply_message.file.ext,
+        feedback_text='Video encoded with x265 successfully',
+    )
+
+    compression_ratio = (1 - (data['output_size'] / reply_message.file.size)) * 100
+    feedback_text = f'\nCompression ratio: {compression_ratio:.2f}%\n'
+    status_message = data['status_message']
+    assert isinstance(status_message, Message)
+    await status_message.edit(data['status_text'] + feedback_text)
+    if delete_message_after_process:
+        event.client.loop.create_task(delete_message_after(await event.get_message()))
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
@@ -820,6 +867,7 @@ handlers = {
     'video subtitle': extract_subtitle,
     'video thumbnails': video_thumbnails,
     'video update': video_update_initial,
+    'video x265': video_encode_x265,
     'voice': convert_to_voice_note,
 }
 
@@ -973,6 +1021,14 @@ class Media(ModuleBase):
             handler=handler,
             description='Replace audio track of a video without re-encoding',
             pattern=re.compile(r'^/(video)\s+(update)$'),
+            condition=partial(has_media_or_reply_with_media, video=True),
+            is_applicable_for_reply=True,
+        ),
+        'video x265': Command(
+            name='video x265',
+            handler=handler,
+            description='[CRF] - Encode video with x265 codec and specified CRF value (20-28, lower is better quality)',
+            pattern=re.compile(r'^/(video)\s+(x265)\s+(\d{2})$'),
             condition=partial(has_media_or_reply_with_media, video=True),
             is_applicable_for_reply=True,
         ),
