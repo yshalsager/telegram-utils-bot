@@ -195,7 +195,11 @@ async def run_bot() -> None:
     )
     bot.add_event_handler(
         handle_messages,
-        NewMessage(func=lambda x: x.is_private and not x.message.text.startswith('/')),
+        NewMessage(
+            func=lambda x: x.is_private
+            and not x.message.text.startswith('/')
+            and not x.message.via_bot
+        ),
     )
     bot.add_event_handler(handle_callback, CallbackQuery(pattern=r'^m|'))
     bot.add_event_handler(handle_inline_query, InlineQuery(func=lambda x: len(x.text) > 2))
