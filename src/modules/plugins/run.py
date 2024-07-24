@@ -85,7 +85,9 @@ async def stream_shell_output(
 
 
 async def run_command(event: NewMessage.Event) -> None:
-    await stream_shell_output(event, event.message.text.replace('/shell ', '', 1))
+    await stream_shell_output(
+        event, event.message.text.replace('/shell ', '', 1).replace('"', '\\"')
+    )
 
 
 class Shell(ModuleBase):
