@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime
 from enum import Enum, auto
 from functools import partial
+from itertools import zip_longest
 from math import floor
 from os import getenv
 from pathlib import Path
@@ -524,35 +525,38 @@ ALLOWED_VIDEO_FORMATS = {'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'mpeg', 'mpg
 
 
 async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        return await handle_callback_query_for_reply_state(
-            event,
-            'Please specify the target format (e.g., mp4, mp3, etc.)',
-        )
-
-    if event.sender_id in reply_states:
-        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
-        reply_message = await event.client.get_messages(
-            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
-        )
-        target_format = event.message.text.lower()
+        if event.data.decode().startswith('m|media_convert|'):
+            target_format = event.data.decode().split('|')[-1]
+            delete_message_after_process = True
+        else:
+            reply_message = await get_reply_message(event, previous=True)
+            formats = (
+                ALLOWED_AUDIO_FORMATS
+                if (reply_message.audio or reply_message.voice)
+                else ALLOWED_VIDEO_FORMATS
+            )
+            buttons = [
+                [Button.inline(f'{ext}', f'm|media_convert|{ext}') for ext in row if ext]
+                for row in list(zip_longest(*[iter(formats)] * 3, fillvalue=None))
+            ]
+            await event.edit('Choose the target format:', buttons=buttons)
+            return
     else:
-        reply_message = await get_reply_message(event, previous=True)
         target_format = event.message.text.split('convert ')[1].lower()
-
-    if target_format[0] == '.':
-        target_format = target_format[1:]
-
-    if target_format not in ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS:
-        await event.reply(
-            'Unsupported media type for conversion.\n'
-            f'Allowed formats: {", ".join(ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS)}'
-        )
-        return None
-
+        if target_format[0] == '.':
+            target_format = target_format[1:]
+        if target_format not in ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS:
+            await event.reply(
+                'Unsupported media type for conversion.\n'
+                f'Allowed formats: {", ".join(ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS)}'
+            )
+            return
+    reply_message = await get_reply_message(event, previous=True)
     if reply_message.file.ext == target_format:
         await event.reply(f'The file is already in {target_format} format. Skipping conversion.')
-        return None
+        return
 
     if target_format in ALLOWED_AUDIO_FORMATS:
         ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -b:a {audio_bitrate} "{output}"'
@@ -570,29 +574,29 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         get_bitrate=True,
         feedback_text=f'Media converted to {target_format} successfully.',
     )
-    if event.sender_id in reply_states:
-        del reply_states[event.sender_id]
-    raise StopPropagation
+    if delete_message_after_process:
+        event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
 ALLOWED_VIDEO_QUALITIES = {144, 240, 360, 480, 720}
 
 
 async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        return await handle_callback_query_for_reply_state(
-            event,
-            f'Please specify the target quality ({'/'.join(map(str, ALLOWED_VIDEO_QUALITIES))})',
-        )
-
-    if event.sender_id in reply_states:
-        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
-        reply_message = await event.client.get_messages(
-            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
-        )
-        quality = event.message.text
+        if event.data.decode().startswith('m|video_resize|'):
+            quality = event.data.decode().split('|')[-1]
+            delete_message_after_process = True
+        else:
+            buttons = [
+                [
+                    Button.inline(str(quality), f'm|video_resize|{quality}')
+                    for quality in ALLOWED_VIDEO_QUALITIES
+                ]
+            ]
+            await event.edit('Choose the target quality:', buttons=buttons)
+            return
     else:
-        reply_message = await get_reply_message(event, previous=True)
         quality = event.message.text.split('resize ')[1]
 
     quality = int(quality)
@@ -600,8 +604,9 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.reply(
             f'Invalid quality. Please choose from {", ".join(map(str, ALLOWED_VIDEO_QUALITIES))}.'
         )
-        return None
+        return
 
+    reply_message = await get_reply_message(event, previous=True)
     ffmpeg_command = (
         f'ffmpeg -hide_banner -y -i "{{input}}" -filter_complex '
         f'"scale=width=-1:height={quality}:force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2" '
@@ -611,9 +616,8 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     await process_media(
         event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
     )
-    if event.sender_id in reply_states:
-        del reply_states[event.sender_id]
-    raise StopPropagation
+    if delete_message_after_process:
+        event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
 async def video_update_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -1140,18 +1144,6 @@ class Media(ModuleBase):
             ),
         )
         bot.add_event_handler(
-            convert_media,
-            NewMessage(
-                func=lambda e: (
-                    is_valid_reply_state(e)
-                    and re.match(
-                        rf'^({'|'.join(map(str, ALLOWED_AUDIO_FORMATS | ALLOWED_VIDEO_FORMATS))})$',
-                        e.message.text,
-                    )
-                )
-            ),
-        )
-        bot.add_event_handler(
             set_metadata,
             NewMessage(
                 func=lambda e: (
@@ -1173,17 +1165,6 @@ class Media(ModuleBase):
                 func=lambda e: (
                     is_valid_reply_state(e)
                     and re.match(r'^(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$', e.message.text)
-                )
-            ),
-        )
-        bot.add_event_handler(
-            resize_video,
-            NewMessage(
-                func=lambda e: (
-                    is_valid_reply_state(e)
-                    and re.match(
-                        rf'^({"|".join(map(str, ALLOWED_VIDEO_QUALITIES))})$', e.message.text
-                    )
                 )
             ),
         )
