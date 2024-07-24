@@ -28,6 +28,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/code/.venv/bin:$PATH"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     ffmpeg \
     aria2 \
     && rm -rf /var/lib/apt/lists/*
