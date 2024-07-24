@@ -47,7 +47,8 @@ async def get_media_bitrate(file_path: str) -> tuple[int, int]:
             f'ffprobe -v error -select_streams {stream_specifier} -show_entries '
             f'stream=bit_rate -of csv=p=0 "{file_path}"'
         )
-        return int(_output.strip() or 0)
+        _output = _output.strip()
+        return int(_output) if _output.isdigit() else 0
 
     video_bitrate = await get_bitrate('v:0')
     audio_bitrate = await get_bitrate('a:0')
