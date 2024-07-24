@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from io import BufferedWriter
 from pathlib import Path
 from tempfile import _TemporaryFileWrapper
 
@@ -40,7 +41,7 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
 
 async def download_file(
     event: NewMessage.Event,
-    temp_file: _TemporaryFileWrapper,
+    temp_file: _TemporaryFileWrapper | BufferedWriter,
     reply_message: Message,
     progress_message: Message,
 ) -> None:
@@ -59,6 +60,7 @@ async def upload_file(
     output_file: Path,
     progress_message: Message,
     is_voice: bool = False,
+    force_document: bool = False,
     caption: str = '',
 ) -> None:
     with output_file.open('rb') as file_to_upload:
@@ -73,6 +75,7 @@ async def upload_file(
     await event.client.send_file(
         event.chat_id,
         file=uploaded_file,
+        force_document=force_document,
         caption=caption if caption else None,
         voice_note=is_voice,
         reply_to=event.message.id if hasattr(event, 'message') else None,

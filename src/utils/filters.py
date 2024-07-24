@@ -1,5 +1,13 @@
 from telethon.events import NewMessage
 from telethon.tl.custom import Message
+from telethon.tl.types import (
+    DocumentAttributeAnimated,
+    DocumentAttributeAudio,
+    DocumentAttributeCustomEmoji,
+    DocumentAttributeImageSize,
+    DocumentAttributeSticker,
+    DocumentAttributeVideo,
+)
 
 from src import BOT_ADMINS
 from src.utils.reply import ReplyState, reply_states
@@ -17,6 +25,10 @@ def has_file_or_reply_with_file(event: NewMessage.Event, reply_message: Message 
     return bool(
         (event.message.is_reply and reply_message and reply_message.file) or event.message.file
     )
+
+
+def has_no_file_or_reply_with_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
+    return not has_file_or_reply_with_file(event, reply_message)
 
 
 def is_reply_in_private(event: NewMessage.Event, _: Message | None) -> bool:
@@ -89,3 +101,25 @@ def is_valid_reply_state(event: NewMessage.Event) -> bool:
         and reply_states[event.sender_id]['state'] == ReplyState.WAITING
         and event.message.reply_to_msg_id == reply_states[event.sender_id]['reply_message_id']
     )
+
+
+def is_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
+    """
+    Check if the message or its reply contains an attachment uploaded as a file.
+    :param event: The NewMessage event.
+    :param reply_message: The message being replied to, if any.
+    :return: True if the message or its reply contains an attachment uploaded as a file, False otherwise.
+    """
+    message = reply_message or event.message
+    for attribute in message.document.attributes:
+        if isinstance(
+            attribute,
+            DocumentAttributeAnimated
+            | DocumentAttributeAudio
+            | DocumentAttributeCustomEmoji
+            | DocumentAttributeImageSize
+            | DocumentAttributeSticker
+            | DocumentAttributeVideo,
+        ):
+            return False
+    return True

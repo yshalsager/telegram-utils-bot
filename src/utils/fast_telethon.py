@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import AsyncGenerator, Callable
 from contextlib import suppress
 from hashlib import md5
+from io import BufferedWriter
 from logging import Logger, getLogger
 from math import ceil
 from pathlib import Path
@@ -359,7 +360,7 @@ async def _internal_transfer_to_telegram(
 async def download_file(
     client: TelegramClient,
     location: TypeLocation,
-    out: _TemporaryFileWrapper | BinaryIO,
+    out: _TemporaryFileWrapper | BinaryIO | BufferedWriter,
     progress_callback: Optional[Callable] = None,  # noqa: UP007
 ) -> BinaryIO:
     size = location.size

@@ -28,6 +28,16 @@ permission_manager = PermissionManager(set(BOT_ADMINS), PARENT_DIR / 'permission
 modules_registry = ModuleRegistry(__package__, permission_manager)
 logger = logging.getLogger(__name__)
 
+commands_with_modifiers = (
+    'audio',
+    'media',
+    'video',
+    'tasks',
+    'plugins',
+    'permissions',
+    'upload',
+)
+
 
 def main() -> None:
     """Run bot."""
@@ -85,7 +95,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
     command = command_with_args.group(1)
     modifier = command_with_args.group(2)
     # args = command_with_args.group(3)
-    if modifier and command in ('audio', 'media', 'video', 'tasks', 'plugins', 'permissions'):
+    if modifier and command in commands_with_modifiers:
         command = f'{command} {modifier}'
     module = modules_registry.get_module_by_command(command)
     if (
