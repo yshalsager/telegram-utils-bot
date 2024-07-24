@@ -8,6 +8,8 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=Africa/Cairo
+    env_file:
+      - .env
     volumes:
       - ./:/code/app
       - /etc/localtime:/etc/localtime:ro
