@@ -1,5 +1,6 @@
 import logging
 from contextlib import suppress
+from os import getenv
 from typing import ClassVar
 from urllib import parse
 
@@ -109,6 +110,46 @@ async def handle_quran_search(event: events.InlineQuery.Event) -> None:
         await event.answer(inline_results)
 
 
+async def handle_hadith_search(event: events.InlineQuery.Event) -> None:
+    endpoint = getenv('HADITH_SEARCH_ENDPOINT')
+    if not endpoint:
+        return
+    query = event.text[7:].strip()  # Remove 'hadith ' from the beginning
+    if not query:
+        return
+    data = await fetch_json(endpoint.format(query=query))
+    if not data:
+        return
+    results = data.get('data', [])
+    if not results:
+        return
+
+    inline_results = []
+    for result in results:
+        text = result.get('text', '')
+        rawy = result.get('rawy', '')
+        muhaddith = result.get('muhaddith', '')
+        source = result.get('source', '')
+        source_location = result.get('source_location', '')
+        hukm = result.get('hukm', '')
+
+        title = f'{muhaddith} - {source} ({source_location})'
+        description = f'{hukm} | {rawy}'
+        content = f'<b>{title}</b>\n<i>{description}</i>\n\n{text}'
+
+        inline_results.append(
+            await event.builder.article(
+                title=title,
+                description=f'{description} | {text[:100]}',
+                text=content[:4093] + '...',
+                parse_mode='html',
+            )
+        )
+
+    with suppress(QueryIdInvalidError):
+        await event.answer(inline_results)
+
+
 class WebSearch(InlineModuleBase):
     name = 'Web Search'
     description = 'Search the web using search engines'
@@ -117,6 +158,11 @@ class WebSearch(InlineModuleBase):
             pattern=re.compile(r'^ddg\s+(.+)$'),
             handler=handle_duckduckgo_search,
             name='DuckDuckGo Search',
+        ),
+        'hadith': InlineCommand(
+            pattern=re.compile(r'^hadith\s+(.+)$'),
+            handler=handle_hadith_search,
+            name='Hadith Search',
         ),
         'quran': InlineCommand(
             pattern=re.compile(r'^quran\s+(.+)$'),
