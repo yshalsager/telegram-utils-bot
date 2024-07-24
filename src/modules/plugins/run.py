@@ -69,7 +69,7 @@ async def stream_shell_output(
     await status_message.edit(status)
     event.client.loop.create_task(delete_message_after(progress_message))
 
-    if bool(buffer.strip()) and event.sender_id not in BOT_ADMINS:
+    if bool(buffer.strip()) and event.sender_id in BOT_ADMINS:
         with NamedTemporaryFile(
             mode='w+', prefix=f'{start_time.strftime("%Y%m%d_%H%M%S")}_', suffix='.log'
         ) as temp_file:
