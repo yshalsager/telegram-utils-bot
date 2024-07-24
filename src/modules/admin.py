@@ -9,9 +9,11 @@ import orjson
 import regex as re
 from telethon.events import NewMessage
 
+from src import PARENT_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_admin_in_private
+from src.utils.run import run_subprocess
 
 
 async def restart(event: NewMessage.Event) -> None:
@@ -23,14 +25,35 @@ async def restart(event: NewMessage.Event) -> None:
     execl(executable, executable, '-m', 'src')  # noqa: S606
 
 
-class Restart(ModuleBase):
-    name = 'Restart'
-    description = 'Restart the bot.'
+async def update(event: NewMessage.Event) -> None:
+    """Update the bot."""
+    message = await event.reply('Updating, please wait...')
+    async for output, code in run_subprocess(
+        'git pull --rebase && poetry install --with main',
+        cwd=PARENT_DIR,
+    ):
+        if code and code != 0:
+            await message.edit(f'Failed to update:\n<pre>{output}</pre>')
+            return None
+
+    await message.edit('Updated successfully!')
+    return await restart(event)
+
+
+class Admin(ModuleBase):
+    name = 'Admin'
+    description = 'Admin related commands.'
     commands: ClassVar[ModuleBase.CommandsT] = {
         'restart': Command(
             handler=restart,
             description='Restart the bot.',
             pattern=re.compile(r'^/restart$'),
             condition=is_admin_in_private,
-        )
+        ),
+        'update': Command(
+            handler=update,
+            description='Update the bot.',
+            pattern=re.compile(r'^/update$'),
+            condition=is_admin_in_private,
+        ),
     }

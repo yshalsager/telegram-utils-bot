@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from os import getpgid, killpg, setsid
 from shlex import split as shlex_split
 from signal import SIGKILL
+from typing import Any
 
 MAX_MESSAGE_LENGTH = 4000  # Max is 4096 but we leave some buffer for formatting
 # TIMEOUT_SECONDS = 60 * 10  # 10 minutes timeout for user commands
@@ -23,9 +24,9 @@ async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str
         yield f'{_line.decode().strip()}\n'
 
 
-async def run_subprocess(cmd: str) -> AsyncGenerator[tuple[str, int | None], None]:  # noqa: C901, PLR0912
+async def run_subprocess(cmd: str, **kwargs: Any) -> AsyncGenerator[tuple[str, int | None], None]:  # noqa: C901, PLR0912
     process: Process = await asyncio.create_subprocess_shell(  # noqa: S604
-        cmd, stdout=PIPE, stderr=PIPE, shell=True, preexec_fn=setsid
+        cmd, stdout=PIPE, stderr=PIPE, shell=True, preexec_fn=setsid, **kwargs
     )
 
     output = ''
@@ -94,9 +95,11 @@ async def run_subprocess(cmd: str) -> AsyncGenerator[tuple[str, int | None], Non
         yield output, return_code
 
 
-async def run_command(command: str, timeout: int = ADMIN_TIMEOUT_SECONDS) -> tuple[str, int]:
+async def run_command(
+    command: str, timeout: int = ADMIN_TIMEOUT_SECONDS, **kwargs: Any
+) -> tuple[str, int]:
     args = shlex_split(command)
-    process = await asyncio.create_subprocess_exec(*args, stdout=PIPE, stderr=PIPE)
+    process = await asyncio.create_subprocess_exec(*args, **kwargs, stdout=PIPE, stderr=PIPE)
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except TimeoutError:
