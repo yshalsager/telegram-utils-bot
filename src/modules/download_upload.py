@@ -66,7 +66,9 @@ async def upload_file_command(event: NewMessage.Event) -> None:
 
 
 async def upload_from_url_command(event: NewMessage.Event) -> None:
-    url = event.message.raw_text.split(maxsplit=2)[2].strip()
+    command_parts = event.message.raw_text.split(maxsplit=2)[2].split('|', 1)
+    url = command_parts[0].strip()
+    custom_name = command_parts[1].strip() if len(command_parts) > 1 else None
     progress_message = await event.reply('Starting file download...')
 
     with NamedTemporaryFile(dir=DOWNLOADS_DIR, delete=False) as temp_file:
@@ -76,6 +78,11 @@ async def upload_from_url_command(event: NewMessage.Event) -> None:
         if not download_to.exists():
             await progress_message.edit('Download failed.')
             return
+
+        if custom_name:
+            new_download_to = download_to.with_name(custom_name)
+            download_to.rename(new_download_to)
+            download_to = new_download_to
 
         await progress_message.edit('Download complete. Starting upload...')
         await upload_file(event, download_to, progress_message)
@@ -141,7 +148,7 @@ class DownloadUpload(ModuleBase):
         ),
         'upload url': Command(
             handler=upload_from_url_command,
-            description='[url]: Download a file from URL and upload it to Telegram',
+            description='[url] or [url] | [filename]: Download a file from URL and upload it to Telegram',
             pattern=re.compile(r'^/upload\s+url\s+(.+)$'),
             condition=has_valid_url,
         ),
