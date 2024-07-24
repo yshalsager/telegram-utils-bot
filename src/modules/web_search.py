@@ -5,7 +5,6 @@ from urllib import parse
 
 import regex as re
 import wikipedia
-from aiohttp import ClientSession
 from search_engine_parser.core.base import SearchResult
 from search_engine_parser.core.engines.duckduckgo import Search as DuckDuckGoSearch
 from telethon import events
@@ -13,6 +12,7 @@ from telethon.errors import QueryIdInvalidError
 
 from src.modules.base import InlineModuleBase
 from src.utils.command import InlineCommand
+from src.utils.http import fetch_json
 from src.utils.quran import surah_names
 
 ddg_search = DuckDuckGoSearch()
@@ -87,19 +87,11 @@ async def handle_wikipedia_search(event: events.InlineQuery.Event) -> None:
 
 async def handle_quran_search(event: events.InlineQuery.Event) -> None:
     query = event.text[6:].strip()  # Remove 'quran ' from the beginning
-    async with ClientSession() as session:
-        try:
-            async with session.get(f'https://api.quran.com/api/v4/search?q={query}') as response:
-                if response.status == 200:
-                    data = await response.json()
-                    results = data['search']['results']
-                else:
-                    logging.error(f'Error in Quran search: HTTP {response.status}')
-                    return
-        except Exception as e:  # noqa: BLE001
-            logging.error(f'Error in Quran search: {e}')
-            return
+    data = await fetch_json('https://api.quran.com/api/v4/search', params={'q': query})
+    if not data:
+        return
 
+    results = data['search']['results']
     inline_results = []
     for result in results:
         surah, aya = map(int, result['verse_key'].split(':'))
