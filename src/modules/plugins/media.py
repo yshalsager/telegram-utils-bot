@@ -855,10 +855,34 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
 
 
 async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    wit_access_tokens = getenv('WIT_CLIENT_ACCESS_TOKENS')
-    if not wit_access_tokens:
-        await event.reply('Please set WIT_CLIENT_ACCESS_TOKENS environment variable.')
-        return
+    delete_message_after_process = False
+    if isinstance(event, CallbackQuery.Event):
+        if event.data.decode().startswith('m|media_transcribe|'):
+            transcription_method = event.data.decode().split('|')[-1]
+            delete_message_after_process = True
+        else:
+            buttons = [
+                [
+                    Button.inline('Whisper', 'm|media_transcribe|whisper'),
+                    Button.inline('Wit', 'm|media_transcribe|wit'),
+                ]
+            ]
+            await event.edit('Choose the transcription method:', buttons=buttons)
+            return
+    else:
+        transcription_method = event.message.text.split(' ')[-1]
+    wit_access_tokens, whisper_model_path = None, None
+    if transcription_method == 'whisper':
+        whisper_model_path = getenv('WHISPER_MODEL_PATH')
+        if not whisper_model_path:
+            await event.reply('Please set WHISPER_MODEL_PATH environment variable.')
+            return
+    # if transcription_method == 'wit':
+    else:
+        wit_access_tokens = getenv('WIT_CLIENT_ACCESS_TOKENS')
+        if not wit_access_tokens:
+            await event.reply('Please set WIT_CLIENT_ACCESS_TOKENS environment variable.')
+            return
 
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply('Starting transcription process...')
@@ -868,8 +892,11 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
 
     with NamedTemporaryFile(suffix=reply_message.file.ext, dir=output_dir) as temp_file:
         await download_file(event, temp_file, reply_message, progress_message)
-        tafrigh_command = (
-            f'tafrigh "{temp_file.name}" -w {wit_access_tokens} -o "{output_dir}" -f txt srt'
+        tafrigh_command = f'tafrigh "{temp_file.name}" -o "{output_dir}" -f txt srt'
+        tafrigh_command += (
+            f' -w {wit_access_tokens}'
+            if transcription_method == 'wit'
+            else f' -m {whisper_model_path} --use_faster_whisper'
         )
 
         await stream_shell_output(event, tafrigh_command, status_message, progress_message)
@@ -885,9 +912,10 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 )
             else:
                 await status_message.edit(f'Failed to transcribe {renamed_file.name}')
-    output_dir.unlink(missing_ok=True)
     await status_message.edit('Transcription completed.')
     await delete_message_after(progress_message)
+    if delete_message_after_process:
+        event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
 handlers = {
@@ -1018,8 +1046,8 @@ class Media(ModuleBase):
         'media transcribe': Command(
             name='media transcribe',
             handler=handler,
-            description='Transcribe audio or video to text and subtitle formats',
-            pattern=re.compile(r'^/(media)\s+(transcribe)$'),
+            description='[wit|whisper]: Transcribe audio or video to text and subtitle formats',
+            pattern=re.compile(r'^/(media)\s+(transcribe)\s+(wit|whisper)$'),
             condition=partial(has_media_or_reply_with_media, any=True),
             is_applicable_for_reply=True,
         ),
