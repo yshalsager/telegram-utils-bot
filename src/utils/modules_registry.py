@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 def load_modules(directory: str) -> list[ModuleBase]:
     """Load all modules in modules list"""
     found_modules: list[ModuleType] = [
-        import_module(f'{directory}.modules.{module.stem}')
+        import_module(f'{directory}.modules.{module.parent.name}.{module.stem}')
         for module in filter(
             lambda x: x.name not in ('__init__.py', 'base.py')
             and x.suffix == '.py'
             and x.is_file(),
-            Path(f'{directory}/modules').glob('*.py'),
+            Path(f'{directory}/modules').glob('**/*.py'),
         )
     ]
     logger.info(

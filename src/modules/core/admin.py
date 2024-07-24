@@ -1,4 +1,4 @@
-"""Bot restart module."""
+"""Bot Admin module."""
 
 from os import execl
 from pathlib import Path

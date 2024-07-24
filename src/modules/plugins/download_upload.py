@@ -6,7 +6,7 @@ import regex as re
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
-from modules.run import stream_shell_output
+from modules.plugins.run import stream_shell_output
 from src import DOWNLOADS_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command

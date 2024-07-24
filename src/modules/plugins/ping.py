@@ -21,7 +21,7 @@ class Ping(ModuleBase):
         'ping': Command(
             name='ping',
             handler=pong,
-            description='Restart the bot.',
+            description='Ping the bot.',
             pattern=re.compile(r'^/ping$'),
         )
     }

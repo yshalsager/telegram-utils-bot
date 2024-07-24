@@ -16,8 +16,8 @@ from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 
+from modules.plugins.run import stream_shell_output
 from src.modules.base import ModuleBase
-from src.modules.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.filters import has_media_or_reply_with_media, is_valid_reply_state
