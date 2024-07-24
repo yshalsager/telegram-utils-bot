@@ -17,6 +17,7 @@ orjson = "^3.10.6"
 pydub = "^0.25.1"
 regex = "^2024.5.15"
 search-engine-parser = "^0.6.8"
+wikipedia = "^1.4.0"
 yt-dlp = "^2024.4.9"
 
 [tool.poetry.group.dev.dependencies]
