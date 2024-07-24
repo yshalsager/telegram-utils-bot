@@ -40,18 +40,16 @@ async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -
         download_to = await download_from_url(
             event, url, DOWNLOADS_DIR, progress_message=progress_message
         )
-
         if not download_to.exists():
             await event.reply('Download failed.')
             return
-
-        await event.reply(f'File successfully downloaded: <code>{download_to}</code>')
     else:
         reply_message = await get_reply_message(event, previous=True)
         download_to = DOWNLOADS_DIR / get_download_name(reply_message)
         with download_to.open('wb') as temp_file:
             await download_file(event, temp_file, reply_message, progress_message)
             Path(temp_file.name).rename(download_to)
+    await progress_message.edit(f'File successfully downloaded: <code>{download_to}</code>')
 
 
 async def upload_file_command(event: NewMessage.Event) -> None:
