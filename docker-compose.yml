@@ -1,0 +1,14 @@
+services:
+  telegram_utils_bot:
+    container_name: telegram_utils_bot
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Africa/Cairo
+    volumes:
+      - ./:/code/app
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
