@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime
 from enum import Enum, auto
 from functools import partial
+from math import floor
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, ClassVar
@@ -70,7 +71,8 @@ async def process_media(
     get_file_name: bool = True,
     get_bitrate: bool = False,
     feedback_text: str = 'File successfully processed.',
-) -> None:
+) -> dict[str, Any]:
+    data: dict[str, Any] = {}
     if not reply_message:
         reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply('Starting process...')
@@ -97,14 +99,18 @@ async def process_media(
         else:
             ffmpeg_command = ffmpeg_command.format(input=temp_file.name, output=output_file)
 
-        await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+        status = await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+        data['status_text'] = status
         if not output_file.exists() or not output_file.stat().st_size:
             await status_message.edit('Processing failed.')
-            return
+            return data
 
         await upload_file(event, output_file, progress_message, is_voice)
+        data['output_size'] = output_file.stat().st_size
 
     await status_message.edit(feedback_text)
+    data['status_message'] = status_message
+    return data
 
 
 async def convert_to_voice_note(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -702,8 +708,6 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
     )
     if delete_message_after_process:
         event.client.loop.create_task(delete_message_after(await event.get_message()))
-    if event.sender_id in reply_states:
-        del reply_states[event.sender_id]
 
 
 async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -740,6 +744,65 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
     await status_message.edit('Video thumbnails successfully generated.')
 
 
+async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
+    if isinstance(event, CallbackQuery.Event):
+        if event.data.decode().startswith('m|video_compress|'):
+            target_percentage = int(event.data.decode().split('|')[-1])
+            delete_message_after_process = True
+        else:
+            buttons = [
+                [
+                    Button.inline(f'{percentage}%', f'm|video_compress|{percentage}')
+                    for percentage in range(20, 60, 10)
+                ],
+                [
+                    Button.inline(f'{percentage}%', f'm|video_compress|{percentage}')
+                    for percentage in range(60, 100, 10)
+                ],
+            ]
+            await event.edit('Choose the target compression percentage:', buttons=buttons)
+            return
+    else:
+        target_percentage = int(event.message.text.split('compress ')[1])
+
+    if target_percentage < 20 or target_percentage > 90:
+        await event.reply('Compression percentage must be between 20 and 90.')
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+    # Calculate target bitrate
+    calculated_percentage = 100 - target_percentage
+    target_size = (calculated_percentage / 100) * reply_message.file.size
+    target_bitrate = int(floor(target_size * 8 / reply_message.file.duration))
+    bitrate = (
+        f'{target_bitrate // 1000000}M'
+        if target_bitrate // 1000000 >= 1
+        else f'{target_bitrate // 1000}k'
+    )
+    ffmpeg_command = (
+        f'ffmpeg -hide_banner -y -i "{{input}}" '
+        f'-c:v libx264 -b:v {bitrate} -bufsize {bitrate} '
+        '-preset ultrafast '
+        '-c:a aac -b:a 48k '
+        '-movflags +faststart '
+        f'"{{output}}"'
+    )
+    data = await process_media(
+        event, ffmpeg_command, reply_message.file.ext, feedback_text='Video compressed successfully'
+    )
+    compression_ratio = (1 - (data['output_size'] / reply_message.file.size)) * 100
+    feedback_text = (
+        f'\nTarget compression: {target_percentage}%\n'
+        f'Actual compression: {compression_ratio:.2f}%\n'
+    )
+    status_message = data['status_message']
+    assert isinstance(status_message, Message)
+    await status_message.edit(data['status_text'] + feedback_text)
+    if delete_message_after_process:
+        event.client.loop.create_task(delete_message_after(await event.get_message()))
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
@@ -751,6 +814,7 @@ handlers = {
     'media info': media_info,
     'media merge': merge_media_initial,
     'media split': split_media,
+    'video compress': compress_video,
     'video mute': mute_video,
     'video resize': resize_video,
     'video subtitle': extract_subtitle,
@@ -860,6 +924,14 @@ class Media(ModuleBase):
             description='Get media info',
             pattern=re.compile(r'^/(media)\s+(info)$'),
             condition=partial(has_media_or_reply_with_media, any=True),
+            is_applicable_for_reply=True,
+        ),
+        'video compress': Command(
+            name='video compress',
+            handler=handler,
+            description='[PERCENTAGE] - Compress video to target percentage of original size (20-90)',
+            pattern=re.compile(r'^/(video)\s+(compress)\s+(\d{1,2})$'),
+            condition=partial(has_media_or_reply_with_media, video=True),
             is_applicable_for_reply=True,
         ),
         'video mute': Command(

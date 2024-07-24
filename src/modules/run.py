@@ -22,7 +22,7 @@ async def stream_shell_output(
     cmd: str,
     status_message: Message | None = None,
     progress_message: Message | None = None,
-) -> None:
+) -> str:
     if not status_message:
         status_message = await event.reply('Starting process...')
     if not progress_message:
@@ -69,19 +69,19 @@ async def stream_shell_output(
     await status_message.edit(status)
     event.client.loop.create_task(delete_message_after(progress_message))
 
-    if not bool(buffer.strip()):
-        return
-    if event.sender_id not in BOT_ADMINS:
-        return
-    with NamedTemporaryFile(
-        mode='w+', prefix=f'{start_time.strftime("%Y%m%d_%H%M%S")}_', suffix='.log'
-    ) as temp_file:
-        temp_file.write(buffer)
-        temp_file.seek(0)  # Go back to the start of the file to ensure it's read from the beginning
-        await event.client.send_file(
-            event.chat_id,
-            file=temp_file.name,
-        )
+    if bool(buffer.strip()) and event.sender_id not in BOT_ADMINS:
+        with NamedTemporaryFile(
+            mode='w+', prefix=f'{start_time.strftime("%Y%m%d_%H%M%S")}_', suffix='.log'
+        ) as temp_file:
+            temp_file.write(buffer)
+            temp_file.seek(
+                0
+            )  # Go back to the start of the file to ensure it's read from the beginning
+            await event.client.send_file(
+                event.chat_id,
+                file=temp_file.name,
+            )
+    return status
 
 
 async def run_command(event: NewMessage.Event) -> None:
