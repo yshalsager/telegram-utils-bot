@@ -1,3 +1,4 @@
+import regex as re
 from telethon.events import NewMessage
 from telethon.tl.custom import Message
 from telethon.tl.types import (
@@ -11,6 +12,10 @@ from telethon.tl.types import (
 
 from src import BOT_ADMINS
 from src.utils.reply import ReplyState, reply_states
+
+URL_PATTERN = re.compile(
+    r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+)
 
 
 def is_admin_in_private(event: NewMessage.Event, _: Message) -> bool:
@@ -123,3 +128,7 @@ def is_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
         ):
             return False
     return True
+
+
+def has_valid_url(event: NewMessage.Event, _: Message | None) -> bool:
+    return bool(URL_PATTERN.search(event.message.raw_text))

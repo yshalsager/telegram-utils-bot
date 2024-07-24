@@ -2,6 +2,8 @@ from datetime import UTC, datetime
 from io import BufferedWriter
 from pathlib import Path
 from tempfile import _TemporaryFileWrapper
+from urllib import parse
+from uuid import uuid4
 
 from telethon.events import NewMessage
 from telethon.tl.custom import Message
@@ -80,3 +82,8 @@ async def upload_file(
         voice_note=is_voice,
         reply_to=event.message.id if hasattr(event, 'message') else None,
     )
+
+
+def get_filename_from_url(url: str) -> str:
+    filename = Path(parse.urlparse(url).path).name
+    return filename if filename else str(uuid4())
