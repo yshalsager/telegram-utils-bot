@@ -150,6 +150,46 @@ async def handle_hadith_search(event: events.InlineQuery.Event) -> None:
         await event.answer(inline_results)
 
 
+async def handle_exchange(event: events.InlineQuery.Event) -> None:
+    api_key = getenv('EXCHANGE_RATE_API_KEY')
+    if not api_key:
+        return
+
+    query = event.text[9:].strip()  # Remove 'exchange ' from the beginning
+    try:
+        amount, from_currency, to_currency = query.split()
+        amount = float(amount)
+    except ValueError:
+        return
+
+    url = (
+        f'https://v6.exchangerate-api.com/v6/{api_key}/pair/{from_currency}/{to_currency}/{amount}'
+    )
+
+    data = await fetch_json(url)
+    if not data or 'result' not in data or data['result'] != 'success':
+        return
+
+    conversion_rate = data['conversion_rate']
+    conversion_result = data['conversion_result']
+    title = f'{amount} {from_currency} to {to_currency}'
+    description = f'{conversion_result:.2f} {to_currency}'
+    content = (
+        f"<b>{amount} {from_currency} = {conversion_result:.2f} {to_currency}</b>\n\n"
+        f"Exchange rate: 1 {from_currency} = {conversion_rate:.4f} {to_currency}\n"
+        f"Last updated: {data['time_last_update_utc']}\n"
+    )
+
+    inline_result = await event.builder.article(
+        title=title,
+        description=description,
+        text=content,
+    )
+
+    with suppress(QueryIdInvalidError):
+        await event.answer([inline_result])
+
+
 class WebSearch(InlineModuleBase):
     name = 'Web Search'
     description = 'Search the web using search engines'
@@ -158,6 +198,11 @@ class WebSearch(InlineModuleBase):
             pattern=re.compile(r'^ddg\s+(.+)$'),
             handler=handle_duckduckgo_search,
             name='DuckDuckGo Search',
+        ),
+        'exchange': InlineCommand(
+            pattern=re.compile(r'^exchange\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})\s+([A-Z]{3})$'),
+            handler=handle_exchange,
+            name='Currency Exchange',
         ),
         'hadith': InlineCommand(
             pattern=re.compile(r'^hadith\s+(.+)$'),
