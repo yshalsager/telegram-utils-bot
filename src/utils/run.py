@@ -26,7 +26,7 @@ async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str
 
 async def run_subprocess(cmd: str, **kwargs: Any) -> AsyncGenerator[tuple[str, int | None], None]:  # noqa: C901, PLR0912
     process: Process = await asyncio.create_subprocess_shell(  # noqa: S604
-        cmd, stdout=PIPE, stderr=PIPE, shell=True, preexec_fn=setsid, **kwargs
+        cmd.replace('"', '\\"'), stdout=PIPE, stderr=PIPE, shell=True, preexec_fn=setsid, **kwargs
     )
 
     output = ''
