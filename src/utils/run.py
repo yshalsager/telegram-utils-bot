@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import shlex
 from asyncio.subprocess import PIPE, Process
 from collections.abc import AsyncGenerator
 from os import getpgid, killpg, setsid
@@ -25,8 +26,9 @@ async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str
 
 
 async def run_subprocess(cmd: str, **kwargs: Any) -> AsyncGenerator[tuple[str, int | None], None]:  # noqa: C901, PLR0912
-    process: Process = await asyncio.create_subprocess_shell(  # noqa: S604
-        cmd, stdout=PIPE, stderr=PIPE, shell=True, preexec_fn=setsid, **kwargs
+    cmd_parts = shlex.split(cmd)
+    process: Process = await asyncio.create_subprocess_exec(
+        *cmd_parts, stdout=PIPE, stderr=PIPE, preexec_fn=setsid, **kwargs
     )
 
     output = ''
