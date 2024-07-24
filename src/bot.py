@@ -99,7 +99,9 @@ async def handle_commands(event: NewMessage.Event) -> None:
     # args = command_with_args.group(3)
     if modifier and command in commands_with_modifiers:
         command = f'{command} {modifier}'
-    module = modules_registry.get_module_by_command(command)
+    module = modules_registry.get_module_by_command(
+        command
+    ) or modules_registry.get_module_by_command(command_with_args.group(1))
     if (
         not module
         or not permission_manager.has_permission(module.name, event.sender_id)

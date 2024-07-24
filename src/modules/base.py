@@ -36,7 +36,7 @@ class ModuleBase(ABC):
         return any(
             command.condition(event, reply_message)
             and (
-                command.pattern.match(event.message.text)
+                command.pattern.match(event.message.raw_text)
                 if (event.message.text and not event.message.file)
                 else bool(event.message.file)
             )

@@ -15,12 +15,14 @@ async def get_reply_message(
     return await event.message.get_reply_message()
 
 
-async def edit_or_send_as_file(event: NewMessage.Event, message: Message, text: str) -> None:
+async def edit_or_send_as_file(
+    event: NewMessage.Event, message: Message, text: str, file_name: str = 'output.txt'
+) -> None:
     try:
         await message.edit(text)
     except MessageTooLongError:
         file = BytesIO(text.encode())
-        file.name = 'output.txt'
+        file.name = file_name
         await event.client.send_file(message.chat_id, file, reply_to=message.id)
 
 
