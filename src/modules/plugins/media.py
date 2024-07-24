@@ -865,12 +865,13 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     with NamedTemporaryFile(suffix=reply_message.file.ext) as temp_file:
         await download_file(event, temp_file, reply_message, progress_message)
         temp_file_path = Path(temp_file.name).with_name(reply_message.file.name)
+        Path(temp_file.name).rename(temp_file_path)
         output_dir = Path(temp_file.name).parent
 
         tafrigh_command = (
             f'tafrigh "{temp_file_path.absolute()}" '
             f'--wit_client_access_tokens {wit_access_tokens} '
-            f'--output_dir {output_dir.absolute()} '
+            f'--output_dir "{output_dir.absolute()}" '
             '--output_formats txt srt'
         )
 
