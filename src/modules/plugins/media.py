@@ -14,6 +14,8 @@ import orjson
 import regex as re
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
+from tafrigh import Config as TafrighConfig
+from tafrigh import farrigh
 from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
@@ -855,7 +857,7 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
 
 
 async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    wit_access_tokens = getenv('WIT_CLIENT_ACCESS_TOKENS')
+    wit_access_tokens: list[str] = getenv('WIT_CLIENT_ACCESS_TOKENS', '').split(' ')
     if not wit_access_tokens:
         await event.reply('Please set WIT_CLIENT_ACCESS_TOKENS environment variable.')
         return
@@ -864,15 +866,42 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     status_message = await event.reply('Starting transcription process...')
     progress_message = await event.reply('<pre>Process output:</pre>')
     output_dir = Path(TMP_DIR / str(uuid4()))
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(exist_ok=True)
 
     with NamedTemporaryFile(suffix=reply_message.file.ext, dir=output_dir) as temp_file:
         await download_file(event, temp_file, reply_message, progress_message)
-        tafrigh_command = (
-            f'tafrigh "{temp_file.name}" -w {wit_access_tokens} -o "{output_dir}" -f txt srt'
+        config = TafrighConfig(
+            input=TafrighConfig.Input(
+                urls_or_paths=[temp_file.name],
+                skip_if_output_exist=True,
+                playlist_items='',
+                download_retries=3,
+                verbose=True,
+            ),
+            wit=TafrighConfig.Wit(
+                wit_client_access_tokens=wit_access_tokens, max_cutting_duration=10
+            ),
+            output=TafrighConfig.Output(
+                min_words_per_segment=10,
+                save_files_before_compact=False,
+                save_yt_dlp_responses=False,
+                output_sample=0,
+                output_formats=['txt', 'srt'],
+                output_dir=str(output_dir),
+            ),
+            whisper=TafrighConfig.Whisper(
+                model_name_or_path='tiny',
+                task='transcribe',
+                language='ar',
+                use_faster_whisper=True,
+                beam_size=5,
+                ct2_compute_type='default',
+            ),
         )
 
-        await stream_shell_output(event, tafrigh_command, status_message, progress_message)
+        for progress in farrigh(config):
+            await progress_message.edit(f'<pre>{progress}</pre>')
+
         for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
                 renamed_file = output_file.with_stem(Path(reply_message.file.name).stem)
@@ -885,7 +914,6 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 )
             else:
                 await status_message.edit(f'Failed to transcribe {renamed_file.name}')
-    output_dir.unlink(missing_ok=True)
     await status_message.edit('Transcription completed.')
 
 
