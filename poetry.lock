@@ -158,6 +158,17 @@ tests-mypy = ["mypy (>=1.6)", "pytest-mypy-plugins"]
 tests-no-zope = ["attrs[tests-mypy]", "cloudpickle", "hypothesis", "pympler", "pytest (>=4.3.0)", "pytest-xdist[psutil]"]
 
 [[package]]
+name = "auditok"
+version = "0.2.0"
+description = "A module for Audio/Acoustic Activity Detection"
+optional = false
+python-versions = "*"
+files = [
+    {file = "auditok-0.2.0-py3-none-any.whl", hash = "sha256:336e3157e2f6c4550182b3272a2ea32d2aca7f251d3b7feeff2d355d280cdc1b"},
+    {file = "auditok-0.2.0.tar.gz", hash = "sha256:46c512e287b2e13df4819774166af32b236d754afbe6b0dc87281b233e5ae688"},
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.12.3"
 description = "Screen-scraping library"
@@ -1737,6 +1748,28 @@ pure-eval = "*"
 tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 
 [[package]]
+name = "tafrigh"
+version = "1.6.0"
+description = "تفريغ النصوص وإنشاء ملفات SRT و VTT باستخدام نماذج Whisper وتقنية wit.ai."
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "tafrigh-1.6.0-py3-none-any.whl", hash = "sha256:c104d5fa49ea0341ff81cbe9034fa7f76866aebe33e4dbbe2e621a1ee23aabc9"},
+    {file = "tafrigh-1.6.0.tar.gz", hash = "sha256:705e9208a51afe499857c9112af52661ef8cdedfa2f05eead7343d7b703b5c5c"},
+]
+
+[package.dependencies]
+auditok = {version = ">=0.2.0", optional = true, markers = "extra == \"wit\""}
+pydub = {version = ">=0.25.1", optional = true, markers = "extra == \"wit\""}
+requests = {version = ">=2.32.0", optional = true, markers = "extra == \"wit\""}
+tqdm = ">=4.66.4"
+yt-dlp = ">=2024.7.9"
+
+[package.extras]
+whisper = ["faster-whisper (>=1.0.2)", "openai-whisper (>=20231117)", "stable-ts (>=2.17.2)"]
+wit = ["auditok (>=0.2.0)", "pydub (>=0.25.1)", "requests (>=2.32.0)"]
+
+[[package]]
 name = "telethon"
 version = "1.36.0"
 description = "Full-featured Telegram client library for Python 3"
@@ -1752,6 +1785,26 @@ rsa = "*"
 
 [package.extras]
 cryptg = ["cryptg"]
+
+[[package]]
+name = "tqdm"
+version = "4.66.4"
+description = "Fast, Extensible Progress Meter"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "tqdm-4.66.4-py3-none-any.whl", hash = "sha256:b75ca56b413b030bc3f00af51fd2c1a1a5eac6a0c1cca83cbb37a5c52abce644"},
+    {file = "tqdm-4.66.4.tar.gz", hash = "sha256:e4d936c9de8727928f3be6079590e97d9abfe8d39a590be678eb5919ffc186bb"},
+]
+
+[package.dependencies]
+colorama = {version = "*", markers = "platform_system == \"Windows\""}
+
+[package.extras]
+dev = ["pytest (>=6)", "pytest-cov", "pytest-timeout", "pytest-xdist"]
+notebook = ["ipywidgets (>=6)"]
+slack = ["slack-sdk"]
+telegram = ["requests"]
 
 [[package]]
 name = "traitlets"
@@ -2103,4 +2156,4 @@ test = ["pytest (>=8.1,<9.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "8fb9a0dcfa7c7002da917622a80908500c14cf3af0f7fbbf4d05bf2c77032f5c"
+content-hash = "b7f6511745bc380120835847a351262c6258ce92296164da83b23c4d9a052cf0"

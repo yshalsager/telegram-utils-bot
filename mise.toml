@@ -20,6 +20,9 @@ DEBUG = 1
 HADITH_SEARCH_ENDPOINT = ''
 # https://www.exchangerate-api.com
 EXCHANGE_RATE_API_KEY = ''
+# https://github.com/ieasybooks/tafrigh/blob/main/README.en.md
+# A list of access tokens separated by space
+WIT_CLIENT_ACCESS_TOKENS = ''
 
 [env.mise]
 file = '.env'

@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum, auto
 from functools import partial
 from math import floor
+from os import getenv
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, ClassVar
@@ -851,6 +852,46 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
         event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
+async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    wit_access_tokens = getenv('WIT_CLIENT_ACCESS_TOKENS')
+    if not wit_access_tokens:
+        await event.reply('Please set WIT_CLIENT_ACCESS_TOKENS environment variable.')
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await event.reply('Starting transcription process...')
+    progress_message = await event.reply('<pre>Process output:</pre>')
+
+    with NamedTemporaryFile(suffix=reply_message.file.ext) as temp_file:
+        await download_file(event, temp_file, reply_message, progress_message)
+        temp_file_path = Path(temp_file.name).with_name(reply_message.file.name)
+        output_dir = Path(temp_file.name).parent
+
+        tafrigh_command = (
+            f'tafrigh "{temp_file_path.absolute()}" '
+            f'--wit_client_access_tokens {wit_access_tokens} '
+            f'--output_dir {output_dir.absolute()} '
+            '--output_formats txt srt'
+        )
+
+        await stream_shell_output(event, tafrigh_command, status_message, progress_message)
+
+        for output_file in output_dir.glob(f'{temp_file_path.stem}*'):
+            if output_file.suffix == temp_file_path.suffix:
+                continue
+            if output_file.exists() and output_file.stat().st_size:
+                await upload_file(
+                    event,
+                    output_file,
+                    progress_message,
+                    caption=f'Transcription: {output_file.name}',
+                )
+            else:
+                await status_message.edit(f'Failed to generate {output_file.name}')
+
+    await status_message.edit('Transcription completed.')
+
+
 handlers = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
@@ -862,6 +903,7 @@ handlers = {
     'media info': media_info,
     'media merge': merge_media_initial,
     'media split': split_media,
+    'media transcribe': transcribe_media,
     'video compress': compress_video,
     'video mute': mute_video,
     'video resize': resize_video,
@@ -972,6 +1014,14 @@ class Media(ModuleBase):
             handler=handler,
             description='Get media info',
             pattern=re.compile(r'^/(media)\s+(info)$'),
+            condition=partial(has_media_or_reply_with_media, any=True),
+            is_applicable_for_reply=True,
+        ),
+        'media transcribe': Command(
+            name='media transcribe',
+            handler=handler,
+            description='Transcribe audio or video to text and subtitle formats',
+            pattern=re.compile(r'^/(media)\s+(transcribe)$'),
             condition=partial(has_media_or_reply_with_media, any=True),
             is_applicable_for_reply=True,
         ),
