@@ -652,28 +652,34 @@ async def video_update_process(event: NewMessage.Event) -> None:
 
 
 async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        return await handle_callback_query_for_reply_state(
-            event,
-            'Please specify the amplification factor (e.g., 1.5 for 50% increase)',
-        )
-
-    if event.sender_id in reply_states:
-        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
-        reply_message = await event.client.get_messages(
-            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
-        )
-        amplification_factor = float(event.message.text)
+        if event.data.decode().startswith('m|media_amplify|'):
+            amplification_factor = float(event.data.decode().split('|')[-1])
+            delete_message_after_process = True
+        else:
+            buttons = [
+                [
+                    Button.inline(f'{factor}x', f'm|media_amplify|{factor}')
+                    for factor in [1.25, 1.5, 1.75, 2]
+                ],
+                [
+                    Button.inline(f'{factor}x', f'm|media_amplify|{factor}')
+                    for factor in [2.25, 2.5, 2.75, 3]
+                ],
+            ]
+            await event.edit('Choose the amplification factor:', buttons=buttons)
+            return
     else:
-        reply_message = await get_reply_message(event, previous=True)
         amplification_factor = float(event.message.text.split('amplify ')[1])
 
     if amplification_factor <= 1:
         await event.reply('Amplification factor must be greater than 1.')
-        return None
-    if amplification_factor > 4:
-        amplification_factor = 4
+        return
+    if amplification_factor > 3:
+        amplification_factor = 3
 
+    reply_message = await get_reply_message(event, previous=True)
     ffmpeg_command = (
         'ffmpeg -hide_banner -y -i "{input}" '
         f'-filter:a "volume={amplification_factor}" '
@@ -687,11 +693,17 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ffmpeg_command += ' "{output}"'
 
     await process_media(
-        event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
+        event,
+        ffmpeg_command,
+        reply_message.file.ext,
+        reply_message=reply_message,
+        get_bitrate=True,
+        feedback_text=f'Audio amplified by {amplification_factor}x successfully.',
     )
+    if delete_message_after_process:
+        event.client.loop.create_task(delete_message_after(await event.get_message()))
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
-    raise StopPropagation
 
 
 async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -978,14 +990,6 @@ class Media(ModuleBase):
                     and e.sender_id in video_update_states
                     and video_update_states[e.sender_id]['state'] == MergeState.COLLECTING
                     and (e.audio or e.voice or e.video)
-                )
-            ),
-        )
-        bot.add_event_handler(
-            amplify_sound,
-            NewMessage(
-                func=lambda e: (
-                    is_valid_reply_state(e) and re.match(r'^\d+(\.\d+)?$', e.message.text)
                 )
             ),
         )
