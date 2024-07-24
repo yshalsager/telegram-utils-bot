@@ -3,7 +3,7 @@ Telegram Bot
 """
 
 import logging
-from asyncio import CancelledError, Task, create_task, run, sleep
+from asyncio import CancelledError, Task, create_task, get_event_loop, sleep
 from collections.abc import Callable, Coroutine
 from contextlib import suppress
 from itertools import zip_longest
@@ -41,7 +41,8 @@ commands_with_modifiers = (
 
 def main() -> None:
     """Run bot."""
-    run(run_bot())
+    loop = get_event_loop()
+    loop.run_until_complete(run_bot())
 
 
 async def handle_restart() -> None:
@@ -210,7 +211,3 @@ async def run_bot() -> None:
     # Run blocking
     async with bot:
         await bot.run_until_disconnected()
-
-
-if __name__ == '__main__':
-    main()
