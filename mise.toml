@@ -18,6 +18,7 @@ DEBUG = 1
 
 # PLUGINGS
 HADITH_SEARCH_ENDPOINT = ''
+# https://www.exchangerate-api.com
 EXCHANGE_RATE_API_KEY = ''
 
 [env.mise]

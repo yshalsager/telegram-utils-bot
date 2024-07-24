@@ -88,8 +88,6 @@ Before setting up the bot:
    API_HASH="0123456789abcdef0123456789abcdef"
    BOT_TOKEN="1234567890:abcdefghijklmnopqrstuvwxyz0123456789"
    BOT_ADMINS='123456,123456,123456'
-   # Plugins
-   EXCHANGE_RATE_API_KEY="0123456789abcdef0123456789abcdef"
 ```
 
 ### Using Docker (Recommended)
@@ -121,6 +119,14 @@ python3 -m src
 
 ## Acknowledgements
 
+### Libraries, Tools, etc
+
 - [Telethon Library](https://github.com/LonamiWebs/Telethon/)
 - [FFmpeg](https://ffmpeg.org/)
 - [aria2](https://aria2.github.io/)
+
+## Resources
+
+- [Quran.com](https://quran.com/)
+- [Sunnah.one](https://sunnah.one/)
+- [Exchange Rate API](https://exchangerate-api.com/)
