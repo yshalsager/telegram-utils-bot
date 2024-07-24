@@ -8,6 +8,7 @@ from os import getenv
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, ClassVar
+from uuid import uuid4
 
 import orjson
 import regex as re
@@ -17,6 +18,7 @@ from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 
+from src import TMP_DIR
 from src.modules.base import ModuleBase
 from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
@@ -861,34 +863,28 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply('Starting transcription process...')
     progress_message = await event.reply('<pre>Process output:</pre>')
+    output_dir = Path(TMP_DIR / str(uuid4()))
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    with NamedTemporaryFile(suffix=reply_message.file.ext) as temp_file:
+    with NamedTemporaryFile(suffix=reply_message.file.ext, dir=output_dir) as temp_file:
         await download_file(event, temp_file, reply_message, progress_message)
-        temp_file_path = Path(temp_file.name).with_name(reply_message.file.name)
-        Path(temp_file.name).rename(temp_file_path)
-        output_dir = Path(temp_file.name).parent
-
         tafrigh_command = (
-            f'tafrigh "{temp_file_path.absolute()}" '
-            f'--wit_client_access_tokens {wit_access_tokens} '
-            f'--output_dir "{output_dir.absolute()}" '
-            '--output_formats txt srt'
+            f'tafrigh "{temp_file.name}" -w {wit_access_tokens} -o "{output_dir}" -f txt srt'
         )
 
         await stream_shell_output(event, tafrigh_command, status_message, progress_message)
-
-        for output_file in output_dir.glob(f'{temp_file_path.stem}*'):
-            if output_file.suffix == temp_file_path.suffix:
-                continue
+        for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
+                renamed_file = output_file.with_stem(Path(reply_message.file.name).stem)
+                output_file.rename(renamed_file)
                 await upload_file(
                     event,
-                    output_file,
+                    renamed_file,
                     progress_message,
-                    caption=f'Transcription: {output_file.name}',
+                    caption=f'<code>{renamed_file.name}</code>',
                 )
             else:
-                await status_message.edit(f'Failed to generate {output_file.name}')
+                await status_message.edit(f'Failed to transcribe {renamed_file.name}')
 
     await status_message.edit('Transcription completed.')
 

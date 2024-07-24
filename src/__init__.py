@@ -9,6 +9,8 @@ WORK_DIR = Path(__package__)
 PARENT_DIR = WORK_DIR.parent
 DOWNLOADS_DIR = PARENT_DIR / 'downloads'
 DOWNLOADS_DIR.mkdir(exist_ok=True)
+TMP_DIR = PARENT_DIR / 'tmp'
+TMP_DIR.mkdir(exist_ok=True)
 
 # bot config
 IS_DEBUG: bool = getenv('DEBUG', '').lower() in ('true', '1')
