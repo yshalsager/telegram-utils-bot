@@ -6,6 +6,7 @@ from typing import ClassVar
 
 import orjson
 import regex as re
+from humanize import naturalsize
 from telethon.events import NewMessage
 from yt_dlp import YoutubeDL
 
@@ -118,10 +119,49 @@ async def get_youtube_subtitles(event: NewMessage.Event) -> None:
     await progress_message.delete()
 
 
+async def get_youtube_formats(event: NewMessage.Event) -> None:
+    progress_message = await event.reply('Fetching available formats...')
+    link = event.message.raw_text.split('ytformats ')[1].strip()
+    try:
+        ydl_opts = {**params, 'listformats': True}
+        info_dict = await get_running_loop().run_in_executor(
+            None, partial(YoutubeDL(ydl_opts).extract_info, link, download=False)
+        )
+        formats = info_dict.get('formats', [])
+        if not formats:
+            await progress_message.edit('No formats found.')
+            return
+
+        format_list = []
+        for f in formats:
+            format_id = f.get('format_id', 'N/A')
+            ext = f.get('ext', 'N/A')
+            resolution = f.get('resolution', 'N/A')
+            filesize = f.get('filesize', 'N/A')
+            if isinstance(filesize, int):
+                filesize = naturalsize(filesize, binary=True)
+            format_list.append(f'🆔 {format_id} | 📁 {ext} | 🖥️ {resolution} | 💾 {filesize}')
+
+        await edit_or_send_as_file(
+            event,
+            progress_message,
+            text=f'<b>Available formats:</b>\n\n{'\n'.join(format_list)}',
+            file_name=f"{info_dict['id']}_formats.txt",
+            caption=info_dict['webpage_url'],
+        )
+    except Exception as e:  # noqa: BLE001
+        await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
+
+
 class YTDLP(ModuleBase):
     name = 'YT-DLP'
     description = 'Use YT-DLP'
     commands: ClassVar[ModuleBase.CommandsT] = {
+        'ytformats': Command(
+            handler=get_youtube_formats,
+            description='[url]: Get available formats for a YouTube video.',
+            pattern=re.compile(rf'^/ytformats\s+{HTTP_URL_PATTERN}$'),
+        ),
         'ytinfo': Command(
             handler=get_youtube_info,
             description='[url]: Get video information as JSON.',
