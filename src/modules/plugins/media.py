@@ -886,7 +886,7 @@ async def video_create_process(event: NewMessage.Event) -> None:
     ffmpeg_command = (
         f'ffmpeg -hide_banner -y -f lavfi -i color=c=black:s=854x480:d={audio_message.file.duration} '
         f'-i "{audio_file}" -i "{subtitle_file}" '
-        f"-filter_complex \"[0:v]subtitles=f='{subtitle_file}':force_style='FontSize=24,Alignment=2'[v]\" "
+        f"-filter_complex \"[0:v]subtitles=f='{subtitle_file}':force_style='FontSize=28,Alignment=10,MarginV=190'[v]\" "
         f'-map "[v]" -map 1:a -map 2 '
         f'-c:v libx264 -preset ultrafast -c:a aac -b:a 48k '
         f'-c:s mov_text '
