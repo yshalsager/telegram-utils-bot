@@ -42,6 +42,7 @@ class MergeState(Enum):
 StateT = defaultdict[int, dict[str, Any]]
 
 merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
+video_create_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 video_update_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 
 
@@ -332,7 +333,6 @@ async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def merge_media_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
     merge_states[event.sender_id]['state'] = MergeState.COLLECTING
     merge_states[event.sender_id]['files'] = []
-
     reply_message = await get_reply_message(event, previous=True)
     merge_states[event.sender_id]['files'].append(reply_message.id)
     await event.reply('Send more files to merge.')
@@ -625,11 +625,7 @@ async def video_update_initial(event: NewMessage.Event | CallbackQuery.Event) ->
     video_update_states[event.sender_id]['files'] = []
     reply_message = await get_reply_message(event, previous=True)
     video_update_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply(
-        'Send the media file with audio to use.',
-        reply_to=reply_message.id,
-        buttons=Button.force_reply(),
-    )
+    await event.reply('Send the media file with audio to use.', reply_to=reply_message.id)
 
 
 async def video_update_process(event: NewMessage.Event) -> None:
@@ -858,6 +854,58 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
         event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
+async def video_create_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    video_create_states[event.sender_id]['state'] = MergeState.COLLECTING
+    video_create_states[event.sender_id]['files'] = []
+    reply_message = await get_reply_message(event, previous=True)
+    video_create_states[event.sender_id]['files'].append(reply_message.id)
+    await event.reply(
+        'Send the subtitle file (.srt) to use.',
+        reply_to=reply_message.id,
+        buttons=Button.clear(),
+    )
+
+
+async def video_create_process(event: NewMessage.Event) -> None:
+    video_create_states[event.sender_id]['state'] = MergeState.MERGING
+    audio_message = await event.client.get_messages(
+        event.chat_id, ids=video_create_states[event.sender_id]['files'][0]
+    )
+    subtitle_message = event.message
+    status_message = await event.reply('Starting video creation process...')
+    progress_message = await event.respond('<pre>Process output:</pre>')
+
+    audio_file = Path(TMP_DIR / audio_message.file.name)
+    subtitle_file = Path(TMP_DIR / subtitle_message.file.name)
+    output_file = audio_file.with_suffix('.mp4')
+    with audio_file.open('wb+') as f:
+        await download_file(event, f, audio_message, progress_message)
+    with subtitle_file.open('wb+') as f:
+        await download_file(event, f, subtitle_message, progress_message)
+
+    ffmpeg_command = (
+        f'ffmpeg -hide_banner -y -f lavfi -i color=c=black:s=854x480:d={audio_message.file.duration} '
+        f'-i "{audio_file}" -i "{subtitle_file}" '
+        f"-filter_complex \"[0:v]subtitles=f='{subtitle_file}':force_style='FontSize=24,Alignment=2'[v]\" "
+        f'-map "[v]" -map 1:a -map 2 '
+        f'-c:v libx264 -preset ultrafast -c:a aac -b:a 48k '
+        f'-c:s mov_text '
+        f'-shortest "{output_file}"'
+    )
+    await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+    if not output_file.exists() or not output_file.stat().st_size:
+        await status_message.edit('Video creation failed.')
+    else:
+        await upload_file(event, output_file, progress_message)
+        await status_message.edit('Video successfully created.')
+        output_file.unlink(missing_ok=True)
+
+    audio_file.unlink(missing_ok=True)
+    subtitle_file.unlink(missing_ok=True)
+    video_create_states.pop(event.sender_id)
+    raise StopPropagation
+
+
 async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
@@ -935,6 +983,7 @@ handlers = {
     'media split': split_media,
     'transcribe': transcribe_media,
     'video compress': compress_video,
+    'video create': video_create_initial,
     'video mute': mute_video,
     'video resize': resize_video,
     'video subtitle': extract_subtitle,
@@ -1053,6 +1102,14 @@ class Media(ModuleBase):
             description='[wit|whisper]: Transcribe audio or video to text and subtitle formats',
             pattern=re.compile(r'^/(media)\s+(transcribe)\s+(wit|whisper)$'),
             condition=partial(has_media_or_reply_with_media, any=True),
+            is_applicable_for_reply=True,
+        ),
+        'video create': Command(
+            name='video create',
+            handler=handler,
+            description='Create a video from audio and subtitle files',
+            pattern=re.compile(r'^/(video)\s+(create)$'),
+            condition=partial(has_media_or_reply_with_media, audio_or_voice=True),
             is_applicable_for_reply=True,
         ),
         'video compress': Command(
@@ -1176,6 +1233,17 @@ class Media(ModuleBase):
                     and e.sender_id in video_update_states
                     and video_update_states[e.sender_id]['state'] == MergeState.COLLECTING
                     and (e.audio or e.voice or e.video)
+                )
+            ),
+        )
+        bot.add_event_handler(
+            video_create_process,
+            NewMessage(
+                func=lambda e: (
+                    e.is_private
+                    and e.sender_id in video_create_states
+                    and video_create_states[e.sender_id]['state'] == MergeState.COLLECTING
+                    and e.file.ext.lower() == '.srt'
                 )
             ),
         )
