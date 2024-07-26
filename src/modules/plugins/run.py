@@ -13,7 +13,7 @@ from src import BOT_ADMINS
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_owner_in_private
-from src.utils.run import MAX_MESSAGE_LENGTH, run_subprocess
+from src.utils.run import MAX_MESSAGE_LENGTH, run_subprocess_exec, run_subprocess_shell
 from src.utils.telegram import delete_message_after
 
 
@@ -22,17 +22,19 @@ async def stream_shell_output(
     cmd: str,
     status_message: Message | None = None,
     progress_message: Message | None = None,
+    shell: bool = True,
 ) -> str:
     if not status_message:
         status_message = await event.reply('Starting process...')
     if not progress_message:
         progress_message = await event.reply('<pre>Process output:</pre>')
+    runner = run_subprocess_shell if shell else run_subprocess_exec
     buffer = ''
     code = None
     last_edit_time = datetime.now()
     edit_interval = timedelta(seconds=2)
 
-    async for full_log, return_code in run_subprocess(cmd):
+    async for full_log, return_code in runner(cmd):
         buffer, code = full_log, return_code
         if bool(buffer.strip()):
             current_time = datetime.now()
@@ -48,6 +50,8 @@ async def stream_shell_output(
                 await sleep(0.1)
 
     # Final update
+    if not buffer:
+        buffer = 'Empty output'
     with suppress(MessageNotModifiedError):
         await progress_message.edit(
             f'<pre>{buffer if len(buffer) < MAX_MESSAGE_LENGTH else buffer[:MAX_MESSAGE_LENGTH]}</pre>'
@@ -84,10 +88,12 @@ async def stream_shell_output(
     return status
 
 
-async def run_command(event: NewMessage.Event) -> None:
-    await stream_shell_output(
-        event, event.message.text.replace('/shell ', '', 1).replace('"', '\\"')
-    )
+async def run_shell(event: NewMessage.Event) -> None:
+    await stream_shell_output(event, event.message.text.replace('/shell ', '', 1), shell=True)  # noqa: S604
+
+
+async def run_exec(event: NewMessage.Event) -> None:
+    await stream_shell_output(event, event.message.text.replace('/exec ', '', 1), shell=False)
 
 
 class Shell(ModuleBase):
@@ -95,9 +101,15 @@ class Shell(ModuleBase):
     description = 'Run a shell command and stream its output.'
     commands: ClassVar[ModuleBase.CommandsT] = {
         'shell': Command(
-            handler=run_command,
+            handler=run_shell,
             description='Run a shell command',
             pattern=re.compile(r'^/shell\s+(.+)$'),
             condition=is_owner_in_private,
-        )
+        ),
+        'exec': Command(
+            handler=run_exec,
+            description='Execute a command',
+            pattern=re.compile(r'^/exec\s+(.+)$'),
+            condition=is_owner_in_private,
+        ),
     }

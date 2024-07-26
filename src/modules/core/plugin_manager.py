@@ -15,7 +15,7 @@ async def list_plugins(event: NewMessage.Event) -> None:
 
     for module in bot.modules_registry.modules:
         enabled_modules.append(module.name) if bot.modules_registry.modules_status.get(
-            module.name, False
+            module.name, True
         ) else disabled_modules.append(module.name)
 
     enabled_text = ', '.join(sorted(enabled_modules)) if enabled_modules else 'None'

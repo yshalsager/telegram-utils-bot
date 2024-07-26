@@ -15,7 +15,7 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import upload_file
 from src.utils.json import json_options, process_dict
-from src.utils.run import run_subprocess
+from src.utils.run import run_subprocess_shell
 from src.utils.telegram import edit_or_send_as_file
 
 YOUTUBE_URL_PATTERN = (
@@ -66,7 +66,7 @@ async def convert_subtitles(input_file: Path, srt_file: Path, txt_file: Path) ->
     :param txt_file: Path to the output TXT file
     """
 
-    async for _output, _code in run_subprocess(f'ffmpeg -i "{input_file}" "{srt_file}"'):
+    async for _output, _code in run_subprocess_shell(f'ffmpeg -i "{input_file}" "{srt_file}"'):
         await sleep(0.1)
         continue
     text_lines = OrderedDict.fromkeys(

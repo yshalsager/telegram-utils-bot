@@ -13,7 +13,7 @@ from src import PARENT_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_admin_in_private
-from src.utils.run import run_subprocess
+from src.utils.run import run_subprocess_shell
 
 
 async def restart(event: NewMessage.Event) -> None:
@@ -28,7 +28,7 @@ async def restart(event: NewMessage.Event) -> None:
 async def update(event: NewMessage.Event) -> None:
     """Update the bot."""
     message = await event.reply('Updating, please wait...')
-    async for output, code in run_subprocess(
+    async for output, code in run_subprocess_shell(
         'git pull --rebase && poetry install --with main',
         cwd=PARENT_DIR,
     ):
