@@ -2,11 +2,29 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from typing import Any, ClassVar
 
+import regex as re
 from telethon import TelegramClient
 from telethon.events import InlineQuery, NewMessage
+from telethon.tl.custom import Message
 
 from src.utils.command import Command, InlineCommand
+from src.utils.patterns import HTTP_URL_PATTERN
 from src.utils.telegram import get_reply_message
+
+
+def matches_command(
+    event: NewMessage.Event, reply_message: Message | None, command: Command
+) -> bool:
+    if not command.condition(event, reply_message):
+        return False
+
+    text = event.message.raw_text
+    has_file = bool(event.message.file)
+    is_url_message = bool(re.search(HTTP_URL_PATTERN, text))
+
+    if text and not has_file and not is_url_message:
+        return bool(command.pattern.match(text))
+    return bool(is_url_message or has_file)
 
 
 class ModuleBase(ABC):
@@ -34,13 +52,7 @@ class ModuleBase(ABC):
             await get_reply_message(event, previous=True) if event.message.is_reply else None
         )
         return any(
-            command.condition(event, reply_message)
-            and (
-                command.pattern.match(event.message.raw_text)
-                if (event.message.text and not event.message.file)
-                else bool(event.message.file)
-            )
-            for command in self.commands.values()
+            matches_command(event, reply_message, command) for command in self.commands.values()
         )
 
     @staticmethod

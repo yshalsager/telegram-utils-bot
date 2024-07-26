@@ -24,9 +24,10 @@ async def edit_or_send_as_file(
     text: str,
     file_name: str = 'output.txt',
     caption: str = '',
-) -> None:
+) -> bool:
     try:
         await message.edit(text)
+        return True
     except MessageTooLongError:
         progress_message = await event.reply('Sending file...')
         with NamedTemporaryFile(mode='w+', suffix='.txt') as temp_file:
@@ -36,6 +37,7 @@ async def edit_or_send_as_file(
             temp_file_path = temp_file_path.rename(temp_file_path.with_name(file_name))
             await upload_file(event, temp_file_path, progress_message, caption=caption)
             await progress_message.delete()
+        return False
 
 
 async def delete_message_after(message: Message, seconds: int = 10) -> None:

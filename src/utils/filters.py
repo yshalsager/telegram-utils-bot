@@ -11,11 +11,8 @@ from telethon.tl.types import (
 )
 
 from src import BOT_ADMINS
+from src.utils.patterns import HTTP_URL_PATTERN
 from src.utils.reply import ReplyState, reply_states
-
-URL_PATTERN = re.compile(
-    r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-)
 
 
 def is_admin_in_private(event: NewMessage.Event, _: Message) -> bool:
@@ -75,6 +72,8 @@ def has_media_or_reply_with_media(
     if not media_types:
         return True
     message = reply_message or event.message
+    if not message.file:
+        return False
 
     def check_media(_media_type: str) -> bool:
         return bool(getattr(message, _media_type, None))
@@ -130,5 +129,8 @@ def is_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
     return True
 
 
-def has_valid_url(event: NewMessage.Event, _: Message | None) -> bool:
-    return bool(URL_PATTERN.search(event.message.raw_text))
+def has_valid_url(
+    event: NewMessage.Event, reply_message: Message | None, pattern: str = HTTP_URL_PATTERN
+) -> bool:
+    message = reply_message or event.message
+    return bool(re.search(pattern, message.raw_text))

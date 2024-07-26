@@ -17,6 +17,7 @@ from src.utils.filters import (
     has_valid_url,
     is_file,
 )
+from src.utils.patterns import HTTP_URL_PATTERN
 from src.utils.telegram import get_reply_message
 
 
@@ -35,8 +36,9 @@ async def download_from_url(
 
 async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
     progress_message = await event.reply('Starting file download...')
-    if has_valid_url(event, None):
-        url = event.message.raw_text.split(maxsplit=1)[1].strip()
+    reply_message = await get_reply_message(event, previous=True)
+    if url_match := re.search(HTTP_URL_PATTERN, reply_message.raw_text):
+        url = url_match.group(0)
         download_to = await download_from_url(
             event, url, DOWNLOADS_DIR, progress_message=progress_message
         )
@@ -64,9 +66,11 @@ async def upload_file_command(event: NewMessage.Event) -> None:
 
 
 async def upload_from_url_command(event: NewMessage.Event) -> None:
-    command_parts = event.message.raw_text.split(maxsplit=2)[2].split('|', 1)
-    url = command_parts[0].strip()
-    custom_name = command_parts[1].strip() if len(command_parts) > 1 else None
+    reply_message = await get_reply_message(event, previous=True)
+    url = re.search(HTTP_URL_PATTERN, reply_message.raw_text).group(0)
+    custom_name = None
+    if custom := reply_message.raw_text.split('|', 1):
+        custom_name = custom[1].strip() if len(custom) > 1 else None
     progress_message = await event.reply('Starting file download...')
 
     with NamedTemporaryFile(dir=DOWNLOADS_DIR, delete=False) as temp_file:
@@ -149,5 +153,6 @@ class DownloadUpload(ModuleBase):
             description='[url] or [url] | [filename]: Download a file from URL and upload it to Telegram',
             pattern=re.compile(r'^/upload\s+url\s+(.+)$'),
             condition=has_valid_url,
+            is_applicable_for_reply=True,
         ),
     }
