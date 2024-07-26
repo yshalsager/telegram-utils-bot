@@ -40,7 +40,6 @@ params = {
     'format_sort': ['res:480', '+size', 'ext'],
     'restrictfilenames': True,
     'windowsfilenames': True,
-    'replace_in_metadata': ['title', r'\|', '_'],
 }
 
 
@@ -228,7 +227,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ydl_opts = {
         **params,
         'format': format_id,
-        'outtmpl': str(TMP_DIR / '%(title)s.%(ext)s'),
+        'outtmpl': str(TMP_DIR / '%(id)s.%(ext)s'),
         'progress_hooks': [lambda d: download_hook(d, progress_message)],
         'writethumbnail': True,
         'postprocessors': [
@@ -250,7 +249,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         )
         entries = info_dict.get('entries', [info_dict])  # Handle both single videos and playlists
         for entry in entries:
-            file_path = Path(TMP_DIR / f"{entry['title']}.{entry['ext']}")
+            file_path = Path(TMP_DIR / f"{entry['id']}.{entry['ext']}")
             await progress_message.edit('Uploading file...')
             if entry.get('vcodec') == 'none':  # audio
                 attributes = [
@@ -268,7 +267,9 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                         h=entry.get('height'),
                     )
                 ]
-
+            file_path = file_path.rename(
+                file_path.with_name(f"{re.sub('[/:*"\'<>|]', '_', entry['title'])}.{entry['ext']}")
+            )
             await upload_file(
                 event,
                 file_path,
