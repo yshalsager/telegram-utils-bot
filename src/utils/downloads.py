@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from io import BufferedWriter
 from pathlib import Path
 from tempfile import _TemporaryFileWrapper
+from typing import Any
 from urllib import parse
 from uuid import uuid4
 
@@ -64,6 +65,7 @@ async def upload_file(
     is_voice: bool = False,
     force_document: bool = False,
     caption: str = '',
+    **kwargs: Any,
 ) -> None:
     with output_file.open('rb') as file_to_upload:
         uploaded_file = await fast_upload_file(
@@ -81,6 +83,7 @@ async def upload_file(
         caption=caption if caption else None,
         voice_note=is_voice,
         reply_to=event.message.id if hasattr(event, 'message') else None,
+        **kwargs,
     )
 
 
