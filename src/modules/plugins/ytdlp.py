@@ -38,6 +38,7 @@ params = {
         '--split=16',
     ],
     'format_sort': ['res:480', '+size', 'ext'],
+    'restrictfilenames': True,
 }
 
 
