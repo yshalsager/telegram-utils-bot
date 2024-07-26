@@ -955,7 +955,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 else f' -m {whisper_model_path} --use_faster_whisper'
             )
 
-        await stream_shell_output(event, command, status_message, progress_message)
+        await stream_shell_output(event, command, status_message, progress_message, max_length=500)
         for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
                 renamed_file = output_file.with_stem(Path(reply_message.file.name).stem)

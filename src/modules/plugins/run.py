@@ -25,6 +25,7 @@ async def stream_shell_output(
     status_message: Message | None = None,
     progress_message: Message | None = None,
     shell: bool = True,
+    max_length: int = MAX_MESSAGE_LENGTH,
 ) -> str:
     if not status_message:
         status_message = await event.reply('Starting process...')
@@ -43,7 +44,7 @@ async def stream_shell_output(
             if current_time - last_edit_time >= edit_interval:
                 try:
                     await progress_message.edit(
-                        f'<pre>{buffer if len(buffer) < MAX_MESSAGE_LENGTH else buffer[:MAX_MESSAGE_LENGTH]}</pre>'
+                        f'<pre>{buffer if len(buffer) < max_length else buffer[:max_length]}</pre>'
                     )
                     last_edit_time = current_time
                     edit_interval = timedelta(seconds=SECONDS_TO_WAIT)
