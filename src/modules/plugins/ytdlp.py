@@ -39,6 +39,7 @@ params = {
     ],
     'format_sort': ['res:480', '+size', 'ext'],
     'restrictfilenames': True,
+    'windowsfilenames': True,
 }
 
 
