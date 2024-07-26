@@ -40,6 +40,7 @@ params = {
     'format_sort': ['res:480', '+size', 'ext'],
     'restrictfilenames': True,
     'windowsfilenames': True,
+    'replace_in_metadata': ['title', r'\|', '_'],
 }
 
 
