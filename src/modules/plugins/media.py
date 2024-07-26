@@ -906,7 +906,7 @@ async def video_create_process(event: NewMessage.Event) -> None:
     raise StopPropagation
 
 
-async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: PLR0912
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
         if event.data.decode().startswith('m|transcribe|'):
@@ -915,6 +915,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         else:
             buttons = [
                 [
+                    Button.inline('Vosk', 'm|transcribe|vosk'),
                     Button.inline('Whisper', 'm|transcribe|whisper'),
                     Button.inline('Wit', 'm|transcribe|wit'),
                 ]
@@ -944,14 +945,17 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
 
     with NamedTemporaryFile(suffix=reply_message.file.ext, dir=output_dir) as temp_file:
         await download_file(event, temp_file, reply_message, progress_message)
-        tafrigh_command = f'tafrigh "{temp_file.name}" -o "{output_dir}" -f txt srt'
-        tafrigh_command += (
-            f' -w {wit_access_tokens}'
-            if transcription_method == 'wit'
-            else f' -m {whisper_model_path} --use_faster_whisper'
-        )
+        if transcription_method == 'vosk':
+            command = f'vosk-transcriber --log-level warning -i {temp_file.name} -l ar -t srt -o {output_dir / Path(temp_file.name).with_suffix(".srt")}'
+        else:
+            command = f'tafrigh "{temp_file.name}" -o "{output_dir}" -f txt srt'
+            command += (
+                f' -w {wit_access_tokens}'
+                if transcription_method == 'wit'
+                else f' -m {whisper_model_path} --use_faster_whisper'
+            )
 
-        await stream_shell_output(event, tafrigh_command, status_message, progress_message)
+        await stream_shell_output(event, command, status_message, progress_message)
         for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
                 renamed_file = output_file.with_stem(Path(reply_message.file.name).stem)
