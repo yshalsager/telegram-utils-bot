@@ -1,5 +1,4 @@
-from asyncio import get_running_loop, run_coroutine_threadsafe, sleep
-from collections import OrderedDict
+from asyncio import get_running_loop, run_coroutine_threadsafe
 from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar
@@ -21,7 +20,7 @@ from src.utils.filters import has_valid_url
 from src.utils.json import json_options, process_dict
 from src.utils.patterns import HTTP_URL_PATTERN, YOUTUBE_URL_PATTERN
 from src.utils.progress import progress_callback
-from src.utils.run import run_subprocess_shell
+from src.utils.subtitles import convert_subtitles
 from src.utils.telegram import edit_or_send_as_file, get_reply_message
 
 cookies_file = Path(PARENT_DIR) / 'cookies.txt'
@@ -81,26 +80,6 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
             await progress_message.delete()
     except Exception as e:  # noqa: BLE001
         await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
-
-
-async def convert_subtitles(input_file: Path, srt_file: Path, txt_file: Path) -> None:
-    """
-    Convert VTT subtitle file to SRT and TXT formats.
-
-    :param input_file: Path to the input VTT file
-    :param srt_file: Path to the output SRT file
-    :param txt_file: Path to the output TXT file
-    """
-
-    async for _output, _code in run_subprocess_shell(f'ffmpeg -i "{input_file}" "{srt_file}"'):
-        await sleep(0.1)
-        continue
-    text_lines = OrderedDict.fromkeys(
-        line.strip()
-        for line in srt_file.read_text('utf-8').splitlines()
-        if line.strip() and not re.match(r'^\d+$', line) and '-->' not in line
-    )
-    txt_file.write_text('\n'.join(text_lines.keys()))
 
 
 async def get_subtitles(event: NewMessage.Event) -> None:

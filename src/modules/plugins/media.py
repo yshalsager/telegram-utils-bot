@@ -28,6 +28,7 @@ from src.utils.filters import has_media_or_reply_with_media, is_valid_reply_stat
 from src.utils.json import json_options, process_dict
 from src.utils.reply import ReplyState, handle_callback_query_for_reply_state, reply_states
 from src.utils.run import run_command
+from src.utils.subtitles import srt_to_txt
 from src.utils.telegram import delete_message_after, edit_or_send_as_file, get_reply_message
 
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
@@ -906,7 +907,7 @@ async def video_create_process(event: NewMessage.Event) -> None:
     raise StopPropagation
 
 
-async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: PLR0912
+async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
         if event.data.decode().startswith('m|transcribe|'):
@@ -945,6 +946,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
 
     with NamedTemporaryFile(suffix=reply_message.file.ext, dir=output_dir) as temp_file:
         await download_file(event, temp_file, reply_message, progress_message)
+        tmp_file_path = Path(temp_file.name)
         if transcription_method == 'vosk':
             command = f'vosk-transcriber --log-level warning -i {temp_file.name} -l ar -t srt -o {output_dir / Path(temp_file.name).with_suffix(".srt")}'
         else:
@@ -954,7 +956,8 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 if transcription_method == 'wit'
                 else f' -m {whisper_model_path} --use_faster_whisper'
             )
-
+        if transcription_method == 'vosk':
+            srt_to_txt(tmp_file_path.with_suffix('.srt'))
         await stream_shell_output(event, command, status_message, progress_message, max_length=500)
         for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
