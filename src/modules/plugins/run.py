@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 from typing import ClassVar
 
 import regex as re
-from telethon.errors import MessageNotModifiedError
+from telethon.errors import FloodWaitError, MessageNotModifiedError
 from telethon.events import NewMessage
 from telethon.tl.custom import Message
 
@@ -15,6 +15,8 @@ from src.utils.command import Command
 from src.utils.filters import is_owner_in_private
 from src.utils.run import MAX_MESSAGE_LENGTH, run_subprocess_exec, run_subprocess_shell
 from src.utils.telegram import delete_message_after
+
+SECONDS_TO_WAIT = 3
 
 
 async def stream_shell_output(
@@ -32,7 +34,7 @@ async def stream_shell_output(
     buffer = ''
     code = None
     last_edit_time = datetime.now()
-    edit_interval = timedelta(seconds=2)
+    edit_interval = timedelta(seconds=SECONDS_TO_WAIT)
 
     async for full_log, return_code in runner(cmd):
         buffer, code = full_log, return_code
@@ -44,8 +46,13 @@ async def stream_shell_output(
                         f'<pre>{buffer if len(buffer) < MAX_MESSAGE_LENGTH else buffer[:MAX_MESSAGE_LENGTH]}</pre>'
                     )
                     last_edit_time = current_time
+                    edit_interval = timedelta(seconds=SECONDS_TO_WAIT)
                 except MessageNotModifiedError:
                     pass
+                except FloodWaitError as e:
+                    edit_interval = timedelta(seconds=e.seconds) + timedelta(
+                        seconds=SECONDS_TO_WAIT
+                    )
             else:
                 await sleep(0.1)
 
