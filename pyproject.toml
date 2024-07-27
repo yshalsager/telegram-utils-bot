@@ -21,6 +21,7 @@ tafrigh = { extras = ["wit", "whisper"], version = "^1.6.0" }
 wikipedia = "^1.4.0"
 vosk = "^0.3.44"
 yt-dlp = "^2024.7.25"
+pymupdf = "^1.24.9"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.26.0"
