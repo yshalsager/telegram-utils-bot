@@ -53,8 +53,45 @@ def download_hook(d: dict[str, Any], message: Message) -> None:
         )
 
 
+def calculate_common_formats_and_sizes(
+    info_dict: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, int], int, int]:
+    entries = info_dict.get('entries', [info_dict])
+    common_formats: dict[str, Any] = {}
+    total_sizes: dict[str, int] = {}
+    worst_audio_size = 0
+
+    for entry in entries:
+        formats = entry.get('formats', [])
+        entry_formats = {
+            f['format_id']: {
+                'format_id': f['format_id'],
+                'acodec': f.get('acodec'),
+                'vcodec': f.get('vcodec'),
+                'format': f.get('format'),
+                'ext': f.get('ext'),
+            }
+            for f in formats
+        }
+
+        if not common_formats:
+            common_formats = entry_formats
+        else:
+            common_formats = {k: v for k, v in common_formats.items() if k in entry_formats}
+
+        for f in formats:
+            format_id = f['format_id']
+            size = f.get('filesize_approx', 0) or 0
+            total_sizes[format_id] = total_sizes.get(format_id, 0) + size
+
+            if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
+                worst_audio_size = max(worst_audio_size, size)
+
+    return common_formats, total_sizes, worst_audio_size, len(entries)
+
+
 async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    progress_message = await event.reply('Fetching video information...')
+    progress_message = await event.reply('Fetching information...')
     message = (
         await get_reply_message(event, previous=True)
         if isinstance(event, CallbackQuery.Event)
@@ -76,7 +113,10 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
             progress_message,
             text=f'<pre>{json_str}</pre>',
             file_name=f"{info_dict['id']}.json",
-            caption=info_dict['webpage_url'],
+            caption=f"<b>{info_dict['title']}</b>\n\n"
+            f"👤 <a href='{info_dict.get('uploader_url', '')}'>{info_dict.get('uploader', '')}</a>\n"
+            f"📽️ {len(info_dict.get('entries', [1]))} items\n"
+            f"{info_dict['webpage_url']}",
         )
         if not edited:
             await progress_message.delete()
@@ -92,7 +132,7 @@ async def get_subtitles(event: NewMessage.Event) -> None:
         else event.message
     )
     link = re.search(HTTP_URL_PATTERN, message.raw_text).group(0)
-    if match := re.search(r'\s+([a-z]{{2}})\s+', message.raw_text):
+    if match := re.search(r'\s+([a-z]{2})\s+', message.raw_text):
         language = match.group(1)
     else:
         language = 'ar'
@@ -105,34 +145,39 @@ async def get_subtitles(event: NewMessage.Event) -> None:
         'outtmpl': str(TMP_DIR / '%(title)s.%(ext)s'),
         'progress_hooks': [lambda d: download_hook(d, progress_message)],
     }
-    info_dict = {}
     try:
         info_dict = await get_running_loop().run_in_executor(
             None, partial(YoutubeDL(ydl_opts).extract_info, link, download=True)
         )
     except Exception as e:  # noqa: BLE001
         await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
-
-    subs = info_dict.get('requested_subtitles', {})
-    if not subs:
-        await progress_message.edit('No subtitles found.')
         return
-    for _lang, sub_info in subs.items():
-        vtt_path = Path(sub_info.get('filepath', ''))
-        if not vtt_path.exists():
+
+    entries = info_dict.get('entries', [info_dict])
+    for entry in entries:
+        subs = entry.get('requested_subtitles', {})
+        if not subs:
+            await progress_message.edit(f'No subtitles found for {entry.get("id")}.')
             continue
-        srt_path = vtt_path.with_suffix('.srt')
-        txt_path = vtt_path.with_suffix('.txt')
-        await convert_subtitles(vtt_path, srt_path, txt_path)
-        for file in [srt_path, txt_path]:
-            await upload_file(
-                event,
-                file,
-                progress_message,
-                caption=f'https://youtu.be/{info_dict.get("id")}',
-            )
-            file.unlink(missing_ok=True)
-        vtt_path.unlink(missing_ok=True)
+        for lang, sub_info in subs.items():
+            vtt_path = Path(sub_info.get('filepath', ''))
+            if not vtt_path.exists():
+                continue
+            srt_path = vtt_path.with_suffix('.srt')
+            txt_path = vtt_path.with_suffix('.txt')
+            await convert_subtitles(vtt_path, srt_path, txt_path)
+            for file in [srt_path, txt_path]:
+                file_path = file.rename(
+                    file.with_stem(f"{re.sub('[/:*"\'<>|]', '_', entry['title'])}-{lang}")
+                )
+                await upload_file(
+                    event,
+                    file_path,
+                    progress_message,
+                    caption=entry.get('webpage_url', ''),
+                )
+                file_path.unlink(missing_ok=True)
+            vtt_path.unlink(missing_ok=True)
     await progress_message.delete()
 
 
@@ -148,27 +193,33 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
         ydl_opts = {
             **params,
             'listformats': True,
-            'progress_hooks': [lambda d: download_hook(d, progress_message)],
         }
         info_dict = await get_running_loop().run_in_executor(
             None, partial(YoutubeDL(ydl_opts).extract_info, link, download=False)
         )
-        formats = info_dict.get('formats', [])
-        if not formats:
+        common_formats, total_sizes, worst_audio_size, entry_count = (
+            calculate_common_formats_and_sizes(info_dict)
+        )
+        if not common_formats:
             await progress_message.edit('No formats found.')
             return
 
-        format_list = [
-            (
-                f'🖥 {f.get('format', 'N/A')} | 📁 {f.get('ext', 'N/A')} | '
-                f'💾 {naturalsize(f.get('filesize_approx', 0) or 0, binary=True)}'
+        format_list = []
+        for format_id, f in common_formats.items():
+            if format_id not in total_sizes or total_sizes[format_id] == 0:
+                continue
+            total_size = total_sizes[format_id]
+            if f['vcodec'] != 'none':
+                total_size += worst_audio_size * entry_count
+            format_name = (
+                f"🖥 {f['format']} | 📁 {f['ext']} | 💾 {naturalsize(total_size, binary=True)}"
             )
-            for f in formats
-        ]
+            format_list.append(format_name)
+
         await edit_or_send_as_file(
             event,
             progress_message,
-            text=f'<b>Available formats:</b>\n\n{'\n'.join(format_list)}',
+            text=f'<b>Available formats ({entry_count} items):</b>\n\n{'\n'.join(format_list)}',
             file_name=f"{info_dict['id']}_formats.txt",
             caption=info_dict['webpage_url'],
         )
@@ -176,7 +227,7 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
 
 
-async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901
     is_url_event = (
         isinstance(event, CallbackQuery.Event)
         and event.data
@@ -205,20 +256,29 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         info_dict = await get_running_loop().run_in_executor(
             None, partial(YoutubeDL(ydl_opts).extract_info, link, download=False)
         )
-        formats = info_dict.get('formats', [])
-        if not formats:
+        common_formats, total_sizes, worst_audio_size, entry_count = (
+            calculate_common_formats_and_sizes(info_dict)
+        )
+        if not common_formats:
             await progress_message.edit('No formats found.')
             return
 
         buttons = []
-        for f in filter(lambda x: x.get('filesize_approx'), formats):
-            if (_type == 'audio' and f.get('acodec') != 'none' and f.get('vcodec') == 'none') or (
-                _type == 'video' and f.get('vcodec') != 'none'
+        for format_id, f in common_formats.items():
+            if format_id not in total_sizes or total_sizes[format_id] == 0:
+                continue
+            total_size = total_sizes[format_id]
+            if f['vcodec'] != 'none':
+                total_size += worst_audio_size * entry_count
+            if (_type == 'audio' and f['acodec'] != 'none' and f['vcodec'] == 'none') or (
+                _type == 'video' and f['vcodec'] != 'none'
             ):
-                format_name = f"{f.get('format')} | {f.get('ext')} | {naturalsize(f.get('filesize_approx', 0) or 0, binary=True)}"
-                buttons.append([Button.inline(format_name, f'ytdown|{_type}|{f["format_id"]}')])
-
-        await event.edit(f'Choose {_type} format:', buttons=buttons)
+                format_name = f"{f['format']} | {f['ext']} | {naturalsize(total_size, binary=True)}"
+                buttons.append([Button.inline(format_name, f'ytdown|{_type}|{format_id}')])
+        if not buttons:
+            await progress_message.edit('No suitable formats found.')
+            return
+        await event.edit(f'Choose {_type} format for ({entry_count}) items:', buttons=buttons)
         return
 
     # User selected a specific format

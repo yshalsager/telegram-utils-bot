@@ -142,7 +142,7 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
         await event.answer(message, alert=True)
 
     await handle_module_execution(event, module, (event, command), response_func)
-    await sleep(60)
+    await sleep(60 * 5)
     await event.delete()
 
 
