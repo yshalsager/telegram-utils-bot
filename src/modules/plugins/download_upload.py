@@ -15,6 +15,7 @@ from src.utils.filters import (
     has_file_or_reply_with_file,
     has_no_file_or_reply_with_file,
     has_valid_url,
+    is_admin_in_private,
     is_file,
 )
 from src.utils.patterns import HTTP_URL_PATTERN
@@ -122,15 +123,15 @@ class DownloadUpload(ModuleBase):
             description='Download a file: Reply to a message with a file and use <code>/download</code>, '
             'or provide a URL after the command',
             pattern=re.compile(r'^/download(?:\s+(.+))?$'),
-            condition=lambda event, message: has_file_or_reply_with_file(event, message)
-            or has_valid_url(event, message),
+            condition=lambda event, message: is_admin_in_private(event, message) and (has_file_or_reply_with_file(event, message)
+            or has_valid_url(event, message)),
             is_applicable_for_reply=True,
         ),
         'upload': Command(
             handler=upload_file_command,
             description='[filepath]: Upload a file from local filesystem',
             pattern=re.compile(r'^/upload\s+(.+)$'),
-            condition=has_no_file_or_reply_with_file,
+            condition=lambda event, message: is_admin_in_private(event, message) and has_no_file_or_reply_with_file(event, message),
         ),
         'upload file': Command(
             handler=upload_as_file_or_media,
