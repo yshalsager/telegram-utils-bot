@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import ClassVar
@@ -12,14 +13,18 @@ from src.utils.downloads import get_download_name, upload_file
 from src.utils.fast_telethon import download_file
 from src.utils.filters import has_file, is_valid_reply_state
 from src.utils.progress import progress_callback
-from src.utils.reply import ReplyState, handle_callback_query_for_reply_state, reply_states
+from src.utils.reply import ReplyState, StateT, handle_callback_query_for_reply_state
 from src.utils.telegram import get_reply_message
+
+reply_states: StateT = defaultdict(
+    lambda: {'state': ReplyState.WAITING, 'media_message_id': None, 'reply_message_id': None}
+)
 
 
 async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         return await handle_callback_query_for_reply_state(
-            event, 'Please provide a new filename for the file.'
+            event, reply_states, 'Please provide a new filename for the file.'
         )
 
     if event.sender_id in reply_states:
@@ -78,5 +83,5 @@ class Rename(ModuleBase):
     def register_handlers(bot: TelegramClient) -> None:
         bot.add_event_handler(
             rename,
-            NewMessage(func=lambda e: is_valid_reply_state(e)),
+            NewMessage(func=lambda e: is_valid_reply_state(e, reply_states)),
         )

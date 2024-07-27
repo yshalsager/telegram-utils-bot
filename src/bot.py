@@ -33,8 +33,9 @@ commands_with_modifiers = (
     'media',
     'video',
     'tasks',
-    'plugins',
     'permissions',
+    'pdf',
+    'plugins',
     'upload',
     'transcribe',
 )

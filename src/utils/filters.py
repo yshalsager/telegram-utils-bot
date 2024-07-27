@@ -12,7 +12,7 @@ from telethon.tl.types import (
 
 from src import BOT_ADMINS
 from src.utils.patterns import HTTP_URL_PATTERN
-from src.utils.reply import ReplyState, reply_states
+from src.utils.reply import ReplyState, StateT
 
 
 def is_admin_in_private(event: NewMessage.Event, _: Message) -> bool:
@@ -99,7 +99,7 @@ def has_media(event: NewMessage.Event, reply_message: Message | None, **media_ty
     return all(checks)
 
 
-def is_valid_reply_state(event: NewMessage.Event) -> bool:
+def is_valid_reply_state(event: NewMessage.Event, reply_states: StateT) -> bool:
     return (
         event.is_private
         and event.is_reply

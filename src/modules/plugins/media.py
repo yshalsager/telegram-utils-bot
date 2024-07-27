@@ -30,14 +30,15 @@ from src.utils.reply import (
     ReplyState,
     StateT,
     handle_callback_query_for_reply_state,
-    reply_states,
 )
 from src.utils.run import run_command
 from src.utils.subtitles import srt_to_txt
 from src.utils.telegram import delete_message_after, edit_or_send_as_file, get_reply_message
 
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
-
+reply_states: StateT = defaultdict(
+    lambda: {'state': ReplyState.WAITING, 'media_message_id': None, 'reply_message_id': None}
+)
 merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 video_create_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 video_update_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
@@ -180,6 +181,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         return await handle_callback_query_for_reply_state(
             event,
+            reply_states,
             'Please enter the start and end times in the format: [start time] [end time] '
             '(e.g., <code>00:00:00 00:30:00</code>)',
         )
@@ -223,6 +225,7 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         return await handle_callback_query_for_reply_state(
             event,
+            reply_states,
             'Please enter the split duration in the format: [duration]h/m/s (e.g., 30m, 1h, 90s)',
         )
 
@@ -297,7 +300,7 @@ async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         return await handle_callback_query_for_reply_state(
-            event, 'Please enter the title and artist in the format: Title - Artist'
+            event, reply_states, 'Please enter the title and artist in the format: Title - Artist'
         )
 
     if event.sender_id in reply_states:
@@ -1192,7 +1195,8 @@ class Media(ModuleBase):
             set_metadata,
             NewMessage(
                 func=lambda e: (
-                    is_valid_reply_state(e) and re.match(r'^.+\s+-\s+.+$', e.message.text)
+                    is_valid_reply_state(e, reply_states)
+                    and re.match(r'^.+\s+-\s+.+$', e.message.text)
                 )
             ),
         )
@@ -1200,7 +1204,8 @@ class Media(ModuleBase):
             split_media,
             NewMessage(
                 func=lambda e: (
-                    is_valid_reply_state(e) and re.match(r'^(\d+[hms])$', e.message.text)
+                    is_valid_reply_state(e, reply_states)
+                    and re.match(r'^(\d+[hms])$', e.message.text)
                 )
             ),
         )
@@ -1208,7 +1213,7 @@ class Media(ModuleBase):
             cut_media,
             NewMessage(
                 func=lambda e: (
-                    is_valid_reply_state(e)
+                    is_valid_reply_state(e, reply_states)
                     and re.match(r'^(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$', e.message.text)
                 )
             ),
