@@ -13,10 +13,18 @@ from src import TMP_DIR
 from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
-from src.utils.filters import has_pdf_file
-from src.utils.reply import MergeState, StateT
+from src.utils.filters import has_pdf_file, is_valid_reply_state
+from src.utils.reply import (
+    MergeState,
+    ReplyState,
+    StateT,
+    handle_callback_query_for_reply_state,
+)
 from src.utils.telegram import get_reply_message
 
+reply_states: StateT = defaultdict(
+    lambda: {'state': ReplyState.WAITING, 'media_message_id': None, 'reply_message_id': None}
+)
 merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 
 
@@ -71,20 +79,20 @@ async def merge_pdf_process(event: CallbackQuery.Event) -> None:
     status_message = await event.respond('Starting PDF merge process...')
     progress_message = await event.respond('Merging PDFs...')
 
-    temp_files: list[Path] = []
     with pymupdf.open() as merged_pdf:
         for file_id in files:
             message = await event.client.get_messages(event.chat_id, ids=file_id)
-            with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf', delete=False) as temp_file:
+            with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
                 temp_file_path = await download_file(event, temp_file, message, progress_message)
-                temp_files.append(temp_file_path)
                 with pymupdf.open(temp_file_path) as pdf_doc:
                     merged_pdf.insert_pdf(pdf_doc)
-                    temp_file.close()  # Close but don't delete
         with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as out_file:
             merged_pdf.save(out_file.name)
             output_file_path = Path(out_file.name)
             if output_file_path.exists() and output_file_path.stat().st_size:
+                output_file_path = output_file_path.rename(
+                    output_file_path.with_stem(f'merged_{Path(message.file.name).stem}')
+                )
                 await upload_file(
                     event,
                     output_file_path,
@@ -94,17 +102,59 @@ async def merge_pdf_process(event: CallbackQuery.Event) -> None:
             else:
                 await status_message.edit('Merging failed.')
 
-    for file in temp_files:
-        file.unlink(missing_ok=True)
-
     await progress_message.delete()
     merge_states.pop(event.sender_id)
+
+
+async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        return await handle_callback_query_for_reply_state(
+            event,
+            reply_states,
+            'Please enter number of pages to split PDF into:',
+        )
+
+    if event.sender_id in reply_states:
+        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
+        reply_message = await event.client.get_messages(
+            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
+        )
+    else:
+        reply_message = await get_reply_message(event, previous=True)
+    pages_count = int(re.search(r'(\d+)', event.message.text).group(1))
+    progress_message = await event.reply('Splitting PDF...')
+
+    with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        with pymupdf.open(temp_file_path) as doc:
+            total_pages = len(doc)
+            split_size = total_pages // pages_count
+            remainder = total_pages % pages_count
+
+            for i in range(pages_count):
+                start = i * split_size
+                end = start + split_size + (1 if i < remainder else 0)
+
+                with pymupdf.open() as new_doc:
+                    new_doc.insert_pdf(doc, from_page=start, to_page=end - 1)
+                    output_file = temp_file_path.with_name(
+                        f'{Path(reply_message.file.name).stem}_{i + 1}.pdf'
+                    )
+                    new_doc.save(output_file)
+                    await upload_file(event, output_file, progress_message)
+                    output_file.unlink(missing_ok=True)
+
+        await progress_message.edit('PDF split complete.')
+
+    if event.sender_id in reply_states:
+        reply_states.pop(event.sender_id)
     raise StopPropagation
 
 
 handlers: CommandHandlerDict = {
-    'pdf text': extract_pdf_text,
     'pdf merge': merge_pdf_initial,
+    'pdf text': extract_pdf_text,
+    'pdf split': split_pdf,
 }
 
 handler = partial(dynamic_handler, handlers)
@@ -122,10 +172,18 @@ class PDF(ModuleBase):
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),
+        'pdf split': Command(
+            name='pdf split',
+            handler=handler,
+            description='[pages] - Split PDF into multiple pages',
+            pattern=re.compile(r'^/(pdf)\s+(split)\s+(\d+)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
         'pdf text': Command(
             name='pdf text',
             handler=handler,
-            description='[bitrate] - compress audio to [bitrate] kbps',
+            description='Extract text from PDF',
             pattern=re.compile(r'^/(pdf)\s+(text)$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
@@ -150,5 +208,13 @@ class PDF(ModuleBase):
                 pattern=b'finish_pdf_merge',
                 func=lambda e: e.is_private
                 and merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
+            ),
+        )
+        bot.add_event_handler(
+            split_pdf,
+            NewMessage(
+                func=lambda e: (
+                    is_valid_reply_state(e, reply_states) and re.match(r'^(\d+)$', e.message.text)
+                )
             ),
         )
