@@ -12,8 +12,8 @@ from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, get_filename_from_url, upload_file
 from src.utils.filters import (
-    has_file_or_reply_with_file,
-    has_no_file_or_reply_with_file,
+    has_file,
+    has_no_file,
     has_valid_url,
     is_admin_in_private,
     is_file,
@@ -123,21 +123,22 @@ class DownloadUpload(ModuleBase):
             description='Download a file: Reply to a message with a file and use <code>/download</code>, '
             'or provide a URL after the command',
             pattern=re.compile(r'^/download(?:\s+(.+))?$'),
-            condition=lambda event, message: is_admin_in_private(event, message) and (has_file_or_reply_with_file(event, message)
-            or has_valid_url(event, message)),
+            condition=lambda event, message: is_admin_in_private(event, message)
+            and (has_file(event, message) or has_valid_url(event, message)),
             is_applicable_for_reply=True,
         ),
         'upload': Command(
             handler=upload_file_command,
             description='[filepath]: Upload a file from local filesystem',
             pattern=re.compile(r'^/upload\s+(.+)$'),
-            condition=lambda event, message: is_admin_in_private(event, message) and has_no_file_or_reply_with_file(event, message),
+            condition=lambda event, message: is_admin_in_private(event, message)
+            and has_no_file(event, message),
         ),
         'upload file': Command(
             handler=upload_as_file_or_media,
             description='Upload media as file: Reply to a message with media and use <code>/as_file</code>',
             pattern=re.compile(r'^/upload\s+file$'),
-            condition=lambda event, message: has_file_or_reply_with_file(event, message)
+            condition=lambda event, message: has_file(event, message)
             and not is_file(event, message),
             is_applicable_for_reply=True,
         ),
@@ -145,8 +146,7 @@ class DownloadUpload(ModuleBase):
             handler=upload_as_file_or_media,
             description='Upload document as media: Reply to a message with a file and use <code>/as_media</code>',
             pattern=re.compile(r'^/upload\s+media$'),
-            condition=lambda event, message: has_file_or_reply_with_file(event, message)
-            and is_file(event, message),
+            condition=lambda event, message: has_file(event, message) and is_file(event, message),
             is_applicable_for_reply=True,
         ),
         'upload url': Command(

@@ -10,7 +10,7 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import get_download_name, upload_file
 from src.utils.fast_telethon import download_file
-from src.utils.filters import has_file_or_reply_with_file, is_valid_reply_state
+from src.utils.filters import has_file, is_valid_reply_state
 from src.utils.progress import progress_callback
 from src.utils.reply import ReplyState, handle_callback_query_for_reply_state, reply_states
 from src.utils.telegram import get_reply_message
@@ -69,7 +69,7 @@ class Rename(ModuleBase):
             handler=rename,
             description='[new filename] Rename a Telegram file',
             pattern=re.compile(r'^/rename\s+(.+)$'),
-            condition=has_file_or_reply_with_file,
+            condition=has_file,
             is_applicable_for_reply=True,
         )
     }

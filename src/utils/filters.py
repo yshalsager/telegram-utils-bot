@@ -23,23 +23,21 @@ def is_owner_in_private(event: NewMessage.Event, _: Message) -> bool:
     return bool(event.is_private and event.sender_id == BOT_ADMINS[0])
 
 
-def has_file_or_reply_with_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
+def has_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
     return bool(
         (event.message.is_reply and reply_message and reply_message.file) or event.message.file
     )
 
 
-def has_no_file_or_reply_with_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
-    return not has_file_or_reply_with_file(event, reply_message)
+def has_no_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
+    return not has_file(event, reply_message)
 
 
 def is_reply_in_private(event: NewMessage.Event, _: Message | None) -> bool:
     return bool(event.is_private and event.message.is_reply)
 
 
-def has_media_or_reply_with_media(
-    event: NewMessage.Event, reply_message: Message | None, **media_types: bool
-) -> bool:
+def has_media(event: NewMessage.Event, reply_message: Message | None, **media_types: bool) -> bool:
     """
     Check if the message or its reply contains specific types of media.
 
