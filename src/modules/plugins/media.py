@@ -20,11 +20,11 @@ from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 
 from src import TMP_DIR
-from src.modules.base import ModuleBase
+from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
 from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
-from src.utils.filters import has_media_or_reply_with_media, is_valid_reply_state
+from src.utils.filters import has_media, is_valid_reply_state
 from src.utils.json import json_options, process_dict
 from src.utils.reply import ReplyState, handle_callback_query_for_reply_state, reply_states
 from src.utils.run import run_command
@@ -977,7 +977,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
-handlers = {
+handlers: CommandHandlerDict = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
     'audio metadata': set_metadata,
@@ -1000,22 +1000,7 @@ handlers = {
     'voice': convert_to_voice_note,
 }
 
-
-async def handler(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    if isinstance(event, CallbackQuery.Event):
-        command = event.data.decode('utf-8')
-        if command.startswith('m|'):
-            command = command[2:]
-        command = command.replace('_', ' ')
-        if '|' in command:
-            command, _ = command.split('|', 1)
-    else:
-        command = ' '.join(' '.join(event.pattern_match.groups()).split(' ')[:2])
-    if command not in handlers:
-        await event.reply('Command not found.')
-        return
-
-    await handlers[command](event)
+handler = partial(dynamic_handler, handlers)
 
 
 class Media(ModuleBase):
@@ -1027,7 +1012,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[bitrate] - compress audio to [bitrate] kbps',
             pattern=re.compile(r'^/(audio)\s+(compress)\s+(\d+)$'),
-            condition=partial(has_media_or_reply_with_media, audio=True),
+            condition=partial(has_media, audio=True),
             is_applicable_for_reply=True,
         ),
         'audio convert': Command(
@@ -1035,7 +1020,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Convert a video or voice note to an audio',
             pattern=re.compile(r'^/(audio)\s+(convert)$'),
-            condition=partial(has_media_or_reply_with_media, not_audio=True),
+            condition=partial(has_media, not_audio=True),
             is_applicable_for_reply=True,
         ),
         'audio metadata': Command(
@@ -1043,7 +1028,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[title] - [artist] - Set title and artist of an audio file',
             pattern=re.compile(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$'),
-            condition=partial(has_media_or_reply_with_media, audio=True),
+            condition=partial(has_media, audio=True),
             is_applicable_for_reply=True,
         ),
         'audio trim': Command(
@@ -1051,7 +1036,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Trim audio silence',
             pattern=re.compile(r'^/(audio)\s+(trim)$'),
-            condition=partial(has_media_or_reply_with_media, audio_or_voice=True),
+            condition=partial(has_media, audio_or_voice=True),
             is_applicable_for_reply=True,
         ),
         'media amplify': Command(
@@ -1059,7 +1044,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[factor] - Amplify audio volume by the specified factor (e.g., 1.5 for 50% increase)',
             pattern=re.compile(r'^/(media)\s+(amplify)\s+(\d+(\.\d+)?)$'),
-            condition=partial(has_media_or_reply_with_media, any=True),
+            condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media convert': Command(
@@ -1067,7 +1052,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[format] - Convert media to specified format',
             pattern=re.compile(r'^/(media)\s+(convert)\s+(\w+)$'),
-            condition=partial(has_media_or_reply_with_media, any=True),
+            condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media cut': Command(
@@ -1075,7 +1060,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[HH:MM:SS HH:MM:SS] - Cut audio/video from start time to end time',
             pattern=re.compile(r'^/(media)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$'),
-            condition=partial(has_media_or_reply_with_media, any=True),
+            condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media split': Command(
@@ -1084,7 +1069,7 @@ class Media(ModuleBase):
             description='[duration]h/m/s - Split audio/video into segments of specified duration '
             '(e.g., 30m, 1h, 90s)',
             pattern=re.compile(r'^/(media)\s+(split)\s+(\d+[hms])$'),
-            condition=partial(has_media_or_reply_with_media, any=True),
+            condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media merge': Command(
@@ -1092,7 +1077,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Merge multiple files',
             pattern=re.compile(r'^/(media)\s+(merge)$'),
-            condition=partial(has_media_or_reply_with_media, any=True),
+            condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
         'media info': Command(
@@ -1100,7 +1085,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Get media info',
             pattern=re.compile(r'^/(media)\s+(info)$'),
-            condition=partial(has_media_or_reply_with_media, any=True),
+            condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
         'transcribe': Command(
@@ -1108,7 +1093,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[wit|whisper]: Transcribe audio or video to text and subtitle formats',
             pattern=re.compile(r'^/(media)\s+(transcribe)\s+(wit|whisper)$'),
-            condition=partial(has_media_or_reply_with_media, any=True),
+            condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
         'video create': Command(
@@ -1116,7 +1101,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Create a video from audio and subtitle files',
             pattern=re.compile(r'^/(video)\s+(create)$'),
-            condition=partial(has_media_or_reply_with_media, audio_or_voice=True),
+            condition=partial(has_media, audio_or_voice=True),
             is_applicable_for_reply=True,
         ),
         'video compress': Command(
@@ -1124,7 +1109,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[PERCENTAGE] - Compress video to target percentage of original size (20-90)',
             pattern=re.compile(r'^/(video)\s+(compress)\s+(\d{1,2})$'),
-            condition=partial(has_media_or_reply_with_media, video=True),
+            condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
         ),
         'video mute': Command(
@@ -1132,7 +1117,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Mute video',
             pattern=re.compile(r'^/(video)\s+(mute)$'),
-            condition=partial(has_media_or_reply_with_media, video_or_video_note=True),
+            condition=partial(has_media, video_or_video_note=True),
             is_applicable_for_reply=True,
         ),
         'video resize': Command(
@@ -1142,7 +1127,7 @@ class Media(ModuleBase):
             pattern=re.compile(
                 rf'^/(video)\s+(resize)\s+({'|'.join(map(str, ALLOWED_VIDEO_QUALITIES))})$'
             ),
-            condition=partial(has_media_or_reply_with_media, video=True),
+            condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
         ),
         'video subtitle': Command(
@@ -1150,7 +1135,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Extract subtitle streams from a video',
             pattern=re.compile(r'^/(video)\s+(subtitle)$'),
-            condition=partial(has_media_or_reply_with_media, video=True),
+            condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
         ),
         'video thumbnails': Command(
@@ -1158,7 +1143,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Generate a grid of 16 thumbnails from a video',
             pattern=re.compile(r'^/(video)\s+(thumbnails)$'),
-            condition=partial(has_media_or_reply_with_media, video=True),
+            condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
         ),
         'video update': Command(
@@ -1166,7 +1151,7 @@ class Media(ModuleBase):
             handler=handler,
             description='Replace audio track of a video without re-encoding',
             pattern=re.compile(r'^/(video)\s+(update)$'),
-            condition=partial(has_media_or_reply_with_media, video=True),
+            condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
         ),
         'video x265': Command(
@@ -1174,7 +1159,7 @@ class Media(ModuleBase):
             handler=handler,
             description='[CRF] - Encode video with x265 codec and specified CRF value (20-28, lower is better quality)',
             pattern=re.compile(r'^/(video)\s+(x265)\s+(\d{2})$'),
-            condition=partial(has_media_or_reply_with_media, video=True),
+            condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
         ),
         'voice': Command(
@@ -1182,7 +1167,7 @@ class Media(ModuleBase):
             handler=convert_to_voice_note,
             description='Convert to voice note',
             pattern=re.compile(r'^/(voice)$'),
-            condition=partial(has_media_or_reply_with_media, not_voice=True),
+            condition=partial(has_media, not_voice=True),
             is_applicable_for_reply=True,
         ),
     }
