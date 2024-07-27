@@ -1,7 +1,6 @@
 import contextlib
 from collections import defaultdict
 from datetime import datetime
-from enum import Enum, auto
 from functools import partial
 from itertools import zip_longest
 from math import floor
@@ -26,21 +25,18 @@ from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.filters import has_media, is_valid_reply_state
 from src.utils.json import json_options, process_dict
-from src.utils.reply import ReplyState, handle_callback_query_for_reply_state, reply_states
+from src.utils.reply import (
+    MergeState,
+    ReplyState,
+    StateT,
+    handle_callback_query_for_reply_state,
+    reply_states,
+)
 from src.utils.run import run_command
 from src.utils.subtitles import srt_to_txt
 from src.utils.telegram import delete_message_after, edit_or_send_as_file, get_reply_message
 
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
-
-
-class MergeState(Enum):
-    IDLE = auto()
-    COLLECTING = auto()
-    MERGING = auto()
-
-
-StateT = defaultdict[int, dict[str, Any]]
 
 merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 video_create_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
