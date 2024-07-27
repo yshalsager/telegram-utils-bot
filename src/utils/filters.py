@@ -37,6 +37,9 @@ def is_reply_in_private(event: NewMessage.Event, _: Message | None) -> bool:
     return bool(event.is_private and event.message.is_reply)
 
 
+all_media_types = ['audio', 'voice', 'video', 'video_note']
+
+
 def has_media(event: NewMessage.Event, reply_message: Message | None, **media_types: bool) -> bool:
     """
     Check if the message or its reply contains specific types of media.
@@ -79,13 +82,14 @@ def has_media(event: NewMessage.Event, reply_message: Message | None, **media_ty
     checks = []
     for media_type, should_have in media_types.items():
         if media_type == 'any':
-            checks.append(
-                any(check_media(t) for t in ['audio', 'voice', 'video', 'video_note'])
-                == should_have
-            )
+            checks.append(any(check_media(t) for t in all_media_types) == should_have)
         elif media_type.startswith('not_'):
             actual_type = media_type[4:]
-            checks.append(check_media(actual_type) != should_have)
+            other_types = [t for t in all_media_types if t != actual_type]
+            checks.append(
+                (not check_media(actual_type))
+                and any(check_media(t) for t in other_types) == should_have
+            )
         elif '_or_' in media_type:
             types = media_type.split('_or_')
             checks.append(any(check_media(t) for t in types) == should_have)
