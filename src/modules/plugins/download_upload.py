@@ -50,8 +50,8 @@ async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -
         reply_message = await get_reply_message(event, previous=True)
         download_to = DOWNLOADS_DIR / get_download_name(reply_message)
         with download_to.open('wb') as temp_file:
-            await download_file(event, temp_file, reply_message, progress_message)
-            Path(temp_file.name).rename(download_to)
+            temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+            temp_file_path.rename(download_to)
     await progress_message.edit(f'File successfully downloaded: <code>{download_to}</code>')
 
 
@@ -104,9 +104,9 @@ async def upload_as_file_or_media(event: NewMessage.Event | CallbackQuery.Event)
     progress_message = await event.reply('Starting download...')
 
     with NamedTemporaryFile() as temp_file:
-        await download_file(event, temp_file, reply_message, progress_message)
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         await progress_message.edit('Download complete. Starting upload...')
-        temp_file_path = Path(temp_file.name).with_name(reply_message.file.name)
+        temp_file_path = temp_file_path.rename(temp_file_path.with_name(reply_message.file.name))
         await upload_file(event, temp_file_path, progress_message, force_document=force_document)
 
     await progress_message.edit(

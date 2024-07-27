@@ -47,7 +47,7 @@ async def download_file(
     temp_file: _TemporaryFileWrapper | BufferedWriter,
     reply_message: Message,
     progress_message: Message,
-) -> None:
+) -> Path:
     await fast_download_file(
         event.client,
         reply_message.document,
@@ -56,6 +56,7 @@ async def download_file(
             current, total, progress_message, 'Downloading'
         ),
     )
+    return Path(temp_file.name)
 
 
 async def upload_file(

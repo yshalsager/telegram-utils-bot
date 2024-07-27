@@ -86,14 +86,14 @@ async def process_media(
     progress_message = await event.reply('<pre>Process output:</pre>')
 
     with NamedTemporaryFile() as temp_file:
-        await download_file(event, temp_file, reply_message, progress_message)
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         if get_file_name:
             input_file = get_download_name(reply_message)
-            output_file = (Path(temp_file.name).parent / input_file).with_suffix(output_suffix)
+            output_file = (temp_file_path.parent / input_file).with_suffix(output_suffix)
             if output_file.name == input_file.name:
                 output_file = output_file.with_name(f'_{output_file.name}')
         else:
-            output_file = Path(temp_file.name).with_suffix(output_suffix)
+            output_file = temp_file_path.with_suffix(output_suffix)
 
         if get_bitrate:
             video_bitrate, audio_bitrate = await get_media_bitrate(temp_file.name)
@@ -252,9 +252,9 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     progress_message = await event.reply('<pre>Process output:</pre>')
     with NamedTemporaryFile() as temp_file:
-        await download_file(event, temp_file, reply_message, progress_message)
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         input_file = get_download_name(reply_message)
-        output_file_base = (Path(temp_file.name).parent / input_file).with_suffix('')
+        output_file_base = (temp_file_path.parent / input_file).with_suffix('')
 
         output_pattern = f'{output_file_base.stem}_segment_%03d{input_file.suffix}'
         ffmpeg_command = (
