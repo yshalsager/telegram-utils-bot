@@ -1,4 +1,5 @@
 from collections import defaultdict
+from contextlib import suppress
 from functools import partial
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -151,7 +152,62 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     raise StopPropagation
 
 
+def parse_page_numbers(input_string: str) -> list[int]:
+    pages: set[int] = set()
+    for part in re.split(r'[,\s]+', input_string):
+        if '-' in part:
+            start, end = map(int, part.split('-'))
+            pages.update(range(start, end + 1))
+        else:
+            with suppress(ValueError):
+                pages.add(int(part))
+    return sorted(pages)
+
+
+async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        return await handle_callback_query_for_reply_state(
+            event,
+            reply_states,
+            'Please enter page numbers to extract (e.g., 1,3-5,7):',
+        )
+
+    if event.sender_id in reply_states:
+        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
+        reply_message = await event.client.get_messages(
+            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
+        )
+    else:
+        reply_message = await get_reply_message(event, previous=True)
+
+    pages_input = (
+        event.message.text.split(' ', 2)[-1]
+        if isinstance(event, NewMessage.Event)
+        else event.message.text
+    )
+    pages_to_extract = parse_page_numbers(pages_input)
+    progress_message = await event.reply('Extracting PDF pages...')
+
+    with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        with pymupdf.open(temp_file_path) as doc:
+            doc.select(pages_to_extract)
+            output_file = temp_file_path.with_name(
+                f'{Path(reply_message.file.name).stem}_extracted.pdf'
+            )
+            doc.save(output_file)
+            await upload_file(event, output_file, progress_message)
+            output_file.unlink(missing_ok=True)
+
+    await progress_message.edit('PDF page extraction complete.')
+
+    if event.sender_id in reply_states:
+        reply_states.pop(event.sender_id)
+    raise StopPropagation
+
+
 handlers: CommandHandlerDict = {
+    'pdf extract': extract_pdf_pages,
     'pdf merge': merge_pdf_initial,
     'pdf text': extract_pdf_text,
     'pdf split': split_pdf,
@@ -164,6 +220,14 @@ class PDF(ModuleBase):
     name = 'PDF'
     description = 'PDF processing commands'
     commands: ClassVar[ModuleBase.CommandsT] = {
+        'pdf extract': Command(
+            name='pdf extract',
+            handler=handler,
+            description='[pages] - Extract specific pages from PDF',
+            pattern=re.compile(r'^/(pdf)\s+(extract)\s+([\d,\-\s]+)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
         'pdf merge': Command(
             name='pdf merge',
             handler=handler,
@@ -215,6 +279,15 @@ class PDF(ModuleBase):
             NewMessage(
                 func=lambda e: (
                     is_valid_reply_state(e, reply_states) and re.match(r'^(\d+)$', e.message.text)
+                )
+            ),
+        )
+        bot.add_event_handler(
+            extract_pdf_pages,
+            NewMessage(
+                func=lambda e: (
+                    is_valid_reply_state(e, reply_states)
+                    and re.match(r'^[\d,\-\s]+$', e.message.text)
                 )
             ),
         )
