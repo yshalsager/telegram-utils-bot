@@ -136,3 +136,26 @@ def has_valid_url(
 ) -> bool:
     message = reply_message or event.message
     return bool(re.search(pattern, message.raw_text))
+
+
+def has_file_with_ext(
+    event: NewMessage.Event, reply_message: Message | None, ext: str | None = None
+) -> bool:
+    """
+    Check if the message or its reply contains a file with a specific extension.
+
+    :param event: The NewMessage event.
+    :param reply_message: The message being replied to, if any.
+    :param ext: The specific file extension to check for. If None, checks for any file.
+    :return: True if the message or its reply contains a file matching the criteria, False otherwise.
+    """
+    message = reply_message or event.message
+    if not message.file:
+        return False
+    if ext:
+        return bool(message.file.ext == ext)
+    return True
+
+
+def has_pdf_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
+    return has_file_with_ext(event, reply_message, ext='.pdf')
