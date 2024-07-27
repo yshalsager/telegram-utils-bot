@@ -290,7 +290,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 
 class YTDLP(ModuleBase):
-    name = 'YT-DLP'
+    name = 'YTDLP'
     description = 'Use YT-DLP'
     commands: ClassVar[ModuleBase.CommandsT] = {
         'ytdown': Command(
