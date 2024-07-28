@@ -39,6 +39,7 @@ commands_with_modifiers = (
     'upload',
     'transcribe',
     'image',
+    'ocr',
 )
 
 

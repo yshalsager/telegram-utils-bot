@@ -2,9 +2,11 @@ from collections import defaultdict
 from contextlib import suppress
 from functools import partial
 from io import BytesIO
+from os import getenv
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import ClassVar
+from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pymupdf
@@ -291,10 +293,10 @@ async def image_to_pdf(event: NewMessage.Event) -> None:
     await progress_message.edit('Image to PDF conversion complete.')
 
 
-async def ocr_pdf(event: NewMessage.Event) -> None:
+async def ocrmypdf(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply('Starting process...')
-    progress_message = await event.reply('Performing OCR on PDF...')
+    progress_message = await event.reply('Performing OCR on PDF using ocrmypdf...')
     lang = 'ara'
     if matches := PDF.commands['pdf ocr'].pattern.search(reply_message.raw_text):
         lang = matches[-1] if len(matches.groups()) > 2 else lang
@@ -319,14 +321,49 @@ async def ocr_pdf(event: NewMessage.Event) -> None:
     await progress_message.edit('PDF OCR process complete.')
 
 
+async def ocr_pdf(event: NewMessage.Event) -> None:
+    """OCR PDF using tahweel."""
+    service_account = getenv('SERVICE_ACCOUNT_FILE')
+    if not service_account:
+        await event.reply('Please set SERVICE_ACCOUNT_FILE environment variable.')
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await event.reply('Starting process...')
+    progress_message = await event.reply('Performing OCR on PDF using tahweel...')
+    # Only Arabic is supported for now
+    # lang = 'ar'
+    # if matches := PDF.commands['ocr'].pattern.search(reply_message.raw_text):
+    #     lang = matches[-1] if len(matches.groups()) > 2 else lang
+    output_dir = Path(TMP_DIR / str(uuid4()))
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    with NamedTemporaryFile(dir=output_dir, suffix=reply_message.file.ext) as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        command = f'tahweel --service-account-credentials {Path(service_account)} --output-dir "{output_dir}" "{temp_file_path}"'
+        await stream_shell_output(event, command, status_message, progress_message)
+
+        for file in output_dir.iterdir():
+            if not file.is_file() or file.suffix not in ('.txt', '.docx'):
+                continue
+            renamed_file = file.with_stem(Path(reply_message.file.name).stem)
+            file.rename(renamed_file)
+            await upload_file(event, renamed_file, progress_message)
+            renamed_file.unlink(missing_ok=True)
+    await status_message.edit('PDF OCR process complete.')
+    temp_file_path.unlink(missing_ok=True)
+    output_dir.unlink(missing_ok=True)
+
+
 handlers: CommandHandlerDict = {
     'pdf': image_to_pdf,
     'pdf extract': extract_pdf_pages,
     'pdf images': convert_to_images,
     'pdf merge': merge_pdf_initial,
-    'pdf ocr': ocr_pdf,
+    'pdf ocr': ocrmypdf,
     'pdf text': extract_pdf_text,
     'pdf split': split_pdf,
+    'ocr': ocr_pdf,
 }
 
 handler = partial(dynamic_handler, handlers)
@@ -389,6 +426,14 @@ class PDF(ModuleBase):
             handler=handler,
             description='Extract text from PDF',
             pattern=re.compile(r'^/(pdf)\s+(text)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'ocr': Command(
+            name='ocr',
+            handler=handler,
+            description='[lang]: Perform OCR using tahweel',
+            pattern=re.compile(r'^/(pdf)\s+(ocr)\s+?([\w+]{3,})?$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),

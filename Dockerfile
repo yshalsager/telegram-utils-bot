@@ -28,14 +28,23 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/code/.venv/bin:$PATH"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # for code update
     git \
+    # for media conversion
     ffmpeg \
+    # for downloading files
     aria2 \
+    # for debugging only
     nano \
+    # for tafrigh
     mime-support \
+    # OCR
     tesseract-ocr \
     tesseract-ocr-all \
+    # PDF compression
     ghostscript \
+    # for tahweel
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /code

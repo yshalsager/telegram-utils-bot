@@ -24,6 +24,9 @@ EXCHANGE_RATE_API_KEY = ''
 # A list of access tokens separated by space
 WIT_CLIENT_ACCESS_TOKENS = ''
 WHISPER_MODEL_PATH = ''
+# https://github.com/ieasybooks/tahweel
+# Path to the service account credentials JSON file
+SERVICE_ACCOUNT_FILE = ''
 
 [env.mise]
 file = '.env'

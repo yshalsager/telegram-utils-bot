@@ -1036,6 +1036,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             else:
                 await status_message.edit(f'Failed to transcribe {renamed_file.name}')
     await status_message.edit('Transcription completed.')
+    output_dir.unlink(missing_ok=True)
     await delete_message_after(progress_message)
     if delete_message_after_process:
         event.client.loop.create_task(delete_message_after(await event.get_message()))
