@@ -51,7 +51,7 @@ async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, A
         f'stream=codec_name,duration,width,height -of json "{file_path}"'
     )
     _info = orjson.loads(output)
-    return cast(dict[str, Any], _info['streams'][0]) if _info and 'streams' in _info else {}
+    return cast(dict[str, Any], _info['streams'][0]) if _info and _info.get('streams') else {}
 
 
 async def get_format_info(file_path: Path) -> dict[str, Any]:
@@ -59,7 +59,7 @@ async def get_format_info(file_path: Path) -> dict[str, Any]:
         f'ffprobe -v error -show_entries format=duration,tags -of json "{file_path}"'
     )
     _info = orjson.loads(output)
-    return cast(dict[str, Any], _info['format']) if _info and 'format' in _info else {}
+    return cast(dict[str, Any], _info['format']) if _info.get('format') else {}
 
 
 async def get_output_info(file_path: Path) -> dict[str, Any]:

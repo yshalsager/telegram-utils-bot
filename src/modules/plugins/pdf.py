@@ -344,7 +344,7 @@ async def ocr_pdf(event: NewMessage.Event) -> None:
         await stream_shell_output(event, command, status_message, progress_message)
 
         for file in output_dir.iterdir():
-            if not file.is_file() or file.suffix not in ('.txt', '.docx'):
+            if not (file.is_file() and file.suffix not in ('.txt', '.docx')):
                 continue
             renamed_file = file.with_stem(Path(reply_message.file.name).stem)
             file.rename(renamed_file)
