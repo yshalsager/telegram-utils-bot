@@ -25,14 +25,12 @@ async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str
 
 
 async def run_subprocess_shell(
-    cmd: str, **kwargs: Any
+    cmd: str, timeout: int = TIMEOUT_SECONDS, **kwargs: Any
 ) -> AsyncGenerator[tuple[str, int | None], None]:
     process: Process = await asyncio.create_subprocess_shell(  # noqa: S604
         cmd, stdout=PIPE, stderr=PIPE, shell=True, preexec_fn=setsid, **kwargs
     )
-    async for line, code in _run_subprocess(
-        process, cmd, timeout=kwargs.get('timeout', TIMEOUT_SECONDS)
-    ):
+    async for line, code in _run_subprocess(process, cmd, timeout=timeout):
         yield line, code
 
 
