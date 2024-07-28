@@ -6,6 +6,7 @@ from itertools import zip_longest
 from math import floor
 from os import getenv
 from pathlib import Path
+from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from typing import Any, ClassVar, cast
 from uuid import uuid4
@@ -1022,7 +1023,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             )
         if transcription_method == 'vosk':
             srt_to_txt(tmp_file_path.with_suffix('.srt'))
-        await stream_shell_output(event, command, status_message, progress_message, max_length=500)
+        await stream_shell_output(event, command, status_message, progress_message, max_length=100)
         for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
                 renamed_file = output_file.with_stem(Path(reply_message.file.name).stem)
@@ -1036,7 +1037,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             else:
                 await status_message.edit(f'Failed to transcribe {renamed_file.name}')
     await status_message.edit('Transcription completed.')
-    output_dir.unlink(missing_ok=True)
+    rmtree(output_dir)
     await delete_message_after(progress_message)
     if delete_message_after_process:
         event.client.loop.create_task(delete_message_after(await event.get_message()))
@@ -1157,7 +1158,7 @@ class Media(ModuleBase):
             name='transcribe',
             handler=handler,
             description='[wit|whisper]: Transcribe audio or video to text and subtitle formats',
-            pattern=re.compile(r'^/(media)\s+(transcribe)\s+(wit|whisper)$'),
+            pattern=re.compile(r'^/(transcribe)\s+(wit|whisper|vosk)$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),

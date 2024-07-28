@@ -41,11 +41,12 @@ async def dynamic_handler(
             command, _ = command.split('|', 1)
     else:
         command = ' '.join(' '.join(i for i in event.pattern_match.groups() if i).split(' ')[:2])
-    if command not in handlers:
+    handler = handlers.get(command) or handlers.get(command.split(' ', 1)[0])
+    if not handler:
         await event.reply('Command not found.')
         return
 
-    await handlers[command](event)
+    await handler(event)
 
 
 class ModuleBase(ABC):
@@ -87,7 +88,7 @@ class ModuleBase(ABC):
         assert command is not None
         if '|' in command:
             command, _ = command.split('|', 1)
-        cmd = self.commands.get(command)
+        cmd = self.commands.get(command) or self.commands.get(command.split(' ')[0])
         if cmd and callable(cmd.handler):
             await cmd.handler(event)
         return True
