@@ -1,9 +1,11 @@
 from collections import defaultdict
 from contextlib import suppress
 from functools import partial
+from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import ClassVar
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pymupdf
 import regex as re
@@ -21,7 +23,7 @@ from src.utils.reply import (
     StateT,
     handle_callback_query_for_reply_state,
 )
-from src.utils.telegram import get_reply_message
+from src.utils.telegram import delete_message_after, get_reply_message
 
 reply_states: StateT = defaultdict(
     lambda: {'state': ReplyState.WAITING, 'media_message_id': None, 'reply_message_id': None}
@@ -206,8 +208,66 @@ async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> No
     raise StopPropagation
 
 
+async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
+    if isinstance(event, CallbackQuery.Event):
+        if event.data.decode().startswith('m|pdf_images|'):
+            output_format = event.data.decode().split('|')[-1]
+            delete_message_after_process = True
+        else:
+            buttons = [
+                [Button.inline('ZIP', 'm|pdf_images|ZIP'), Button.inline('PDF', 'm|pdf_images|PDF')]
+            ]
+            await event.edit('Choose output format:', buttons=buttons)
+            return
+    else:
+        args = event.message.text.split('images')
+        output_format = 'ZIP' if len(args) == 1 else args[-1]
+
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await event.reply('Converting PDF to images...')
+
+    with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        if output_format == 'ZIP':
+            zip_buffer = BytesIO()
+            with (
+                ZipFile(zip_buffer, 'w', ZIP_DEFLATED) as zip_file,
+                pymupdf.open(temp_file_path) as doc,
+            ):
+                for page in doc:
+                    zip_file.writestr(
+                        f'page-{page.number}.jpg', page.get_pixmap().tobytes('jpg', jpg_quality=75)
+                    )
+            zip_buffer.seek(0)
+            output_file = temp_file_path.with_name(
+                f'{Path(reply_message.file.name).stem}_images.zip'
+            )
+            output_file.write_bytes(zip_buffer.getvalue())
+        else:
+            with pymupdf.open() as new_doc, pymupdf.open(temp_file_path) as doc:
+                for page in doc:
+                    pix = page.get_pixmap()
+                    img_page = new_doc.new_page(width=pix.width, height=pix.height)
+                    img_page.insert_image(
+                        pymupdf.Rect(0, 0, pix.width, pix.height), stream=pix.tobytes('jpg')
+                    )
+                output_file = temp_file_path.with_name(
+                    f'{Path(reply_message.file.name).stem}_images.pdf'
+                )
+                new_doc.save(output_file)
+
+        await upload_file(event, output_file, progress_message)
+        output_file.unlink(missing_ok=True)
+
+    await progress_message.edit('PDF to images conversion complete. Images sent as ZIP file.')
+    if delete_message_after_process:
+        event.client.loop.create_task(delete_message_after(await event.get_message()))
+
+
 handlers: CommandHandlerDict = {
     'pdf extract': extract_pdf_pages,
+    'pdf images': convert_to_images,
     'pdf merge': merge_pdf_initial,
     'pdf text': extract_pdf_text,
     'pdf split': split_pdf,
@@ -225,6 +285,14 @@ class PDF(ModuleBase):
             handler=handler,
             description='[pages] - Extract specific pages from PDF',
             pattern=re.compile(r'^/(pdf)\s+(extract)\s+([\d,\-\s]+)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf images': Command(
+            name='pdf images',
+            handler=handler,
+            description='Convert PDF to images and send as ZIP',
+            pattern=re.compile(r'^/(pdf)\s+(images)\s+?(ZIP|PDF)?$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),
