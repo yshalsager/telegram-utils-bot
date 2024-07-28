@@ -13,7 +13,13 @@ from src import BOT_ADMINS
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_owner_in_private
-from src.utils.run import MAX_MESSAGE_LENGTH, run_subprocess_exec, run_subprocess_shell
+from src.utils.run import (
+    ADMIN_TIMEOUT_SECONDS,
+    MAX_MESSAGE_LENGTH,
+    TIMEOUT_SECONDS,
+    run_subprocess_exec,
+    run_subprocess_shell,
+)
 from src.utils.telegram import delete_message_after
 
 SECONDS_TO_WAIT = 3
@@ -32,12 +38,13 @@ async def stream_shell_output(
     if not progress_message:
         progress_message = await event.reply('<pre>Process output:</pre>')
     runner = run_subprocess_shell if shell else run_subprocess_exec
+    timeout = TIMEOUT_SECONDS if event.sender_id not in BOT_ADMINS else ADMIN_TIMEOUT_SECONDS
     buffer = ''
     code = None
     last_edit_time = datetime.now()
     edit_interval = timedelta(seconds=SECONDS_TO_WAIT)
 
-    async for full_log, return_code in runner(cmd):
+    async for full_log, return_code in runner(cmd, timeout=timeout):
         buffer, code = full_log, return_code
         if bool(buffer.strip()):
             current_time = datetime.now()

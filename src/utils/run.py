@@ -8,7 +8,7 @@ from signal import SIGKILL
 from typing import Any
 
 MAX_MESSAGE_LENGTH = 4000  # Max is 4096 but we leave some buffer for formatting
-# TIMEOUT_SECONDS = 60 * 10  # 10 minutes timeout for user commands
+TIMEOUT_SECONDS = 60 * 10  # 10 minutes timeout for user commands
 ADMIN_TIMEOUT_SECONDS = 60 * 60 * 6  # 6 hours timeout for admin commands
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,9 @@ async def run_subprocess_shell(
     process: Process = await asyncio.create_subprocess_shell(  # noqa: S604
         cmd, stdout=PIPE, stderr=PIPE, shell=True, preexec_fn=setsid, **kwargs
     )
-    async for line, code in _run_subprocess(process, cmd):
+    async for line, code in _run_subprocess(
+        process, cmd, timeout=kwargs.get('timeout', TIMEOUT_SECONDS)
+    ):
         yield line, code
 
 
@@ -46,7 +48,7 @@ async def run_subprocess_exec(
 
 
 async def _run_subprocess(  # noqa: C901, PLR0912
-    process: Process, cmd: str
+    process: Process, cmd: str, timeout: int = TIMEOUT_SECONDS
 ) -> AsyncGenerator[tuple[str, int | None], None]:
     output = ''
     return_code = None
@@ -62,7 +64,7 @@ async def _run_subprocess(  # noqa: C901, PLR0912
         while pending or not process_task.done():
             done, _ = await asyncio.wait(
                 [*list(pending.values()), process_task],
-                timeout=ADMIN_TIMEOUT_SECONDS,
+                timeout=timeout,
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
@@ -91,7 +93,7 @@ async def _run_subprocess(  # noqa: C901, PLR0912
 
     except TimeoutError:
         logger.info(f'Timeout while running command: {cmd}')
-        output += f'\nProcess timed out after {ADMIN_TIMEOUT_SECONDS} seconds.\n'
+        output += f'\nProcess timed out after {timeout} seconds.\n'
         yield output, None
 
     except Exception as err:  # noqa: BLE001
@@ -115,7 +117,7 @@ async def _run_subprocess(  # noqa: C901, PLR0912
 
 
 async def run_command(
-    command: str, timeout: int = ADMIN_TIMEOUT_SECONDS, **kwargs: Any
+    command: str, timeout: int = TIMEOUT_SECONDS, **kwargs: Any
 ) -> tuple[str, int]:
     args = shlex_split(command)
     process = await asyncio.create_subprocess_exec(*args, **kwargs, stdout=PIPE, stderr=PIPE)
