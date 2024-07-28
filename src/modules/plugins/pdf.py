@@ -14,6 +14,7 @@ from telethon.events import CallbackQuery, NewMessage, StopPropagation
 
 from src import TMP_DIR
 from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
+from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.filters import has_pdf_file, has_photo_or_photo_file, is_valid_reply_state
@@ -290,11 +291,40 @@ async def image_to_pdf(event: NewMessage.Event) -> None:
     await progress_message.edit('Image to PDF conversion complete.')
 
 
+async def ocr_pdf(event: NewMessage.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await event.reply('Starting process...')
+    progress_message = await event.reply('Performing OCR on PDF...')
+    lang = 'ara'
+    if matches := PDF.commands['pdf ocr'].pattern.search(reply_message.raw_text):
+        lang = matches[-1] if len(matches.groups()) > 2 else lang
+
+    with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        output_file = temp_file_path.with_name(
+            f'{Path(reply_message.file.name or "file").stem}_ocr.pdf'
+        )
+        text_file = output_file.with_suffix('.txt')
+        command = f'ocrmypdf -l {lang} --sidecar "{text_file}" "{temp_file_path}" "{output_file}"'
+        await stream_shell_output(event, command, status_message, progress_message)
+        if output_file.exists() and output_file.stat().st_size:
+            await upload_file(event, output_file, progress_message)
+            output_file.unlink(missing_ok=True)
+            await upload_file(event, text_file, progress_message)
+            text_file.unlink(missing_ok=True)
+        else:
+            await status_message.edit('Failed to OCR PDF.')
+            return
+
+    await progress_message.edit('PDF OCR process complete.')
+
+
 handlers: CommandHandlerDict = {
     'pdf': image_to_pdf,
     'pdf extract': extract_pdf_pages,
     'pdf images': convert_to_images,
     'pdf merge': merge_pdf_initial,
+    'pdf ocr': ocr_pdf,
     'pdf text': extract_pdf_text,
     'pdf split': split_pdf,
 }
@@ -335,6 +365,14 @@ class PDF(ModuleBase):
             handler=handler,
             description='Merge multiple PDF files',
             pattern=re.compile(r'^/(pdf)\s+(merge)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf ocr': Command(
+            name='pdf ocr',
+            handler=handler,
+            description='[lang]: Perform OCR using ocrmypdf',
+            pattern=re.compile(r'^/(pdf)\s+(ocr)\s+?([\w+]{3,})?$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),

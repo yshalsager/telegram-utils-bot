@@ -15,24 +15,33 @@ from src.utils.fast_telethon import upload_file as fast_upload_file
 from src.utils.progress import progress_callback
 
 
+def get_default_filename() -> str:
+    return f"{datetime.now(UTC).strftime('%Y-%m-%d_%H-%M-%S')}"
+
+
 def get_download_name(message: Message, new_filename: str = '') -> Path:
-    mime_type = message.document.mime_type.split('/')[1]
-    if mime_type == 'octet-stream':
-        mime_type = ''
+    mime_type = ''
+    if message.document:
+        mime_type = message.document.mime_type.split('/')[-1] if message.document.mime_type else ''
+        original_filename = (
+            next(
+                (
+                    attr.file_name
+                    for attr in message.document.attributes
+                    if isinstance(attr, DocumentAttributeFilename)
+                ),
+                message.file.name if (message.file and message.file.name) else None,
+            )
+            or f"{get_default_filename()}.{mime_type or 'unknown'}"
+        )
+    else:
+        original_filename = (
+            message.file.name
+            if (message.file and message.file.name)
+            else f'{get_default_filename()}{message.file.ext}'
+        )
 
-    original_filename = next(
-        (
-            attr.file_name
-            for attr in message.document.attributes
-            if isinstance(attr, DocumentAttributeFilename)
-        ),
-        Path(message.file.name).name if message.file.name else 'unknown',
-    )
-
-    if original_filename == 'unknown':
-        original_filename = f"{datetime.now(UTC).strftime('%Y-%m-%d_%H-%M-%S')}.{mime_type}"
-    original_ext = Path(original_filename).suffix or f'.{mime_type}'
-
+    original_ext = Path(original_filename).suffix or f'.{mime_type}' if mime_type else '.unknown'
     if not new_filename:
         return Path(original_filename)
 
