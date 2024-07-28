@@ -33,6 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     aria2 \
     nano \
     mime-support \
+    tesseract-ocr \
+    tesseract-ocr-all \
+    ghostscript \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /code
