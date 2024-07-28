@@ -165,4 +165,4 @@ def has_pdf_file(event: NewMessage.Event, reply_message: Message | None) -> bool
 
 def has_photo_or_photo_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
     message = reply_message or event.message
-    return bool(message.photo or message.file and message.file.mime_type.startswith('image/'))
+    return bool(message.photo or (message.file and message.file.mime_type.startswith('image/')))

@@ -38,6 +38,7 @@ commands_with_modifiers = (
     'plugins',
     'upload',
     'transcribe',
+    'image',
 )
 
 
