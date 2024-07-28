@@ -7,7 +7,7 @@ from math import floor
 from os import getenv
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from uuid import uuid4
 
 import orjson
@@ -17,6 +17,7 @@ from pydub.silence import split_on_silence
 from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
+from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeVideo
 
 from src import TMP_DIR
 from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
@@ -42,6 +43,45 @@ reply_states: StateT = defaultdict(
 merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 video_create_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 video_update_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
+
+
+async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, Any]:
+    output, _ = await run_command(
+        f'ffprobe -v error -select_streams {stream_specifier} -show_entries '
+        f'stream=codec_name,duration,width,height -of json "{file_path}"'
+    )
+    _info = orjson.loads(output)
+    return cast(dict[str, Any], _info['streams'][0]) if _info and 'streams' in _info else {}
+
+
+async def get_format_info(file_path: Path) -> dict[str, Any]:
+    output, _ = await run_command(
+        f'ffprobe -v error -show_entries format=duration,tags -of json "{file_path}"'
+    )
+    _info = orjson.loads(output)
+    return cast(dict[str, Any], _info['format']) if _info and 'format' in _info else {}
+
+
+async def get_output_info(file_path: Path) -> dict[str, Any]:
+    video_info = await get_stream_info('v:0', file_path)
+    audio_info = await get_stream_info('a:0', file_path)
+    format_info = await get_format_info(file_path)
+
+    info = {
+        'vcodec': video_info.get('codec_name', 'none'),
+        'acodec': audio_info.get('codec_name', 'none'),
+        'duration': float(
+            video_info.get('duration')
+            or audio_info.get('duration')
+            or format_info.get('duration', 0)
+        ),
+        'width': video_info.get('width', 0),
+        'height': video_info.get('height', 0),
+        'title': format_info.get('tags', {}).get('title', ''),
+        'uploader': format_info.get('tags', {}).get('artist', ''),
+    }
+
+    return info
 
 
 async def get_media_bitrate(file_path: str) -> tuple[int, int]:
@@ -109,7 +149,32 @@ async def process_media(
             await status_message.edit('Processing failed.')
             return data
 
-        await upload_file(event, output_file, progress_message, is_voice)
+        output_info = await get_output_info(output_file)
+        if output_info.get('vcodec') == 'none':
+            attributes = [
+                DocumentAttributeAudio(
+                    duration=int(output_info.get('duration', 0)),
+                    title=output_info.get('title'),
+                    performer=output_info.get('uploader'),
+                )
+            ]
+        else:
+            attributes = [
+                DocumentAttributeVideo(
+                    duration=int(output_info.get('duration', 0)),
+                    w=output_info.get('width', 0),
+                    h=output_info.get('height', 0),
+                )
+            ]
+
+        await upload_file(
+            event,
+            output_file,
+            progress_message,
+            is_voice,
+            force_document=False,
+            attributes=attributes,
+        )
         data['output_size'] = output_file.stat().st_size
 
     await status_message.edit(feedback_text)
