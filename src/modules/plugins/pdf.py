@@ -340,7 +340,10 @@ async def ocr_pdf(event: NewMessage.Event) -> None:
 
     with NamedTemporaryFile(dir=output_dir, suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
-        command = f'tahweel --service-account-credentials {Path(service_account)} --output-dir "{output_dir}" "{temp_file_path}"'
+        command = (
+            f'tahweel --service-account-credentials {Path(service_account)} --txt-page-separator "---"'
+            f'--output-dir "{output_dir}" "{temp_file_path}"'
+        )
         await stream_shell_output(event, command, status_message, progress_message)
 
         for file in output_dir.iterdir():
