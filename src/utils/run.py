@@ -35,13 +35,13 @@ async def run_subprocess_shell(
 
 
 async def run_subprocess_exec(
-    cmd: str, **kwargs: Any
+    cmd: str, timeout: int = TIMEOUT_SECONDS, **kwargs: Any
 ) -> AsyncGenerator[tuple[str, int | None], None]:
     args = shlex_split(cmd)
     process: Process = await asyncio.create_subprocess_exec(
         *args, stdout=PIPE, stderr=PIPE, preexec_fn=setsid, **kwargs
     )
-    async for line, code in _run_subprocess(process, cmd):
+    async for line, code in _run_subprocess(process, cmd, timeout=timeout):
         yield line, code
 
 

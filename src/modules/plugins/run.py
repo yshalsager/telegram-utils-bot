@@ -38,7 +38,7 @@ async def stream_shell_output(
     if not progress_message:
         progress_message = await event.reply('<pre>Process output:</pre>')
     runner = run_subprocess_shell if shell else run_subprocess_exec
-    timeout = TIMEOUT_SECONDS if event.sender_id not in BOT_ADMINS else ADMIN_TIMEOUT_SECONDS
+    timeout = ADMIN_TIMEOUT_SECONDS if event.sender_id in BOT_ADMINS else TIMEOUT_SECONDS
     buffer = ''
     code = None
     last_edit_time = datetime.now()
