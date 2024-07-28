@@ -124,6 +124,15 @@ python3 -m src
 - [Telethon Library](https://github.com/LonamiWebs/Telethon/)
 - [FFmpeg](https://ffmpeg.org/)
 - [aria2](https://aria2.github.io/)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+- [orjson](https://github.com/ijl/orjson/)
+- [regex](https://github.com/mrabarnett/mrab-regex)
+- [search-engine-parser](https://github.com/bisohns/search-engine-parser)
+- [Vosk](https://github.com/alphacep/vosk-api)
+- [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
+- [OCRmyPDF](https://github.com/ocrmypdf/OCRmyPDF)
+- [tafrigh](https://github.com/ieasybooks/tafrigh)
+- [tahweel](https://github.com/ieasybooks/tahweel)
 
 ## Resources
 
