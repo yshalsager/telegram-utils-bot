@@ -16,7 +16,7 @@ from src import TMP_DIR
 from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
-from src.utils.filters import has_pdf_file, is_valid_reply_state
+from src.utils.filters import has_pdf_file, has_photo_or_photo_file, is_valid_reply_state
 from src.utils.reply import (
     MergeState,
     ReplyState,
@@ -265,7 +265,33 @@ async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> No
         event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
+async def image_to_pdf(event: NewMessage.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await event.reply('Converting image to PDF...')
+
+    with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        with pymupdf.open(temp_file_path) as img:
+            rect = img[0].rect  # Get image dimensions
+            pdf_bytes = img.convert_to_pdf()  # Convert image to PDF bytes
+
+        with pymupdf.open() as pdf_doc:
+            page = pdf_doc.new_page(width=rect.width, height=rect.height)
+            img_pdf = pymupdf.open('pdf', pdf_bytes)
+            page.show_pdf_page(rect, img_pdf, 0)
+            output_file = temp_file_path.with_name(
+                f'{Path(reply_message.file.name or "image").stem}.pdf'
+            )
+            pdf_doc.save(output_file)
+
+        await upload_file(event, output_file, progress_message)
+        output_file.unlink(missing_ok=True)
+
+    await progress_message.edit('Image to PDF conversion complete.')
+
+
 handlers: CommandHandlerDict = {
+    'pdf': image_to_pdf,
     'pdf extract': extract_pdf_pages,
     'pdf images': convert_to_images,
     'pdf merge': merge_pdf_initial,
@@ -280,6 +306,14 @@ class PDF(ModuleBase):
     name = 'PDF'
     description = 'PDF processing commands'
     commands: ClassVar[ModuleBase.CommandsT] = {
+        'pdf': Command(
+            name='pdf',
+            handler=handler,
+            description='Convert image to PDF',
+            pattern=re.compile(r'^/(pdf)$'),
+            condition=has_photo_or_photo_file,
+            is_applicable_for_reply=True,
+        ),
         'pdf extract': Command(
             name='pdf extract',
             handler=handler,

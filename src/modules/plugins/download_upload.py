@@ -103,15 +103,16 @@ async def upload_as_file_or_media(event: NewMessage.Event | CallbackQuery.Event)
 
     reply_message = await get_reply_message(event, previous=True)
     progress_message = await event.reply('Starting download...')
-
+    _type = 'file' if force_document else 'media'
+    output_file_name = f'{reply_message.file.name or _type}{reply_message.file.ext}'
     with NamedTemporaryFile() as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         await progress_message.edit('Download complete. Starting upload...')
-        temp_file_path = temp_file_path.rename(temp_file_path.with_name(reply_message.file.name))
+        temp_file_path = temp_file_path.rename(temp_file_path.with_name(output_file_name))
         await upload_file(event, temp_file_path, progress_message, force_document=force_document)
 
     await progress_message.edit(
-        f'File successfully uploaded as {"file" if force_document else "media"}: <code>{reply_message.file.name}</code>'
+        f'File successfully uploaded as {_type}: <code>{output_file_name}</code>'
     )
 
 

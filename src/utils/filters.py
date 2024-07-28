@@ -117,6 +117,8 @@ def is_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
     :return: True if the message or its reply contains an attachment uploaded as a file, False otherwise.
     """
     message = reply_message or event.message
+    if not hasattr(message, 'document') or not hasattr(message.document, 'attributes'):
+        return False
     for attribute in message.document.attributes:
         if isinstance(
             attribute,
@@ -159,3 +161,8 @@ def has_file_with_ext(
 
 def has_pdf_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
     return has_file_with_ext(event, reply_message, ext='.pdf')
+
+
+def has_photo_or_photo_file(event: NewMessage.Event, reply_message: Message | None) -> bool:
+    message = reply_message or event.message
+    return bool(message.photo or message.file and message.file.mime_type.startswith('image/'))

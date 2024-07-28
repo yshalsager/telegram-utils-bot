@@ -40,7 +40,7 @@ async def dynamic_handler(
         if '|' in command:
             command, _ = command.split('|', 1)
     else:
-        command = ' '.join(' '.join(event.pattern_match.groups()).split(' ')[:2])
+        command = ' '.join(' '.join(i for i in event.pattern_match.groups() if i).split(' ')[:2])
     if command not in handlers:
         await event.reply('Command not found.')
         return

@@ -48,14 +48,22 @@ async def download_file(
     reply_message: Message,
     progress_message: Message,
 ) -> Path:
-    await fast_download_file(
-        event.client,
-        reply_message.document,
-        temp_file,
-        progress_callback=lambda current, total: progress_callback(
-            current, total, progress_message, 'Downloading'
-        ),
-    )
+    if reply_message.document:
+        await fast_download_file(
+            event.client,
+            reply_message.document,
+            temp_file,
+            progress_callback=lambda current, total: progress_callback(
+                current, total, progress_message, 'Downloading'
+            ),
+        )
+    else:
+        await reply_message.download_media(
+            file=temp_file,
+            progress_callback=lambda current, total: progress_callback(
+                current, total, progress_message, 'Downloading'
+            ),
+        )
     return Path(temp_file.name)
 
 
