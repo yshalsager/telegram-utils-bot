@@ -58,6 +58,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.python-version
 .mise.local.toml
 
 # IDE
@@ -82,6 +83,11 @@ tmp/
 restart.json
 permissions.json
 modules.json
+service_account.json
+update.sh
 
 # OS
 .DS_Store
+
+# Docker
+docker-compose.override.yml
