@@ -34,7 +34,7 @@ async def list_tasks(event: NewMessage.Event) -> None:
                     if hasattr(task_event, 'message')
                     else task_event.data.decode()
                 )
-                start_time = event.date.replace(tzinfo=UTC)
+                start_time = task_event.date.replace(tzinfo=UTC)
                 message += (
                     f' (<code>{task_command}</code>) - '
                     f"👤 <a href='tg://user?id={task_event.sender_id}'>{task_event.sender_id}</a> - "
