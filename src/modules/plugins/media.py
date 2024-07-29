@@ -981,15 +981,17 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         else:
             buttons = [
                 [
-                    Button.inline('Vosk', 'm|transcribe|vosk'),
-                    Button.inline('Whisper', 'm|transcribe|whisper'),
                     Button.inline('Wit', 'm|transcribe|wit'),
+                    Button.inline('Whisper', 'm|transcribe|whisper'),
+                    Button.inline('Vosk', 'm|transcribe|vosk'),
                 ]
             ]
             await event.edit('Choose the transcription method:', buttons=buttons)
             return
     else:
-        transcription_method = event.message.text.split(' ')[-1]
+        transcription_method = (
+            event.message.text.split(' ')[-1] if event.message.text != '/transcribe' else 'wit'
+        )
     wit_access_tokens, whisper_model_path = None, None
     if transcription_method == 'whisper':
         whisper_model_path = getenv('WHISPER_MODEL_PATH')
@@ -1163,8 +1165,8 @@ class Media(ModuleBase):
         'transcribe': Command(
             name='transcribe',
             handler=handler,
-            description='[wit|whisper]: Transcribe audio or video to text and subtitle formats',
-            pattern=re.compile(r'^/(transcribe)\s+(wit|whisper|vosk)$'),
+            description='[wit|whisper|vosk]: Transcribe audio or video to text and subtitle formats',
+            pattern=re.compile(r'^/(transcribe)(?:\s+(wit|whisper|vosk))?$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
