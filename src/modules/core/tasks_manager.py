@@ -5,7 +5,7 @@ from typing import ClassVar
 
 import regex as re
 from humanize import naturaltime
-from telethon.events import NewMessage
+from telethon.events import CallbackQuery, NewMessage
 
 from src.modules.base import ModuleBase
 from src.utils.command import Command
@@ -27,11 +27,16 @@ async def list_tasks(event: NewMessage.Event) -> None:
             continue
         message += f'📦 <code>{task_id}</code>'
         try:
-            task_event: NewMessage.Event
+            task_event: NewMessage.Event | CallbackQuery.Event
             if task_event := task.get_coro().cr_frame.f_locals.get('event'):
+                task_command = (
+                    task_event.message.text
+                    if hasattr(task_event, 'message')
+                    else task_event.data.decode()
+                )
                 start_time = event.date.replace(tzinfo=UTC)
                 message += (
-                    f' (<code>{task_event.message.text}</code>) - '
+                    f' (<code>{task_command}</code>) - '
                     f"👤 <a href='tg://user?id={task_event.sender_id}'>{task_event.sender_id}</a> - "
                     f'🗓 <code>{start_time}</code> - ⏰ <code>{naturaltime(datetime.now(UTC) - start_time)}</code>'
                 )
