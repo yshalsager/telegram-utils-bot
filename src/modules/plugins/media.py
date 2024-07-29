@@ -1029,8 +1029,11 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             srt_to_txt(tmp_file_path.with_suffix('.srt'))
         for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
-                renamed_file = output_file.with_stem(Path(reply_message.file.name).stem)
-                output_file.rename(renamed_file)
+                if reply_message.file.name:
+                    renamed_file = output_file.with_stem(Path(reply_message.file.name).stem)
+                    output_file.rename(renamed_file)
+                else:
+                    renamed_file = output_file
                 await upload_file(
                     event,
                     renamed_file,
