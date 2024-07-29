@@ -4,6 +4,7 @@ from functools import partial
 from io import BytesIO
 from os import getenv
 from pathlib import Path
+from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from typing import ClassVar
 from uuid import uuid4
@@ -307,7 +308,7 @@ async def ocrmypdf(event: NewMessage.Event) -> None:
             f'{Path(reply_message.file.name or "file").stem}_ocr.pdf'
         )
         text_file = output_file.with_suffix('.txt')
-        command = f'ocrmypdf -l {lang} --sidecar "{text_file}" "{temp_file_path}" "{output_file}"'
+        command = f'ocrmypdf -l {lang} --force-ocr --sidecar "{text_file.name}" "{temp_file_path.name}" "{output_file.name}"'
         await stream_shell_output(event, command, status_message, progress_message)
         if output_file.exists() and output_file.stat().st_size:
             await upload_file(event, output_file, progress_message)
@@ -331,31 +332,25 @@ async def ocr_pdf(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply('Starting process...')
     progress_message = await event.reply('Performing OCR on PDF using tahweel...')
-    # Only Arabic is supported for now
-    # lang = 'ar'
-    # if matches := PDF.commands['ocr'].pattern.search(reply_message.raw_text):
-    #     lang = matches[-1] if len(matches.groups()) > 2 else lang
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
 
     with NamedTemporaryFile(dir=output_dir, suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         command = (
-            f'tahweel --service-account-credentials {Path(service_account)} --txt-page-separator "---"'
+            f'tahweel --service-account-credentials {Path(service_account)} --txt-page-separator ___'
             f'--output-dir "{output_dir}" "{temp_file_path}"'
         )
         await stream_shell_output(event, command, status_message, progress_message)
 
-        for file in output_dir.iterdir():
-            if not (file.is_file() and file.suffix not in ('.txt', '.docx')):
-                continue
+        for file in filter(
+            lambda f: f.is_file() and f.suffix in ('.txt', '.docx'), output_dir.iterdir()
+        ):
             renamed_file = file.with_stem(Path(reply_message.file.name).stem)
             file.rename(renamed_file)
             await upload_file(event, renamed_file, progress_message)
-            renamed_file.unlink(missing_ok=True)
     await status_message.edit('PDF OCR process complete.')
-    temp_file_path.unlink(missing_ok=True)
-    output_dir.unlink(missing_ok=True)
+    rmtree(output_dir, ignore_errors=True)
 
 
 handlers: CommandHandlerDict = {

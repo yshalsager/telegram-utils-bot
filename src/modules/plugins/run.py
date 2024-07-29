@@ -22,7 +22,7 @@ from src.utils.run import (
 )
 from src.utils.telegram import delete_message_after
 
-SECONDS_TO_WAIT = 3
+SECONDS_TO_WAIT = 5
 
 
 async def stream_shell_output(
@@ -90,7 +90,7 @@ async def stream_shell_output(
 
     if bool(buffer.strip()) and event.sender_id in BOT_ADMINS:
         with NamedTemporaryFile(
-            mode='w+', prefix=f'{start_time.strftime("%Y%m%d_%H%M%S")}_', suffix='.log'
+            mode='w+', prefix=f'{start_time.strftime("%Y%m%d_%H%M%S")}_', suffix='.txt'
         ) as temp_file:
             temp_file.write(buffer)
             temp_file.seek(

@@ -107,9 +107,9 @@ async def ocr_image(event: NewMessage.Event) -> None:
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
-        command = f'tesseract "{temp_file_path}" "{temp_file_path.stem}" -l {lang}'
+        command = f'tesseract "{temp_file_path.name}" "{temp_file_path.stem}" -l {lang}'
         output_file = temp_file_path.with_suffix('.txt')
-        _, code = await run_command(command, cwd=temp_file_path.parent)
+        _, code = await run_command(command)
         if code == 0 and output_file.exists() and output_file.stat().st_size:
             await edit_or_send_as_file(event, status_message, output_file.read_text())
             output_file.unlink(missing_ok=True)

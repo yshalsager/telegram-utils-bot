@@ -1,10 +1,9 @@
-from asyncio import sleep
 from collections import OrderedDict
 from pathlib import Path
 
 import regex as re
 
-from src.utils.run import run_subprocess_shell
+from src.utils.run import run_command
 
 
 def srt_to_txt(srt_file: Path, txt_file: Path | None = None) -> Path:
@@ -37,7 +36,5 @@ async def convert_subtitles(input_file: Path, srt_file: Path, txt_file: Path) ->
     :param srt_file: Path to the output SRT file
     :param txt_file: Path to the output TXT file
     """
-    async for _output, _code in run_subprocess_shell(f'ffmpeg -i "{input_file}" "{srt_file}"'):
-        await sleep(0.1)
-        continue
+    await run_command(f'ffmpeg -y -i {input_file.name} {srt_file.name}')
     srt_to_txt(srt_file, txt_file)

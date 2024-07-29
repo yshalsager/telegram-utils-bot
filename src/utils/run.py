@@ -7,6 +7,8 @@ from shlex import split as shlex_split
 from signal import SIGKILL
 from typing import Any
 
+from src import TMP_DIR
+
 MAX_MESSAGE_LENGTH = 4000  # Max is 4096 but we leave some buffer for formatting
 TIMEOUT_SECONDS = 60 * 10  # 10 minutes timeout for user commands
 ADMIN_TIMEOUT_SECONDS = 60 * 60 * 6  # 6 hours timeout for admin commands
@@ -28,7 +30,7 @@ async def run_subprocess_shell(
     cmd: str, timeout: int = TIMEOUT_SECONDS, **kwargs: Any
 ) -> AsyncGenerator[tuple[str, int | None], None]:
     process: Process = await asyncio.create_subprocess_shell(  # noqa: S604
-        cmd, stdout=PIPE, stderr=PIPE, shell=True, preexec_fn=setsid, **kwargs
+        cmd, stdout=PIPE, stderr=PIPE, shell=True, preexec_fn=setsid, cwd=TMP_DIR, **kwargs
     )
     async for line, code in _run_subprocess(process, cmd, timeout=timeout):
         yield line, code
@@ -39,7 +41,7 @@ async def run_subprocess_exec(
 ) -> AsyncGenerator[tuple[str, int | None], None]:
     args = shlex_split(cmd)
     process: Process = await asyncio.create_subprocess_exec(
-        *args, stdout=PIPE, stderr=PIPE, preexec_fn=setsid, **kwargs
+        *args, stdout=PIPE, stderr=PIPE, preexec_fn=setsid, cwd=TMP_DIR, **kwargs
     )
     async for line, code in _run_subprocess(process, cmd, timeout=timeout):
         yield line, code
@@ -118,7 +120,9 @@ async def run_command(
     command: str, timeout: int = TIMEOUT_SECONDS, **kwargs: Any
 ) -> tuple[str, int]:
     args = shlex_split(command)
-    process = await asyncio.create_subprocess_exec(*args, **kwargs, stdout=PIPE, stderr=PIPE)
+    process = await asyncio.create_subprocess_exec(
+        *args, **kwargs, stdout=PIPE, stderr=PIPE, cwd=TMP_DIR
+    )
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except TimeoutError:

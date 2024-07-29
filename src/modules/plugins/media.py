@@ -951,12 +951,12 @@ async def video_create_process(event: NewMessage.Event) -> None:
 
     ffmpeg_command = (
         f'ffmpeg -hide_banner -y -f lavfi -i color=c=black:s=854x480:d={audio_message.file.duration} '
-        f'-i "{audio_file}" -i "{subtitle_file}" '
-        f"-filter_complex \"[0:v]subtitles=f='{subtitle_file}':force_style='FontSize=28,Alignment=10,MarginV=190'[v]\" "
+        f'-i "{audio_file.name}" -i "{subtitle_file.name}" '
+        f"-filter_complex \"[0:v]subtitles=f='{subtitle_file.name}':force_style='FontSize=28,Alignment=10,MarginV=190'[v]\" "
         f'-map "[v]" -map 1:a -map 2 '
         f'-c:v libx264 -preset ultrafast -c:a aac -b:a 48k '
         f'-c:s mov_text '
-        f'-shortest "{output_file}"'
+        f'-shortest "{output_file.name}"'
     )
     await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
     if not output_file.exists() or not output_file.stat().st_size:
@@ -1013,17 +1013,20 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         await download_file(event, temp_file, reply_message, progress_message)
         tmp_file_path = Path(temp_file.name)
         if transcription_method == 'vosk':
-            command = f'vosk-transcriber --log-level warning -i {temp_file.name} -l ar -t srt -o {output_dir / Path(temp_file.name).with_suffix(".srt")}'
+            command = (
+                f'vosk-transcriber --log-level warning -i {temp_file.name} -l ar '
+                f'-t srt -o {output_dir.name / tmp_file_path.with_suffix(".srt")}'
+            )
         else:
-            command = f'tafrigh "{temp_file.name}" -o "{output_dir}" -f txt srt'
+            command = f'tafrigh "{temp_file.name}" -o "{output_dir.name}" -f txt srt'
             command += (
                 f' -w {wit_access_tokens}'
                 if transcription_method == 'wit'
                 else f' -m {whisper_model_path} --use_faster_whisper'
             )
+        await stream_shell_output(event, command, status_message, progress_message, max_length=100)
         if transcription_method == 'vosk':
             srt_to_txt(tmp_file_path.with_suffix('.srt'))
-        await stream_shell_output(event, command, status_message, progress_message, max_length=100)
         for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
                 renamed_file = output_file.with_stem(Path(reply_message.file.name).stem)
