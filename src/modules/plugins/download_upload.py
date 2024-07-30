@@ -6,7 +6,7 @@ import regex as re
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
-from src import DOWNLOADS_DIR
+from src import DOWNLOADS_DIR, PARENT_DIR
 from src.modules.base import ModuleBase
 from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
@@ -56,14 +56,15 @@ async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -
 
 
 async def upload_file_command(event: NewMessage.Event) -> None:
-    file_path = Path(event.message.text.split(maxsplit=1)[1].strip())
-    if not file_path.exists():
-        await event.reply(f'File not found: <code>{file_path.name}</code>')
-        return
-
     progress_message = await event.reply('Starting file upload...')
-    await upload_file(event, file_path, progress_message)
-    await progress_message.edit(f'File successfully uploaded: <code>{file_path.name}</code>')
+    for file_path in PARENT_DIR.glob(event.message.text.split(maxsplit=1)[1].strip()):
+        if file_path.exists():
+            await upload_file(event, file_path, progress_message)
+            await progress_message.edit(
+                f'File successfully uploaded: <code>{file_path.name}</code>'
+            )
+            return
+    await progress_message.edit('No files were found!')
 
 
 async def upload_from_url_command(event: NewMessage.Event) -> None:
