@@ -96,7 +96,7 @@ async def handle_module_execution(
 
 
 async def handle_commands(event: NewMessage.Event) -> None:
-    command_with_args = re.match(r'^/(\w+)(?:\s+(\w+))?(?:\s+(.+))?$', event.message.text)
+    command_with_args = re.search(r'^/(\w+)(?:\s+(\w+))?(?:\s+(.+))?$', event.message.text, re.M)
     command = command_with_args.group(1)
     modifier = command_with_args.group(2)
     # args = command_with_args.group(3)
