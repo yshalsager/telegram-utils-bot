@@ -248,8 +248,8 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return await handle_callback_query_for_reply_state(
             event,
             reply_states,
-            'Please enter the start and end times in the format: [start time] [end time] '
-            '(e.g., <code>00:00:00 00:30:00</code>)',
+            'Please enter the cut points in the format: [start time] [end time] [start time] [end time], ... '
+            '(e.g., <code>00:00:00 00:30:00 00:45:00 01:15:00</code>)',
         )
     if event.sender_id in reply_states:
         reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
@@ -259,29 +259,52 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     else:
         reply_message = await get_reply_message(event, previous=True)
 
-    start_time, end_time = re.search(
-        r'(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})', event.message.text
-    ).groups()
-    try:
-        # Simple validation of time format
-        datetime.strptime(start_time, '%H:%M:%S')  # noqa: DTZ007
-        datetime.strptime(end_time, '%H:%M:%S')  # noqa: DTZ007
-    except ValueError:
-        await event.reply('Invalid time format. Use HH:MM:SS for both start and end times.')
+    cut_points = re.findall(r'(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})', event.message.text)
+    if not cut_points:
+        await event.reply(
+            'Invalid format. Use HH:MM:SS for start and end times, separated by spaces for multiple cuts.'
+        )
         return None
 
-    ffmpeg_command = (
-        f'ffmpeg -hide_banner -y -i "{{input}}" '
-        f'-ss {start_time} -to {end_time} '
-        f'-c copy -map 0 "{{output}}"'
-    )
-    await process_media(
-        event,
-        ffmpeg_command,
-        reply_message.file.ext,
-        reply_message,
-        feedback_text='Media cut successfully.',
-    )
+    try:
+        # Simple validation of time format
+        for start_time, end_time in cut_points:
+            datetime.strptime(start_time, '%H:%M:%S')  # noqa: DTZ007
+            datetime.strptime(end_time, '%H:%M:%S')  # noqa: DTZ007
+    except ValueError:
+        await event.reply('Invalid time format. Use HH:MM:SS for all start and end times.')
+        return None
+
+    status_message = await event.reply('Starting cut process...')
+    progress_message = await event.reply('<pre>Process output:</pre>')
+    with NamedTemporaryFile(suffix=reply_message.file.ext) as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        input_file = get_download_name(reply_message)
+        output_file_base = (temp_file_path.parent / input_file).with_suffix('')
+
+        for idx, (start_time, end_time) in enumerate(cut_points, 1):
+            output_file = output_file_base.with_name(
+                f'{output_file_base.stem}_cut_{idx}{reply_message.file.ext}'
+            )
+            ffmpeg_command = (
+                f'ffmpeg -hide_banner -y -i "{temp_file.name}" '
+                f'-ss {start_time} -to {end_time} '
+                f'-c copy -map 0 "{output_file}"'
+            )
+            await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+            if output_file.exists() and output_file.stat().st_size:
+                await upload_file(
+                    event,
+                    output_file,
+                    progress_message,
+                    is_voice=reply_message.voice is not None,
+                    caption=f'{start_time} - {end_time}',
+                )
+            else:
+                await status_message.edit(f'Processing failed for cut {idx}.')
+            output_file.unlink(missing_ok=True)
+
+    await status_message.edit('Media cuts completed successfully.')
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
     raise StopPropagation
@@ -1133,7 +1156,10 @@ class Media(ModuleBase):
             name='media cut',
             handler=handler,
             description='[HH:MM:SS HH:MM:SS] - Cut audio/video from start time to end time',
-            pattern=re.compile(r'^/(media)\s+(cut)\s+(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$'),
+            pattern=re.compile(
+                r'^/(media)\s+(cut)\s+(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}'
+                r'(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$'
+            ),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
@@ -1289,7 +1315,10 @@ class Media(ModuleBase):
             NewMessage(
                 func=lambda e: (
                     is_valid_reply_state(e, reply_states)
-                    and re.match(r'^(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})$', e.message.text)
+                    and re.match(
+                        r'^(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$',
+                        e.message.text,
+                    )
                 )
             ),
         )
