@@ -24,6 +24,7 @@ from src.utils.subtitles import convert_subtitles
 from src.utils.telegram import edit_or_send_as_file, get_reply_message
 
 cookies_file = Path(PARENT_DIR) / 'cookies.txt'
+netrc_file = Path(PARENT_DIR) / '.netrc'
 cookies = {'cookiefile': str(cookies_file.absolute())} if cookies_file.exists() else {}
 params = {
     **cookies,
@@ -41,6 +42,9 @@ params = {
     'restrictfilenames': True,
     'windowsfilenames': True,
 }
+if netrc_file.exists():
+    params['usenetrc'] = True
+    params['netrc_location'] = str(netrc_file.absolute())
 
 
 def download_hook(d: dict[str, Any], message: Message) -> None:
