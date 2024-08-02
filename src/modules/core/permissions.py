@@ -11,8 +11,8 @@ from src.utils.filters import is_admin_in_private
 
 
 async def manage_permissions(event: NewMessage.Event) -> None:
-    action, module_name, user_id = re.match(
-        r'^/permissions\s+(add|remove)\s+(\w+)\s+(\d+)$', event.message.text
+    action, _modules, user_id = re.match(
+        r'^/permissions\s+(add|remove)\s+([\w, ]+)\s+(\d+)$', event.message.text
     ).groups()
     try:
         user_id = int(user_id)
@@ -20,12 +20,16 @@ async def manage_permissions(event: NewMessage.Event) -> None:
         await event.reply('Invalid user ID. Please provide a valid integer.')
         return
 
-    if action == 'add':
-        permission_manager.add_user_to_module(module_name, user_id)
-        await event.reply(f'User {user_id} added to module {module_name}')
-    elif action == 'remove':
-        permission_manager.remove_user_from_module(module_name, user_id)
-        await event.reply(f'User {user_id} removed from module {module_name}')
+    results = []
+    for module_name in [module.strip() for module in _modules.split(',')]:
+        if action == 'add':
+            permission_manager.add_user_to_module(module_name, user_id)
+            results.append(f'User {user_id} added to module {module_name}')
+        elif action == 'remove':
+            permission_manager.remove_user_from_module(module_name, user_id)
+            results.append(f'User {user_id} removed from module {module_name}')
+
+    await event.reply('\n'.join(results))
 
 
 async def list_permissions(event: NewMessage.Event) -> None:
@@ -87,14 +91,14 @@ class Permissions(ModuleBase):
     commands: ClassVar[ModuleBase.CommandsT] = {
         'permissions add': Command(
             handler=manage_permissions,
-            description='Add user permissions for a module',
-            pattern=re.compile(r'^/permissions\s+add\s+(\w+)\s+(\d+)$'),
+            description='Add user permissions for one or more modules',
+            pattern=re.compile(r'^/permissions\s+add\s+([\w, ]+)\s+(\d+)$'),
             condition=is_admin_in_private,
         ),
         'permissions remove': Command(
             handler=manage_permissions,
-            description='Remove user permissions for a module',
-            pattern=re.compile(r'^/permissions\s+remove\s+(\w+)\s+(\d+)$'),
+            description='Remove user permissions for one or more modules',
+            pattern=re.compile(r'^/permissions\s+remove\s+([\w, ]+)\s+(\d+)$'),
             condition=is_admin_in_private,
         ),
         'permissions': Command(
