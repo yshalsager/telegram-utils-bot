@@ -117,7 +117,7 @@ async def handle_quran_search(event: events.InlineQuery.Event) -> None:
     inline_results = []
     for result in results:
         surah, aya = map(int, result['verse_key'].split(':'))
-        title = f'سورة {surah_names[surah]} ({aya})'
+        title = f'سورة {surah_names[surah - 1]} ({aya})'
         text = result['text']
         inline_results.append(
             await event.builder.article(
