@@ -2,6 +2,8 @@ from typing import ClassVar
 
 import regex as re
 from telethon.events import NewMessage
+from telethon.tl.functions.bots import SetBotCommandsRequest
+from telethon.tl.types import BotCommand, BotCommandScopePeer
 
 from src import bot
 from src.modules.base import ModuleBase
@@ -36,6 +38,19 @@ async def list_commands(event: NewMessage.Event) -> None:
             help_text += f'/{cmd}: {data.description}\n'
         help_text += '\n'
     await event.reply(help_text)
+    # Set bot commands
+    await event.client(
+        SetBotCommandsRequest(
+            scope=BotCommandScopePeer(event.input_chat),
+            lang_code='',
+            commands=[
+                BotCommand(command_name, command_data.description)
+                for module_commands in all_commands.values()
+                for command_name, command_data in module_commands.items()
+                if ' ' not in command_name
+            ],
+        )
+    )
 
 
 async def manage_plugins(event: NewMessage.Event) -> None:
