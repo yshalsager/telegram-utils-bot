@@ -45,6 +45,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ghostscript \
     # for tahweel
     poppler-utils \
+    # 7zip
+    p7zip-full \
+    p7zip-rar \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /code
