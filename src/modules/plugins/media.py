@@ -680,7 +680,7 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
             buttons = [
                 [
                     Button.inline(str(quality), f'm|video_resize|{quality}')
-                    for quality in ALLOWED_VIDEO_QUALITIES
+                    for quality in sorted(ALLOWED_VIDEO_QUALITIES)
                 ]
             ]
             await event.edit('Choose the target quality:', buttons=buttons)

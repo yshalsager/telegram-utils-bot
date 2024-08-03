@@ -47,7 +47,9 @@ async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
         else:
             buttons = [
                 [Button.inline(f'{ext}', f'm|image_convert|{ext}') for ext in row if ext]
-                for row in list(zip_longest(*[sorted(ALLOWED_OUTPUT_FORMATS)] * 3, fillvalue=None))
+                for row in list(
+                    zip_longest(*[iter(sorted(ALLOWED_OUTPUT_FORMATS))] * 3, fillvalue=None)
+                )
             ]
             await event.edit('Choose the target format:', buttons=buttons)
             return
