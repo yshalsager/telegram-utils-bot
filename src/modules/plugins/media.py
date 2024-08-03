@@ -949,7 +949,7 @@ async def video_create_initial(event: NewMessage.Event | CallbackQuery.Event) ->
     reply_message = await get_reply_message(event, previous=True)
     video_create_states[event.sender_id]['files'].append(reply_message.id)
     await event.reply(
-        'Send the subtitle file (.srt) to use.',
+        'Send a subtitle file (.srt) or a photo to use.',
         reply_to=reply_message.id,
         buttons=Button.clear(),
     )
@@ -957,30 +957,45 @@ async def video_create_initial(event: NewMessage.Event | CallbackQuery.Event) ->
 
 async def video_create_process(event: NewMessage.Event) -> None:
     video_create_states[event.sender_id]['state'] = MergeState.MERGING
-    audio_message = await event.client.get_messages(
+    audio_message: Message = await event.client.get_messages(
         event.chat_id, ids=video_create_states[event.sender_id]['files'][0]
     )
-    subtitle_message = event.message
-    status_message = await event.reply('Starting video creation process...')
-    progress_message = await event.respond('<pre>Process output:</pre>')
+    input_message: Message = event.message
+    status_message: Message = await event.reply('Starting video creation process...')
+    progress_message: Message = await event.respond('<pre>Process output:</pre>')
 
     audio_file = Path(TMP_DIR / audio_message.file.name)
-    subtitle_file = Path(TMP_DIR / subtitle_message.file.name)
+    input_file = Path(
+        TMP_DIR / (input_message.file.name or f'{get_download_name(input_message).name}')
+    )
     output_file = audio_file.with_suffix('.mp4')
     with audio_file.open('wb+') as f:
         await download_file(event, f, audio_message, progress_message)
-    with subtitle_file.open('wb+') as f:
-        await download_file(event, f, subtitle_message, progress_message)
+    with input_file.open('wb+') as f:
+        await download_file(event, f, input_message, progress_message)
 
-    ffmpeg_command = (
-        f'ffmpeg -hide_banner -y -f lavfi -i color=c=black:s=854x480:d={audio_message.file.duration} '
-        f'-i "{audio_file.name}" -i "{subtitle_file.name}" '
-        f"-filter_complex \"[0:v]subtitles=f='{subtitle_file.name}':force_style='FontSize=28,Alignment=10,MarginV=190'[v]\" "
-        f'-map "[v]" -map 1:a -map 2 '
-        f'-c:v libx264 -preset ultrafast -c:a aac -b:a 48k '
-        f'-c:s mov_text '
-        f'-shortest "{output_file.name}"'
-    )
+    if input_message.file.ext == '.srt':
+        ffmpeg_command = (
+            f'ffmpeg -hide_banner -y -f lavfi -i color=c=black:s=854x480:d={audio_message.file.duration} '
+            f'-i "{audio_file.name}" -i "{input_file.name}" '
+            f"-filter_complex \"[0:v]subtitles=f='{input_file.name}':force_style='FontSize=28,Alignment=10,MarginV=190'[v]\" "
+            f'-map "[v]" -map 1:a -map 2 '
+            f'-c:v libx264 -preset ultrafast -c:a aac -b:a 48k '
+            f'-c:s mov_text '
+            f'-shortest "{output_file.name}"'
+        )
+    elif input_message.photo:
+        ffmpeg_command = (
+            f'ffmpeg -hide_banner -y -loop 1 -i "{input_file.name}" '
+            f'-i "{audio_file.name}" '
+            f'-c:v libx264 -preset ultrafast -tune stillimage '
+            f'-c:a aac -b:a 48k -shortest '
+            f'-pix_fmt yuv420p "{output_file.name}"'
+        )
+    else:
+        await status_message.edit('Unsupported input file format.')
+        raise StopPropagation
+
     await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
     if not output_file.exists() or not output_file.stat().st_size:
         await status_message.edit('Video creation failed.')
@@ -990,7 +1005,7 @@ async def video_create_process(event: NewMessage.Event) -> None:
         output_file.unlink(missing_ok=True)
 
     audio_file.unlink(missing_ok=True)
-    subtitle_file.unlink(missing_ok=True)
+    input_file.unlink(missing_ok=True)
     video_create_states.pop(event.sender_id)
     raise StopPropagation
 
@@ -1340,7 +1355,7 @@ class Media(ModuleBase):
                     e.is_private
                     and e.sender_id in video_create_states
                     and video_create_states[e.sender_id]['state'] == MergeState.COLLECTING
-                    and e.file.ext.lower() == '.srt'
+                    and (e.file.ext.lower() == '.srt' or e.photo)
                 )
             ),
         )
