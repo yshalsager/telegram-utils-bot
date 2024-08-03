@@ -26,7 +26,7 @@ async def list_plugins(event: NewMessage.Event) -> None:
 
 
 async def list_commands(event: NewMessage.Event) -> None:
-    all_commands: dict[str, ModuleBase.CommandsT] = bot.modules_registry.get_all_commands()
+    all_commands: dict[str, ModuleBase.CommandsT] = bot.modules_registry.get_all_commands(event)
     help_text = '<b>Available commands</b>:\n\n'
     for module, commands in all_commands.items():
         if not commands:
@@ -77,3 +77,9 @@ class PluginManager(ModuleBase):
             condition=is_admin_in_private,
         ),
     }
+
+
+bot.bot.add_event_handler(
+    list_commands,
+    NewMessage(func=lambda x: x.is_private and x.message.text in ('/commands', '/help')),
+)

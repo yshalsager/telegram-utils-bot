@@ -95,11 +95,12 @@ class ModuleRegistry:
                 return module
         return None
 
-    def get_all_commands(self) -> dict[str, ModuleBase.CommandsT]:
+    def get_all_commands(self, event: NewMessage.Event) -> dict[str, ModuleBase.CommandsT]:
         return {
             module.name: module.commands
             for module in self.modules
             if self.is_module_enabled(module.name)
+            and self.permission_manager.has_permission(module.name, event.sender_id)
         }
 
     async def get_applicable_commands(self, event: NewMessage.Event) -> list[str]:
