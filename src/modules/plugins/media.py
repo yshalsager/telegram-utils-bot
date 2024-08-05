@@ -123,7 +123,7 @@ async def process_media(
     status_message = await event.reply('Starting process...')
     progress_message = await event.reply('<pre>Process output:</pre>')
 
-    with NamedTemporaryFile() as temp_file:
+    with NamedTemporaryFile(dir=TMP_DIR) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         if get_file_name:
             input_file = get_download_name(reply_message)
@@ -1089,6 +1089,38 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
+async def fix_stereo_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
+    if isinstance(event, CallbackQuery.Event):
+        if event.data.decode().startswith('m|media_stereo|'):
+            channel = event.data.decode().split('|')[-1]
+            delete_message_after_process = True
+        else:
+            buttons = [
+                [
+                    Button.inline(channel.capitalize(), f'm|media_stereo|{channel}')
+                    for channel in ('right', 'left')
+                ]
+            ]
+            await event.edit('Use audio of which channel:', buttons=buttons)
+            return
+    else:
+        channel = event.message.text.split('stereo ')[1]
+    reply_message = await get_reply_message(event, previous=True)
+    channel = 'FR' if channel == 'right' else 'FL'
+    ffmpeg_command = (
+        f'ffmpeg -hide_banner -y -i "{{input}}" '
+        f'-af "pan=mono|c0={channel}" '
+        f'-c:a aac -b:a {{audio_bitrate}} '
+        f'"{{output}}"'
+    )
+    await process_media(
+        event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
+    )
+    if delete_message_after_process:
+        event.client.loop.create_task(delete_message_after(await event.get_message()))
+
+
 handlers: CommandHandlerDict = {
     'audio compress': compress_audio,
     'audio convert': convert_to_audio,
@@ -1100,6 +1132,7 @@ handlers: CommandHandlerDict = {
     'media info': media_info,
     'media merge': merge_media_initial,
     'media split': split_media,
+    'media stereo': fix_stereo_audio,
     'transcribe': transcribe_media,
     'video compress': compress_video,
     'video create': video_create_initial,
@@ -1201,6 +1234,14 @@ class Media(ModuleBase):
             description='Get media info',
             pattern=re.compile(r'^/(media)\s+(info)$'),
             condition=partial(has_media, any=True),
+            is_applicable_for_reply=True,
+        ),
+        'media stereo': Command(
+            name='media stereo',
+            handler=handler,
+            description='Fix stereo audio by using one channel',
+            pattern=re.compile(r'^/(media)\s+(stereo)\s+(right|left)$'),
+            condition=partial(has_media, audio_or_voice=True),
             is_applicable_for_reply=True,
         ),
         'transcribe': Command(
