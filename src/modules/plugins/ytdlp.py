@@ -353,10 +353,81 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
 
 
+async def download_audio_segment(event: NewMessage.Event) -> None:
+    progress_message = await event.reply('Starting audio download...')
+    message = event.message
+    match = re.search(
+        rf'^/ytaudio\s+(?P<url>{HTTP_URL_PATTERN})\s+(?P<start>\d{{2}}:\d{{2}}:\d{{2}})\s+(?P<end>\d{{2}}:\d{{2}}:\d{{2}})$',
+        message.raw_text,
+    )
+    if not match:
+        await progress_message.edit(
+            'Invalid command format. Use: /ytaudio [URL] [start_time] [end_time]'
+        )
+        return
+
+    start_time = match.group('start')
+    end_time = match.group('end')
+    start_seconds = sum(int(x) * 60**i for i, x in enumerate(reversed(start_time.split(':'))))
+    end_seconds = sum(int(x) * 60**i for i, x in enumerate(reversed(end_time.split(':'))))
+    ydl_opts = {
+        **params,
+        'format': 'wa',
+        'outtmpl': str(TMP_DIR / f'%(id)s-{start_seconds}-{end_seconds}.%(ext)s'),
+        'progress_hooks': [lambda d: download_hook(d, progress_message)],
+        'postprocessors': [
+            {
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'm4a',
+            }
+        ],
+        'external_downloader': 'ffmpeg_i',
+        'external_downloader_args': ['-ss', str(start_seconds), '-to', str(end_seconds)],
+    }
+
+    try:
+        info_dict = await get_running_loop().run_in_executor(
+            None, partial(YoutubeDL(ydl_opts).extract_info, match.group('url'), download=True)
+        )
+        file_path = Path(TMP_DIR / f"{info_dict['id']}-{start_seconds}-{end_seconds}.m4a")
+        await progress_message.edit('Uploading audio segment...')
+        attributes = [
+            DocumentAttributeAudio(
+                duration=end_seconds - start_seconds,
+                title=f"{info_dict['title']} ({start_time} - {end_time})",
+                performer=info_dict.get('uploader'),
+            )
+        ]
+        await upload_file(
+            event,
+            file_path,
+            progress_message,
+            caption=f"<b>{info_dict['title']}</b> ({start_time} - {end_time})\n\n"
+            f"👤 {info_dict.get('uploader', '')}\n"
+            f"⏱ {end_seconds - start_seconds} seconds\n"
+            f"{info_dict['webpage_url']}",
+            attributes=attributes,
+        )
+        file_path.unlink(missing_ok=True)
+        await progress_message.edit('Audio segment download and upload completed.')
+    except Exception as e:  # noqa: BLE001
+        await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
+
+
 class YTDLP(ModuleBase):
     name = 'YTDLP'
     description = 'Use YT-DLP'
     commands: ClassVar[ModuleBase.CommandsT] = {
+        'ytaudio': Command(
+            name='ytaudio',
+            handler=download_audio_segment,
+            description='[url] [start_time] [end_time]: Download audio segment from YouTube video.',
+            pattern=re.compile(
+                rf'^/ytaudio\s+{HTTP_URL_PATTERN}\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}$'
+            ),
+            condition=has_valid_url,
+            is_applicable_for_reply=False,
+        ),
         'ytdown': Command(
             handler=download_media,
             description='[url]: Download YouTube video or audio.',
