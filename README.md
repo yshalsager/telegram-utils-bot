@@ -54,13 +54,13 @@ A versatile modular Telegram bot with multiple features.
 - Search and retrieve Quran ayahs and Sunnah Hadiths
 - Search web using DuckDuckGo
 - Search Wikipedia in multiple languages
-- YouTube interactions (download audio/video, playlists, subtitles - planned)
+- YouTube (and all sites supported by ytdlp) interactions (download audio/video, playlists, subtitles)
 
 ### Text, Document, and Audio Processing
 
-- OCR (Optical Character Recognition) using Tesseract and Google (planned)
-- PDF processing: text extraction, compression, page extraction (planned)
-- Transcription (planned)
+- OCR (Optical Character Recognition) using Tesseract and Google
+- PDF processing: text extraction, compression, page extraction
+- Transcription
 
 ### Utility Functions
 
@@ -68,6 +68,7 @@ A versatile modular Telegram bot with multiple features.
 - View Telegram messages as JSON
 - Generate MD5 hashes of Telegram files
 - Create direct download links (planned)
+- Instant Preview of web articles
 
 ## Usage
 
@@ -97,7 +98,7 @@ Before setting up the bot:
 3. Run the following command in the project directory:
 
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
 ### Without Docker
