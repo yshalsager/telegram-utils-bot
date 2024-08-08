@@ -41,13 +41,13 @@ async def stream_shell_output(
     timeout = ADMIN_TIMEOUT_SECONDS if event.sender_id in BOT_ADMINS else TIMEOUT_SECONDS
     buffer = ''
     code = None
-    last_edit_time = datetime.now()
+    last_edit_time = datetime.now(UTC)
     edit_interval = timedelta(seconds=SECONDS_TO_WAIT)
 
     async for full_log, return_code in runner(cmd, timeout=timeout):
         buffer, code = full_log, return_code
         if bool(buffer.strip()):
-            current_time = datetime.now()
+            current_time = datetime.now(UTC)
             if current_time - last_edit_time >= edit_interval:
                 try:
                     await progress_message.edit(

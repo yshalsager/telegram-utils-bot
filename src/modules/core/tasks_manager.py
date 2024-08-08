@@ -28,7 +28,7 @@ async def list_tasks(event: NewMessage.Event) -> None:
         message += f'📦 <code>{task_id}</code>'
         try:
             task_event: NewMessage.Event | CallbackQuery.Event
-            if task_event := task.get_coro().cr_frame.f_locals.get('event'):
+            if task_event := task.get_coro().cr_frame.f_locals.get('event'):  # type: ignore[union-attr]
                 task_command = (
                     task_event.message.text
                     if hasattr(task_event, 'message')
