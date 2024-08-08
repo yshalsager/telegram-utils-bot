@@ -1334,8 +1334,7 @@ class Media(ModuleBase):
             merge_media_add,
             NewMessage(
                 func=lambda e: (
-                    e.is_private
-                    and (e.message.audio or e.message.voice)
+                    (e.message.audio or e.message.voice)
                     and merge_states[e.sender_id]['state'] == MergeState.COLLECTING
                 )
             ),
@@ -1344,8 +1343,7 @@ class Media(ModuleBase):
             merge_media_process,
             CallbackQuery(
                 pattern=b'finish_merge',
-                func=lambda e: e.is_private
-                and merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
+                func=lambda e: merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
             ),
         )
         bot.add_event_handler(
@@ -1382,8 +1380,7 @@ class Media(ModuleBase):
             video_update_process,
             NewMessage(
                 func=lambda e: (
-                    e.is_private
-                    and e.sender_id in video_update_states
+                    e.sender_id in video_update_states
                     and video_update_states[e.sender_id]['state'] == MergeState.COLLECTING
                     and (e.audio or e.voice or e.video)
                 )
@@ -1393,8 +1390,7 @@ class Media(ModuleBase):
             video_create_process,
             NewMessage(
                 func=lambda e: (
-                    e.is_private
-                    and e.sender_id in video_create_states
+                    e.sender_id in video_create_states
                     and video_create_states[e.sender_id]['state'] == MergeState.COLLECTING
                     and (e.file.ext.lower() == '.srt' or e.photo)
                 )

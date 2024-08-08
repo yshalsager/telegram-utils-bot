@@ -96,5 +96,5 @@ class PluginManager(ModuleBase):
 
 bot.bot.add_event_handler(
     list_commands,
-    NewMessage(func=lambda x: x.is_private and x.message.text in ('/commands', '/help')),
+    NewMessage(func=lambda x: x.message.text in ('/commands', '/help')),
 )

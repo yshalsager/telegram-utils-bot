@@ -101,8 +101,7 @@ def has_media(event: NewMessage.Event, reply_message: Message | None, **media_ty
 
 def is_valid_reply_state(event: NewMessage.Event, reply_states: StateT) -> bool:
     return (
-        event.is_private
-        and event.is_reply
+        event.is_reply
         and event.sender_id in reply_states
         and reply_states[event.sender_id]['state'] == ReplyState.WAITING
         and event.message.reply_to_msg_id == reply_states[event.sender_id]['reply_message_id']

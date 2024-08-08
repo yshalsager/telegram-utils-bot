@@ -443,8 +443,7 @@ class PDF(ModuleBase):
             merge_pdf_add,
             NewMessage(
                 func=lambda e: (
-                    e.is_private
-                    and has_pdf_file(e, None)
+                    has_pdf_file(e, None)
                     and merge_states[e.sender_id]['state'] == MergeState.COLLECTING
                 )
             ),
@@ -453,8 +452,7 @@ class PDF(ModuleBase):
             merge_pdf_process,
             CallbackQuery(
                 pattern=b'finish_pdf_merge',
-                func=lambda e: e.is_private
-                and merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
+                func=lambda e: merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
             ),
         )
         bot.add_event_handler(

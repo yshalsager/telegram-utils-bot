@@ -107,7 +107,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
     ) or modules_registry.get_module_by_command(command_with_args.group(1))
     if (
         not module
-        or not permission_manager.has_permission(module.name, event.sender_id)
+        or not permission_manager.has_permission(module.name, event.chat_id)
         or not await module.is_applicable(event)
     ):
         raise StopPropagation
@@ -127,7 +127,7 @@ async def handle_messages(event: NewMessage.Event) -> None:
             for row in list(zip_longest(*[iter(sorted(applicable_commands))] * 3, fillvalue=None))
         ]
         await event.reply('Choose an option:', buttons=keyboard)
-    else:
+    elif event.is_private:
         await event.reply('No applicable modules found for this input.')
     raise StopPropagation
 
@@ -138,7 +138,7 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
         command = command[2:]
     command = command.replace('_', ' ')
     module = modules_registry.get_module_by_command(command.split('|')[0])
-    if not module or not permission_manager.has_permission(module.name, event.sender_id):
+    if not module or not permission_manager.has_permission(module.name, event.chat_id):
         return
 
     async def response_func(message: str) -> None:
@@ -181,7 +181,7 @@ async def run_bot() -> None:
     logger.info(f'Bot started: {me.first_name} (@{me.username})')
 
     # Register event handlers
-    bot.add_event_handler(start_command, NewMessage(pattern='/start', func=lambda x: x.is_private))
+    bot.add_event_handler(start_command, NewMessage(pattern='/start'))
     bot.add_event_handler(
         cancel_command, NewMessage(pattern=r'^/cancel$', func=lambda x: x.message.is_reply)
     )
@@ -196,17 +196,14 @@ async def run_bot() -> None:
         handle_commands,
         NewMessage(
             pattern=rf'^/(\w+)(?:@{bot_info['username']})?\s?(.+)?',
-            func=lambda x: x.is_private
-            and not any(x.message.text.startswith(c) for c in ('/start', '/help', '/cancel')),
+            func=lambda x: not any(
+                x.message.text.startswith(c) for c in ('/start', '/help', '/cancel')
+            ),
         ),
     )
     bot.add_event_handler(
         handle_messages,
-        NewMessage(
-            func=lambda x: x.is_private
-            and not x.message.text.startswith('/')
-            and not x.message.via_bot
-        ),
+        NewMessage(func=lambda x: not x.message.text.startswith('/') and not x.message.via_bot),
     )
     bot.add_event_handler(handle_callback, CallbackQuery(pattern=r'^m|'))
     bot.add_event_handler(handle_inline_query, InlineQuery(func=lambda x: len(x.text) > 2))

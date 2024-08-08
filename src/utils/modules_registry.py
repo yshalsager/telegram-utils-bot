@@ -85,7 +85,7 @@ class ModuleRegistry:
             module
             for module in self.modules
             if self.is_module_enabled(module.name)
-            and self.permission_manager.has_permission(module.name, event.sender_id)
+            and self.permission_manager.has_permission(module.name, event.chat_id)
             and (await module.is_applicable(event))
         ]
 
@@ -100,7 +100,7 @@ class ModuleRegistry:
             module.name: module.commands
             for module in self.modules
             if self.is_module_enabled(module.name)
-            and self.permission_manager.has_permission(module.name, event.sender_id)
+            and self.permission_manager.has_permission(module.name, event.chat_id)
         }
 
     async def get_applicable_commands(self, event: NewMessage.Event) -> list[str]:

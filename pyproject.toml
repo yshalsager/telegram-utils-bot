@@ -56,7 +56,6 @@ disallow_untyped_decorators = false
 [tool.ruff]  # https://github.com/charliermarsh/ruff
 fix = true
 line-length = 100
-
 src = ["src"]
 target-version = "py312"
 
@@ -68,7 +67,6 @@ ignore = [
     "G004", # Logging statement uses f-string
     "PLR2004", # Magic value used in comparison, consider replacing 3 with a constant variable
     "PLR0913", # Too many arguments to function call (6 > 5)
-    "DTZ002", "DTZ005", # The use of `datetime.datetime.now()` without `tz` argument is not allowed"
     "E712",
     "RUF001", # ambiguous-unicode-character-string	String contains ambiguous {}. Did you mean {}?
     "ISC001", # for ruff format
