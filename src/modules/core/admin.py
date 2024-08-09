@@ -32,6 +32,9 @@ async def update(event: NewMessage.Event) -> None:
     if code and code != 0:
         await message.edit(f'Failed to update:\n<pre>{output}</pre>')
         return None
+    if output.strip() == 'Already up to date.':
+        await message.edit('Already up to date.')
+        return None
     await message.edit(f'Git update successful. Updating requirements...\n<pre>{output}</pre>')
 
     output, code = await run_command('pip install --upgrade -r requirements.txt', cwd=PARENT_DIR)
