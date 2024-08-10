@@ -22,7 +22,7 @@ wikipedia = "^1.4.0"
 vosk = "^0.3.44"
 yt-dlp = "^2024.7.25"
 pymupdf = "^1.24.9"
-tahweel = "^0.0.12"
+tahweel = "^0.0.13"
 ocrmypdf = "^16.4.2"
 
 [tool.poetry.group.dev.dependencies]
