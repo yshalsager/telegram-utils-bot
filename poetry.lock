@@ -12,17 +12,6 @@ files = [
 ]
 
 [[package]]
-name = "aiohappyeyeballs"
-version = "2.3.5"
-description = "Happy Eyeballs for asyncio"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "aiohappyeyeballs-2.3.5-py3-none-any.whl", hash = "sha256:4d6dea59215537dbc746e93e779caea8178c866856a721c9c660d7a5a7b8be03"},
-    {file = "aiohappyeyeballs-2.3.5.tar.gz", hash = "sha256:6fa48b9f1317254f122a07a131a86b71ca6946ca989ce6326fff54a99a920105"},
-]
-
-[[package]]
 name = "aiohttp"
 version = "3.10.2"
 description = "Async http client/server framework (asyncio)"
@@ -3406,13 +3395,13 @@ wit = ["auditok (>=0.2.0)", "pydub (>=0.25.1)", "requests (>=2.32.0)"]
 
 [[package]]
 name = "tahweel"
-version = "0.0.12"
+version = "0.0.13"
 description = "تحويل ملفات PDF إلى Word و TXT"
 optional = false
 python-versions = "<4.0,>=3.10"
 files = [
-    {file = "tahweel-0.0.12-py3-none-any.whl", hash = "sha256:f4e3403c8febd6ea18de2b121e91f025310a87a7e955c781f049d795513b9698"},
-    {file = "tahweel-0.0.12.tar.gz", hash = "sha256:cb053aadb8e5c0adb6d24091a51bdad8e76136248776414dce064688229d1e11"},
+    {file = "tahweel-0.0.13-py3-none-any.whl", hash = "sha256:1565b51ec041c0db75f90706706dd043e4ceaf402984a449de0397a30ad26d21"},
+    {file = "tahweel-0.0.13.tar.gz", hash = "sha256:5e5e424f6ee6ad00efcee7dcc324229ecb85f4cc9c4b34f39fbba2265b106721"},
 ]
 
 [package.dependencies]
@@ -4259,4 +4248,4 @@ test = ["pytest (>=8.1,<9.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "9f6e7bfc2f4c3c25f08f42e09ed346cd53538c0596a8f479d7f8a12715aca149"
+content-hash = "63211c88039f349387d556752fa8376a81c1a1f22958e21955ac684ad1dbdfa2"
