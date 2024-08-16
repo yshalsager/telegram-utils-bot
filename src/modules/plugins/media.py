@@ -775,8 +775,7 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if amplification_factor <= 1:
         await event.reply('Amplification factor must be greater than 1.')
         return
-    if amplification_factor > 3:
-        amplification_factor = 3
+    amplification_factor = min(amplification_factor, 3)
 
     reply_message = await get_reply_message(event, previous=True)
     ffmpeg_command = (
