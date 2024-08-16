@@ -128,7 +128,11 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         )
     else:
         reply_message = await get_reply_message(event, previous=True)
-    pages_count = int(re.search(r'(\d+)', event.message.text).group(1))
+    if match := re.search(r'(\d+)', event.message.text):
+        pages_count = int(match.group(1))
+    else:
+        await event.reply('Invalid input. Please provide a number of pages to split the PDF into.')
+        raise StopPropagation
     progress_message = await event.reply('Splitting PDF...')
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
@@ -353,8 +357,78 @@ async def ocr_pdf(event: NewMessage.Event) -> None:
     rmtree(output_dir, ignore_errors=True)
 
 
+async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
+    if isinstance(event, CallbackQuery.Event):
+        if event.data.decode() == 'm|pdf_compress|gs':
+            buttons = [
+                [
+                    Button.inline(opt, f'm|pdf_compress|gs|{opt}')
+                    for opt in ['screen', 'ebook', 'printer', 'prepress', 'default']
+                ]
+            ]
+            await event.edit('Choose Ghostscript compression option:', buttons=buttons)
+            return
+        if event.data.decode().startswith('m|pdf_compress|'):
+            parts = event.data.decode().split('|')
+            method = parts[2] if len(parts) > 2 else 'pymupdf'
+            option = parts[3] if len(parts) > 3 else ''
+            delete_message_after_process = True
+        else:
+            buttons = [
+                [
+                    Button.inline('Ghostscript', 'm|pdf_compress|gs'),
+                    Button.inline('PyMuPDF', 'm|pdf_compress|pymupdf'),
+                ]
+            ]
+            await event.edit('Choose compression method:', buttons=buttons)
+            return
+    else:
+        method = 'pymupdf'
+        option = ''
+
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await event.reply('Starting process...')
+    progress_message = await event.reply('Compressing PDF...')
+
+    with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        output_file = temp_file_path.with_name(
+            f'{Path(reply_message.file.name).stem}_compressed.pdf'
+        )
+
+        if method == 'gs':
+            command = (
+                f'gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/{option} -dNOPAUSE '
+                f'-dQUIET -dBATCH -sOutputFile="{output_file}" "{temp_file_path}"'
+            )
+            await stream_shell_output(event, command, status_message, progress_message)
+        else:  # pymupdf
+            with pymupdf.open(temp_file_path) as doc:
+                doc.save(
+                    output_file,
+                    garbage=4,
+                    deflate=True,
+                    deflate_images=True,
+                    deflate_fonts=False,
+                    use_objstms=True,
+                )
+
+        compression_ratio = (1 - (output_file.stat().st_size / reply_message.file.size)) * 100
+        feedback_text = f'Compression: {compression_ratio:.2f}%\n'
+        await progress_message.edit(feedback_text)
+
+        await upload_file(event, output_file, progress_message)
+        output_file.unlink(missing_ok=True)
+
+    if delete_message_after_process:
+        await status_message.delete()
+        event.client.loop.create_task(delete_message_after(await event.get_message()))
+
+
 handlers: CommandHandlerDict = {
     'pdf': image_to_pdf,
+    'pdf compress': compress_pdf,
     'pdf extract': extract_pdf_pages,
     'pdf images': convert_to_images,
     'pdf merge': merge_pdf_initial,
@@ -377,6 +451,14 @@ class PDF(ModuleBase):
             description='Convert image to PDF',
             pattern=re.compile(r'^/(pdf)$'),
             condition=has_photo_or_photo_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf compress': Command(
+            name='pdf compress',
+            handler=handler,
+            description='Compress PDF file',
+            pattern=re.compile(r'^/(pdf)\s+(compress)$'),
+            condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),
         'pdf extract': Command(

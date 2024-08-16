@@ -1,8 +1,8 @@
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from re import Pattern
 from typing import Any
 
+from regex.regex import Pattern
 from telethon.events import CallbackQuery, InlineQuery, NewMessage
 from telethon.tl.custom import Message
 
