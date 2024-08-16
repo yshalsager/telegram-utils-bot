@@ -101,7 +101,11 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
         if isinstance(event, CallbackQuery.Event)
         else event.message
     )
-    link = re.search(HTTP_URL_PATTERN, message.raw_text).group(0)
+    match = re.search(HTTP_URL_PATTERN, message.raw_text)
+    if not match:
+        await progress_message.edit('No valid URL found in the message.')
+        return
+    link = match.group(0)
     ydl_opts = {
         **params,
         'progress_hooks': [lambda d: download_hook(d, progress_message)],
@@ -135,7 +139,11 @@ async def get_subtitles(event: NewMessage.Event) -> None:
         if isinstance(event, CallbackQuery.Event)
         else event.message
     )
-    link = re.search(HTTP_URL_PATTERN, message.raw_text).group(0)
+    if match := re.search(HTTP_URL_PATTERN, message.raw_text):
+        link = match.group(0)
+    else:
+        await event.edit('No valid URL found in the message.')
+        return
     if match := re.search(r'\s+([a-z]{2})\s+', message.raw_text):
         language = match.group(1)
     else:
@@ -192,7 +200,11 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
         if isinstance(event, CallbackQuery.Event)
         else event.message
     )
-    link = re.search(HTTP_URL_PATTERN, message.raw_text).group(0)
+    if match := re.search(HTTP_URL_PATTERN, message.raw_text):
+        link = match.group(0)
+    else:
+        await event.edit('No valid URL found in the message.')
+        return
     try:
         ydl_opts = {
             **params,
@@ -231,7 +243,7 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
 
 
-async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901
+async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912
     is_url_event = (
         isinstance(event, CallbackQuery.Event)
         and event.data
@@ -251,7 +263,11 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return
 
     reply_message = await get_reply_message(event, previous=True)
-    link = re.search(HTTP_URL_PATTERN, reply_message.raw_text).group(0)
+    if match := re.search(HTTP_URL_PATTERN, reply_message.raw_text):
+        link = match.group(0)
+    else:
+        await event.edit('No valid URL found in the message.')
+        return
     _, _type, _format = event.data.decode().split('|')
 
     if _type in ('audio', 'video') and not _format:

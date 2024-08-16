@@ -70,8 +70,13 @@ async def upload_file_command(event: NewMessage.Event) -> None:
 async def upload_from_url_command(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     message = reply_message or event.message
-    url = re.search(HTTP_URL_PATTERN, message.raw_text).group(0)
-    custom_name = None
+    custom_name = ''
+    url_match = re.search(HTTP_URL_PATTERN, message.raw_text)
+    if url_match:
+        url = url_match.group(0)
+    else:
+        await event.reply('No valid URL found in the message.')
+        return
     if custom := message.raw_text.split('|', 1):
         custom_name = custom[1].strip() if len(custom) > 1 else None
     progress_message = await event.reply('Starting file download...')

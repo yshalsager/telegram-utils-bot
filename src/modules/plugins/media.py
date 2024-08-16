@@ -213,8 +213,11 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
             ]
             await event.edit('Choose the desired bitrate:', buttons=buttons)
             return
+    elif match := re.search(r'(\d+)$', event.message.text):
+        audio_bitrate = match.group(1)
     else:
-        audio_bitrate = re.search(r'(\d+)$', event.message.text).group(1)
+        await event.reply('Invalid input. Please provide a valid bitrate.')
+        return
     ffmpeg_command = (
         f'ffmpeg -hide_banner -y -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
     )

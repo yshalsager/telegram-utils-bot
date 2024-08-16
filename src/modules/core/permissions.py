@@ -11,9 +11,13 @@ from src.utils.filters import is_admin_in_private
 
 
 async def manage_permissions(event: NewMessage.Event) -> None:
-    action, _modules, user_id = re.match(
-        r'^/permissions\s+(add|remove)\s+([\w, ]+)\s+(\d+)$', event.message.text
-    ).groups()
+    match = re.match(r'^/permissions\s+(add|remove)\s+([\w, ]+)\s+(\d+)$', event.message.text)
+    if not match:
+        await event.reply(
+            'Invalid command format. Please use: /permissions add|remove module1,module2,... user_id'
+        )
+        return
+    action, _modules, user_id = match.groups()
     try:
         user_id = int(user_id)
     except ValueError:
