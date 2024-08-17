@@ -21,6 +21,7 @@ from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.filters import has_pdf_file, has_photo_or_photo_file, is_valid_reply_state
+from src.utils.i18n import t
 from src.utils.reply import (
     MergeState,
     ReplyState,
@@ -37,7 +38,7 @@ merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': [
 
 async def extract_pdf_text(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply('Extracting text from PDF...')
+    progress_message = await event.reply(t('extracting_text_from_pdf'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -61,30 +62,27 @@ async def merge_pdf_initial(event: NewMessage.Event | CallbackQuery.Event) -> No
     merge_states[event.sender_id]['files'] = []
     reply_message = await get_reply_message(event, previous=True)
     merge_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply('Send more PDF files to merge.')
+    await event.reply(t('send_more_pdf_files_to_merge'))
 
 
 async def merge_pdf_add(event: NewMessage.Event) -> None:
     merge_states[event.sender_id]['files'].append(event.id)
-    await event.reply(
-        "PDF added. Send more or click 'Finish' to merge.",
-        buttons=[Button.inline('Finish', 'finish_pdf_merge')],
-    )
+    await event.reply(t('file_added'), buttons=[Button.inline(t('finish'), 'finish_pdf_merge')])
     raise StopPropagation
 
 
 async def merge_pdf_process(event: CallbackQuery.Event) -> None:
     merge_states[event.sender_id]['state'] = MergeState.MERGING
     files = merge_states[event.sender_id]['files']
-    await event.answer('Merging PDFs...')
+    await event.answer(t('merging'))
 
     if len(files) < 2:
-        await event.answer('Not enough PDFs to merge.')
+        await event.answer(t('not_enough_files'))
         merge_states[event.sender_id]['state'] = MergeState.IDLE
         return
 
-    status_message = await event.respond('Starting PDF merge process...')
-    progress_message = await event.respond('Merging PDFs...')
+    status_message = await event.respond(t('starting_merge'))
+    progress_message = await event.respond(t('merging'))
 
     with pymupdf.open() as merged_pdf:
         for file_id in files:
@@ -105,9 +103,9 @@ async def merge_pdf_process(event: CallbackQuery.Event) -> None:
                     output_file_path,
                     progress_message,
                 )
-                await status_message.edit('PDFs successfully merged.')
+                await status_message.edit(t('merge_completed'))
             else:
-                await status_message.edit('Merging failed.')
+                await status_message.edit(t('merge_failed'))
 
     await progress_message.delete()
     merge_states.pop(event.sender_id)
@@ -118,7 +116,7 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return await handle_callback_query_for_reply_state(
             event,
             reply_states,
-            'Please enter number of pages to split PDF into:',
+            f'{t('pdf_split_pages_number')}:',
         )
 
     if event.sender_id in reply_states:
@@ -131,9 +129,9 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if match := re.search(r'(\d+)', event.message.text):
         pages_count = int(match.group(1))
     else:
-        await event.reply('Invalid input. Please provide a number of pages to split the PDF into.')
+        await event.reply(t('invalid_pdf_split_pages_number'))
         raise StopPropagation
-    progress_message = await event.reply('Splitting PDF...')
+    progress_message = await event.reply(t('splitting_pdf'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -155,7 +153,7 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     await upload_file(event, output_file, progress_message)
                     output_file.unlink(missing_ok=True)
 
-        await progress_message.edit('PDF split complete.')
+        await progress_message.edit(t('pdf_split_completed'))
 
     if event.sender_id in reply_states:
         reply_states.pop(event.sender_id)
@@ -177,9 +175,7 @@ def parse_page_numbers(input_string: str) -> list[int]:
 async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         return await handle_callback_query_for_reply_state(
-            event,
-            reply_states,
-            'Please enter page numbers to extract (e.g., 1,3-5,7):',
+            event, reply_states, f'{t('pdf_extract_pages')}:'
         )
 
     if event.sender_id in reply_states:
@@ -196,7 +192,7 @@ async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> No
         else event.message.text
     )
     pages_to_extract = parse_page_numbers(pages_input)
-    progress_message = await event.reply('Extracting PDF pages...')
+    progress_message = await event.reply(t('extracting_pdf_pages'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -209,7 +205,7 @@ async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> No
             await upload_file(event, output_file, progress_message)
             output_file.unlink(missing_ok=True)
 
-    await progress_message.edit('PDF page extraction complete.')
+    await progress_message.edit(t('pdf_extraction_completed'))
 
     if event.sender_id in reply_states:
         reply_states.pop(event.sender_id)
@@ -226,14 +222,14 @@ async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> No
             buttons = [
                 [Button.inline('ZIP', 'm|pdf_images|ZIP'), Button.inline('PDF', 'm|pdf_images|PDF')]
             ]
-            await event.edit('Choose output format:', buttons=buttons)
+            await event.edit(f'{t('choose_output_format')}:', buttons=buttons)
             return
     else:
         args = event.message.text.split('images')
         output_format = 'ZIP' if len(args) == 1 else args[-1]
 
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply('Converting PDF to images...')
+    progress_message = await event.reply(t('converting_pdf_to_images'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -268,14 +264,14 @@ async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> No
         await upload_file(event, output_file, progress_message)
         output_file.unlink(missing_ok=True)
 
-    await progress_message.edit('PDF to images conversion complete. Images sent as ZIP file.')
+    await progress_message.edit(t('pdf_to_images_conversion_completed'))
     if delete_message_after_process:
         event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
 async def image_to_pdf(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply('Converting image to PDF...')
+    progress_message = await event.reply(t('converting_image_to_pdf'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -295,13 +291,13 @@ async def image_to_pdf(event: NewMessage.Event) -> None:
         await upload_file(event, output_file, progress_message)
         output_file.unlink(missing_ok=True)
 
-    await progress_message.edit('Image to PDF conversion complete.')
+    await progress_message.edit(t('image_to_pdf_conversion_completed'))
 
 
 async def ocrmypdf(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply('Starting process...')
-    progress_message = await event.reply('Performing OCR on PDF using ocrmypdf...')
+    status_message = await event.reply(t('starting_process'))
+    progress_message = await event.reply(t('performing_ocr'))
     lang = 'ara'
     if matches := PDF.commands['pdf ocr'].pattern.search(reply_message.raw_text):
         lang = matches[-1] if len(matches.groups()) > 2 else lang
@@ -320,22 +316,22 @@ async def ocrmypdf(event: NewMessage.Event) -> None:
             await upload_file(event, text_file, progress_message)
             text_file.unlink(missing_ok=True)
         else:
-            await status_message.edit('Failed to OCR PDF.')
+            await status_message.edit(t('failed_to_ocr_pdf'))
             return
 
-    await progress_message.edit('PDF OCR process complete.')
+    await progress_message.edit(t('pdf_ocr_process_completed'))
 
 
 async def ocr_pdf(event: NewMessage.Event) -> None:
     """OCR PDF using tahweel."""
     service_account = getenv('SERVICE_ACCOUNT_FILE')
     if not service_account:
-        await event.reply('Please set SERVICE_ACCOUNT_FILE environment variable.')
+        await event.reply(t('please_set_service_account_file'))
         return
 
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply('Starting process...')
-    progress_message = await event.reply('Performing OCR on PDF using tahweel...')
+    status_message = await event.reply(t('starting_process'))
+    progress_message = await event.reply(t('performing_ocr_tahweel'))
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -353,7 +349,7 @@ async def ocr_pdf(event: NewMessage.Event) -> None:
             renamed_file = file.with_stem(Path(reply_message.file.name).stem)
             file.rename(renamed_file)
             await upload_file(event, renamed_file, progress_message)
-    await status_message.edit('PDF OCR process complete.')
+    await status_message.edit(t('pdf_ocr_process_completed'))
     rmtree(output_dir, ignore_errors=True)
 
 
@@ -367,7 +363,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     for opt in ['screen', 'ebook', 'printer', 'prepress', 'default']
                 ]
             ]
-            await event.edit('Choose Ghostscript compression option:', buttons=buttons)
+            await event.edit(f'{t('choose_ghostscript_compression')}:', buttons=buttons)
             return
         if event.data.decode().startswith('m|pdf_compress|'):
             parts = event.data.decode().split('|')
@@ -381,15 +377,15 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     Button.inline('PyMuPDF', 'm|pdf_compress|pymupdf'),
                 ]
             ]
-            await event.edit('Choose compression method:', buttons=buttons)
+            await event.edit(f'{t('choose_compression_method')}:', buttons=buttons)
             return
     else:
         method = 'pymupdf'
         option = ''
 
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply('Starting process...')
-    progress_message = await event.reply('Compressing PDF...')
+    status_message = await event.reply(t('starting_process'))
+    progress_message = await event.reply(t('compressing_pdf'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -415,11 +411,10 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 )
 
         compression_ratio = (1 - (output_file.stat().st_size / reply_message.file.size)) * 100
-        feedback_text = f'Compression: {compression_ratio:.2f}%\n'
-        await progress_message.edit(feedback_text)
-
         await upload_file(event, output_file, progress_message)
         output_file.unlink(missing_ok=True)
+        feedback_text = f'{t('compression')}: {compression_ratio:.2f}%\n'
+        await progress_message.edit(feedback_text)
 
     if delete_message_after_process:
         await status_message.delete()
@@ -443,12 +438,12 @@ handler = partial(dynamic_handler, handlers)
 
 class PDF(ModuleBase):
     name = 'PDF'
-    description = 'PDF processing commands'
+    description = t('_pdf_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'pdf': Command(
             name='pdf',
             handler=handler,
-            description='Convert image to PDF',
+            description=t('_pdf_description'),
             pattern=re.compile(r'^/(pdf)$'),
             condition=has_photo_or_photo_file,
             is_applicable_for_reply=True,
@@ -456,7 +451,7 @@ class PDF(ModuleBase):
         'pdf compress': Command(
             name='pdf compress',
             handler=handler,
-            description='Compress PDF file',
+            description=t('_pdf_compress_description'),
             pattern=re.compile(r'^/(pdf)\s+(compress)$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
@@ -464,7 +459,7 @@ class PDF(ModuleBase):
         'pdf extract': Command(
             name='pdf extract',
             handler=handler,
-            description='[pages] - Extract specific pages from PDF',
+            description=t('_pdf_extract_description'),
             pattern=re.compile(r'^/(pdf)\s+(extract)\s+([\d,\-\s]+)$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
@@ -472,7 +467,7 @@ class PDF(ModuleBase):
         'pdf images': Command(
             name='pdf images',
             handler=handler,
-            description='Convert PDF to images and send as ZIP',
+            description=t('_pdf_images_description'),
             pattern=re.compile(r'^/(pdf)\s+(images)\s+?(ZIP|PDF)?$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
@@ -480,7 +475,7 @@ class PDF(ModuleBase):
         'pdf merge': Command(
             name='pdf merge',
             handler=handler,
-            description='Merge multiple PDF files',
+            description=t('_pdf_merge_description'),
             pattern=re.compile(r'^/(pdf)\s+(merge)$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
@@ -488,7 +483,7 @@ class PDF(ModuleBase):
         'pdf ocr': Command(
             name='pdf ocr',
             handler=handler,
-            description='[lang]: Perform OCR using ocrmypdf',
+            description=t('_pdf_ocr_description'),
             pattern=re.compile(r'^/(pdf)\s+(ocr)\s+?([\w+]{3,})?$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
@@ -496,7 +491,7 @@ class PDF(ModuleBase):
         'pdf split': Command(
             name='pdf split',
             handler=handler,
-            description='[pages] - Split PDF into multiple pages',
+            description=t('_pdf_split_description'),
             pattern=re.compile(r'^/(pdf)\s+(split)\s+(\d+)$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
@@ -504,7 +499,7 @@ class PDF(ModuleBase):
         'pdf text': Command(
             name='pdf text',
             handler=handler,
-            description='Extract text from PDF',
+            description=t('_pdf_text_description'),
             pattern=re.compile(r'^/(pdf)\s+(text)$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
@@ -512,7 +507,7 @@ class PDF(ModuleBase):
         'ocr': Command(
             name='ocr',
             handler=handler,
-            description='[lang]: Perform OCR using tahweel',
+            description=t('_ocr_description'),
             pattern=re.compile(r'^/(pdf)\s+(ocr)\s+?([\w+]{3,})?$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,

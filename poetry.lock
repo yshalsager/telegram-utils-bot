@@ -2682,6 +2682,17 @@ typing = ["typing-extensions"]
 xmp = ["defusedxml"]
 
 [[package]]
+name = "plate"
+version = "1.0.1"
+description = "Internationalization Library for Python"
+optional = false
+python-versions = "~=3.7"
+files = [
+    {file = "Plate-1.0.1-py3-none-any.whl", hash = "sha256:b5ee257cbe11790f5c4b0426f05ea9c734ad14d4ae27187c3e52d1ccce2ad042"},
+    {file = "Plate-1.0.1.tar.gz", hash = "sha256:f2e3b7960c310379745c7ea1f4fce00b6e6c25041e1838cb81b1310c8af74dc0"},
+]
+
+[[package]]
 name = "platformdirs"
 version = "4.2.2"
 description = "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`."
@@ -4274,4 +4285,4 @@ test = ["pytest (>=8.1,<9.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "52223b755378bd68037756a41f5e7d335947c256c121fa64bf80241b7b3adb94"
+content-hash = "0c91d1024819727016716ed2e2ebe7a0b7f6c88950b2a4c653527b07f8acef44"

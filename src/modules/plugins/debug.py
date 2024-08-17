@@ -7,6 +7,7 @@ from telethon.events import NewMessage
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_reply_in_private
+from src.utils.i18n import t
 from src.utils.json import json_options, process_dict
 
 
@@ -18,12 +19,12 @@ async def to_json(event: NewMessage.Event) -> None:
 
 class Debug(ModuleBase):
     name = 'Debug'
-    description = 'Print message to JSON.'
+    description = t('_debug_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'json': Command(
             name='json',
             handler=to_json,
-            description='Show replied to message info in JSON format.',
+            description=t('_json_description'),
             pattern=re.compile(r'^/json$'),
             condition=is_reply_in_private,
         )

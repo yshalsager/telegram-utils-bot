@@ -26,6 +26,7 @@ from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.filters import has_media, is_valid_reply_state
+from src.utils.i18n import t
 from src.utils.json import json_options, process_dict
 from src.utils.reply import (
     MergeState,
@@ -115,13 +116,13 @@ async def process_media(
     is_voice: bool = False,
     get_file_name: bool = True,
     get_bitrate: bool = False,
-    feedback_text: str = 'File successfully processed.',
+    feedback_text: str = t('file_processed'),
 ) -> dict[str, Any]:
     data: dict[str, Any] = {}
     if not reply_message:
         reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply('Starting process...')
-    progress_message = await event.reply('<pre>Process output:</pre>')
+    status_message = await event.reply(t('starting_process'))
+    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
 
     with NamedTemporaryFile(dir=TMP_DIR) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -147,7 +148,7 @@ async def process_media(
         status = await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         data['status_text'] = status
         if not output_file.exists() or not output_file.stat().st_size:
-            await status_message.edit('Processing failed.')
+            await status_message.edit(t('process_failed'))
             return data
 
         output_info = await get_output_info(output_file)
@@ -190,7 +191,7 @@ async def convert_to_voice_note(event: NewMessage.Event | CallbackQuery.Event) -
         ffmpeg_command,
         '.ogg',
         is_voice=True,
-        feedback_text='Converted to voice note successfully.',
+        feedback_text=t('converted_to_voice_note'),
     )
 
 
@@ -211,18 +212,21 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     for bitrate in [64, 96, 128]
                 ],
             ]
-            await event.edit('Choose the desired bitrate:', buttons=buttons)
+            await event.edit(f'{t('choose_bitrate')}:', buttons=buttons)
             return
     elif match := re.search(r'(\d+)$', event.message.text):
         audio_bitrate = match.group(1)
     else:
-        await event.reply('Invalid input. Please provide a valid bitrate.')
+        await event.reply(t('invalid_bitrate'))
         return
     ffmpeg_command = (
         f'ffmpeg -hide_banner -y -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
     )
     await process_media(
-        event, ffmpeg_command, '.m4a', feedback_text='Audio successfully compressed.'
+        event,
+        ffmpeg_command,
+        '.m4a',
+        feedback_text=t('audio_successfully_compressed'),
     )
     if delete_message_after_process:
         await delete_message_after(await event.get_message())
@@ -242,7 +246,7 @@ async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
         '.m4a',
         reply_message=reply_message,
         get_bitrate=True,
-        feedback_text='Converted to audio successfully.',
+        feedback_text=t('converted_to_audio'),
     )
 
 
@@ -251,8 +255,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return await handle_callback_query_for_reply_state(
             event,
             reply_states,
-            'Please enter the cut points in the format: [start time] [end time] [start time] [end time], ... '
-            '(e.g., <code>00:00:00 00:30:00 00:45:00 01:15:00</code>)',
+            f'{t('enter_cut_points')} (<code>00:00:00 00:30:00 00:45:00 01:15:00</code>)',
         )
     if event.sender_id in reply_states:
         reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
@@ -264,9 +267,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     cut_points = re.findall(r'(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})', event.message.text)
     if not cut_points:
-        await event.reply(
-            'Invalid format. Use HH:MM:SS for start and end times, separated by spaces for multiple cuts.'
-        )
+        await event.reply(t('invalid_cut_points'))
         return None
 
     try:
@@ -275,11 +276,11 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             datetime.strptime(start_time, '%H:%M:%S')  # noqa: DTZ007
             datetime.strptime(end_time, '%H:%M:%S')  # noqa: DTZ007
     except ValueError:
-        await event.reply('Invalid time format. Use HH:MM:SS for all start and end times.')
+        await event.reply(t('invalid_time_format'))
         return None
 
-    status_message = await event.reply('Starting cut process...')
-    progress_message = await event.reply('<pre>Process output:</pre>')
+    status_message = await event.reply(t('starting_cut'))
+    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
     with NamedTemporaryFile(suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         input_file = get_download_name(reply_message)
@@ -304,10 +305,10 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     caption=f'{start_time} - {end_time}',
                 )
             else:
-                await status_message.edit(f'Processing failed for cut {idx}.')
+                await status_message.edit(t('cut_failed_for_item', item=idx))
             output_file.unlink(missing_ok=True)
 
-    await status_message.edit('Media cuts completed successfully.')
+    await status_message.edit(t('cut_completed'))
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
     raise StopPropagation
@@ -316,9 +317,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         return await handle_callback_query_for_reply_state(
-            event,
-            reply_states,
-            'Please enter the split duration in the format: [duration]h/m/s (e.g., 30m, 1h, 90s)',
+            event, reply_states, t('enter_split_duration')
         )
 
     if event.sender_id in reply_states:
@@ -339,9 +338,9 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         segment_duration = duration * 60
     else:
         segment_duration = duration
-    status_message = await event.reply('Starting process...')
+    status_message = await event.reply(t('starting_process'))
 
-    progress_message = await event.reply('<pre>Process output:</pre>')
+    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
     with NamedTemporaryFile() as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         input_file = get_download_name(reply_message)
@@ -366,10 +365,10 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     caption=f'<code>{output_file.stem}</code>',
                 )
             else:
-                await status_message.edit(f'Processing failed for {output_file.name}.')
+                await status_message.edit(t('process_failed_for_file', file_name=output_file.name))
             output_file.unlink(missing_ok=True)
 
-    await progress_message.edit('Files successfully split and uploaded.')
+    await progress_message.edit(t('file_split_and_uploaded'))
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
     raise StopPropagation
@@ -377,12 +376,12 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply('Starting process...')
+    progress_message = await event.reply(t('starting_process'))
     with NamedTemporaryFile() as temp_file:
         await download_file(event, temp_file, reply_message, progress_message)
         output, code = await run_command(ffprobe_command.format(input=temp_file.name))
         if code:
-            message = f'Failed to get info.\n<pre>{output}</pre>'
+            message = f'{t('failed_to_get_info')}\n<pre>{output}</pre>'
         else:
             info = orjson.dumps(process_dict(orjson.loads(output)), option=json_options).decode()
             message = f'<pre>{info}</pre>'
@@ -392,7 +391,7 @@ async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         return await handle_callback_query_for_reply_state(
-            event, reply_states, 'Please enter the title and artist in the format: Title - Artist'
+            event, reply_states, t('enter_title_and_artist')
         )
 
     if event.sender_id in reply_states:
@@ -415,7 +414,7 @@ async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
         ffmpeg_command,
         reply_message.file.ext,
         reply_message=reply_message,
-        feedback_text='Audio metadata set successfully.',
+        feedback_text=t('audio_metadata_set'),
     )
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
@@ -427,30 +426,27 @@ async def merge_media_initial(event: NewMessage.Event | CallbackQuery.Event) -> 
     merge_states[event.sender_id]['files'] = []
     reply_message = await get_reply_message(event, previous=True)
     merge_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply('Send more files to merge.')
+    await event.reply(t('send_more_files'))
 
 
 async def merge_media_add(event: NewMessage.Event) -> None:
     merge_states[event.sender_id]['files'].append(event.id)
-    await event.reply(
-        "File added. Send more or click 'Finish' to merge.",
-        buttons=[Button.inline('Finish', 'finish_merge')],
-    )
+    await event.reply(t('file_added'), buttons=[Button.inline(t('finish'), 'finish_merge')])
     raise StopPropagation
 
 
 async def merge_media_process(event: CallbackQuery.Event) -> None:
     merge_states[event.sender_id]['state'] = MergeState.MERGING
     files = merge_states[event.sender_id]['files']
-    await event.answer('Merging...')
+    await event.answer(t('merging'))
 
     if len(files) < 2:
-        await event.answer('Not enough files to merge.')
+        await event.answer(t('not_enough_files'))
         merge_states[event.sender_id]['state'] = MergeState.IDLE
         return
 
-    status_message = await event.respond('Starting merge process...')
-    progress_message = await event.respond('<pre>Merge output:</pre>')
+    status_message = await event.respond(t('starting_merge'))
+    progress_message = await event.respond(f'<pre>{t('process_output')}:</pre>')
 
     temp_files = []
     try:
@@ -474,9 +470,9 @@ async def merge_media_process(event: CallbackQuery.Event) -> None:
                     progress_message,
                     is_voice=message.voice is not None,
                 )
-                await status_message.edit('Files successfully merged.')
+                await status_message.edit(t('merge_completed'))
             else:
-                await status_message.edit('Merging failed.')
+                await status_message.edit(t('merge_failed'))
 
     finally:
         # Clean up temporary files
@@ -490,8 +486,8 @@ async def merge_media_process(event: CallbackQuery.Event) -> None:
 
 async def trim_silence(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply('Starting silence trimming process...')
-    progress_message = await event.reply('<pre>Process output:</pre>')
+    status_message = await event.reply(t('starting_silence_trimming'))
+    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
     extension = reply_message.file.ext
 
     with (
@@ -504,15 +500,15 @@ async def trim_silence(event: NewMessage.Event) -> None:
                 f'trimmed_{reply_message.file.name}'
             ).with_suffix('.mp3')
         await download_file(event, input_file, reply_message, progress_message)
-        await progress_message.edit('Loading file...')
+        await progress_message.edit(t('loading_file'))
         sound = AudioSegment.from_file(Path(input_file.name))
-        await progress_message.edit('Splitting...')
+        await progress_message.edit(t('splitting'))
         chunks = split_on_silence(sound, min_silence_len=500, silence_thresh=-40)
-        await progress_message.edit('Combining...')
+        await progress_message.edit(t('combining'))
         combined = AudioSegment.empty()
         for chunk in chunks:
             combined += chunk
-        await progress_message.edit('Exporting...')
+        await progress_message.edit(t('exporting'))
         combined.export(output_file_path, format='mp3')
         # command = (
         #     f'ffmpeg -hide_banner -y -i "{input_file.name}" -af '
@@ -528,7 +524,7 @@ async def trim_silence(event: NewMessage.Event) -> None:
         # await stream_shell_output(event, command, status_message, progress_message)
 
         if not output_file_path.exists() or not output_file_path.stat().st_size:
-            await status_message.edit('Silence trimming failed.')
+            await status_message.edit(t('silence_trimming_failed'))
             return
 
         await upload_file(
@@ -536,10 +532,10 @@ async def trim_silence(event: NewMessage.Event) -> None:
             output_file_path,
             progress_message,
             is_voice=bool(reply_message.voice),
-            caption='Trimmed audio',
+            caption=t('trimmed_audio'),
         )
 
-    await status_message.edit('Silence successfully trimmed.')
+    await status_message.edit(t('silence_trimmed'))
 
 
 async def mute_video(event: NewMessage.Event) -> None:
@@ -548,14 +544,14 @@ async def mute_video(event: NewMessage.Event) -> None:
         event,
         ffmpeg_command,
         '.mp4',
-        feedback_text='Audio has been removed from video successfully.',
+        feedback_text=t('audio_removed_from_video'),
     )
 
 
 async def extract_subtitle(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply('Starting subtitle extraction process...')
-    progress_message = await event.reply('<pre>Process output:</pre>')
+    status_message = await event.reply(t('starting_subtitle_extraction'))
+    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
 
     with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
         await download_file(event, input_file, reply_message, progress_message)
@@ -564,14 +560,14 @@ async def extract_subtitle(event: NewMessage.Event) -> None:
             f'ffprobe -v quiet -print_format json -show_streams "{input_file.name}"'
         )
         if code:
-            await status_message.edit('Failed to get stream info.')
+            await status_message.edit(t('failed_to_get_stream_info'))
             return
 
         streams = orjson.loads(output)['streams']
         subtitle_streams = [s for s in streams if s['codec_type'] == 'subtitle']
 
         if not subtitle_streams:
-            await status_message.edit('No subtitle streams found in the video.')
+            await status_message.edit(t('no_subtitle_streams'))
             return
 
         for i, stream in enumerate(subtitle_streams):
@@ -588,11 +584,11 @@ async def extract_subtitle(event: NewMessage.Event) -> None:
                 caption = f'Subtitle {i + 1}: {stream.get("tags", {}).get("language", "Unknown")}'
                 await event.client.send_file(event.chat_id, output_file, caption=caption)
             else:
-                await status_message.edit(f'Failed to extract subtitle stream {i + 1}.')
+                await status_message.edit(t('failed_to_extract_subtitle_stream', stream=i + 1))
 
             output_file.unlink(missing_ok=True)
 
-    await status_message.edit('Subtitle extraction completed.')
+    await status_message.edit(t('subtitle_extraction_completed'))
 
 
 ALLOWED_AUDIO_FORMATS = {
@@ -633,7 +629,7 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 [Button.inline(f'{ext}', f'm|media_convert|{ext}') for ext in row if ext]
                 for row in list(zip_longest(*[iter(formats)] * 3, fillvalue=None))
             ]
-            await event.edit('Choose the target format:', buttons=buttons)
+            await event.edit(f'{t('choose_target_format')}:', buttons=buttons)
             return
     else:
         target_format = event.message.text.split('convert ')[1].lower()
@@ -641,13 +637,13 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             target_format = target_format[1:]
         if target_format not in ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS:
             await event.reply(
-                'Unsupported media type for conversion.\n'
-                f'Allowed formats: {", ".join(ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS)}'
+                f'{t('unsupported_media_type')}.\n'
+                f'{t('allowed_formats')}: {", ".join(ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS)}'
             )
             return
     reply_message = await get_reply_message(event, previous=True)
     if reply_message.file.ext == target_format:
-        await event.reply(f'The file is already in {target_format} format. Skipping conversion.')
+        await event.reply(t('file_already_in_target_format', target_format=target_format))
         return
 
     if target_format in ALLOWED_AUDIO_FORMATS:
@@ -664,7 +660,7 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         f'.{target_format}',
         reply_message=reply_message,
         get_bitrate=True,
-        feedback_text=f'Media converted to {target_format} successfully.',
+        feedback_text=t('media_converted_to_target_format', target_format=target_format),
     )
     if delete_message_after_process:
         event.client.loop.create_task(delete_message_after(await event.get_message()))
@@ -686,7 +682,7 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     for quality in sorted(ALLOWED_VIDEO_QUALITIES)
                 ]
             ]
-            await event.edit('Choose the target quality:', buttons=buttons)
+            await event.edit(f'{t('choose_target_quality')}:', buttons=buttons)
             return
     else:
         quality = event.message.text.split('resize ')[1]
@@ -694,7 +690,7 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     quality = int(quality)
     if quality not in ALLOWED_VIDEO_QUALITIES:
         await event.reply(
-            f'Invalid quality. Please choose from {", ".join(map(str, ALLOWED_VIDEO_QUALITIES))}.'
+            f'{t('invalid_target_quality')}. {t('please_choose_from')} {", ".join(map(str, ALLOWED_VIDEO_QUALITIES))}.'
         )
         return
 
@@ -717,7 +713,7 @@ async def video_update_initial(event: NewMessage.Event | CallbackQuery.Event) ->
     video_update_states[event.sender_id]['files'] = []
     reply_message = await get_reply_message(event, previous=True)
     video_update_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply('Send the media file with audio to use.', reply_to=reply_message.id)
+    await event.reply(t('send_media_to_use'), reply_to=reply_message.id)
 
 
 async def video_update_process(event: NewMessage.Event) -> None:
@@ -726,8 +722,8 @@ async def video_update_process(event: NewMessage.Event) -> None:
         event.chat_id, ids=video_update_states[event.sender_id]['files'][0]
     )
     audio_message = event.message
-    status_message = await event.reply('Starting audio update process...')
-    progress_message = await event.respond('<pre>Process output:</pre>')
+    status_message = await event.reply(t('starting_audio_update'))
+    progress_message = await event.respond(f'<pre>{t('process_output')}:</pre>')
 
     with (
         NamedTemporaryFile(suffix=video_message.file.ext) as video_file,
@@ -743,12 +739,12 @@ async def video_update_process(event: NewMessage.Event) -> None:
         )
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         if not Path(output_file.name).exists() or not Path(output_file.name).stat().st_size:
-            await status_message.edit('Audio update failed.')
+            await status_message.edit(t('audio_update_failed'))
             return
 
         await upload_file(event, Path(output_file.name), progress_message)
 
-    await status_message.edit('Video audio successfully updated.')
+    await status_message.edit(t('video_audio_updated'))
     video_update_states.pop(event.sender_id)
     raise StopPropagation
 
@@ -770,13 +766,13 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     for factor in [2.25, 2.5, 2.75, 3]
                 ],
             ]
-            await event.edit('Choose the amplification factor:', buttons=buttons)
+            await event.edit(f'{t("choose_amplification_factor")}:', buttons=buttons)
             return
     else:
         amplification_factor = float(event.message.text.split('amplify ')[1])
 
     if amplification_factor <= 1:
-        await event.reply('Amplification factor must be greater than 1.')
+        await event.reply(t('amplification_factor_must_be_greater_than_1'))
         return
     amplification_factor = min(amplification_factor, 3)
 
@@ -799,7 +795,9 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
         reply_message.file.ext,
         reply_message=reply_message,
         get_bitrate=True,
-        feedback_text=f'Audio amplified by {amplification_factor}x successfully.',
+        feedback_text=t(
+            'audio_amplified_by_amplification_factor', amplification_factor=amplification_factor
+        ),
     )
     if delete_message_after_process:
         event.client.loop.create_task(delete_message_after(await event.get_message()))
@@ -807,8 +805,8 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply('Starting thumbnail generation process...')
-    progress_message = await event.reply('<pre>Process output:</pre>')
+    status_message = await event.reply(t('starting_thumbnail_generation'))
+    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
 
     with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
         await download_file(event, input_file, reply_message, progress_message)
@@ -823,7 +821,7 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
         timestamps = [i * interval for i in range(16)]
         # Generate thumbnail grid
         output_file = Path(input_file.name).with_suffix('.jpg')
-        select_frames = '+'.join([f'eq(n,{int(t * 25)})' for t in timestamps])  # Assuming 25 fps
+        select_frames = '+'.join([f'eq(n,{int(i * 25)})' for i in timestamps])  # Assuming 25 fps
         ffmpeg_command = (
             f'ffmpeg -hide_banner -y -i "{input_file.name}" '
             f'-vf "select=\'{select_frames}\',scale=480:-1,tile=4x4" '
@@ -832,11 +830,11 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
 
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         if not output_file.exists() or not output_file.stat().st_size:
-            await status_message.edit('Thumbnail generation failed.')
+            await status_message.edit(t('thumbnail_generation_failed'))
             return
         await upload_file(event, output_file, progress_message)
 
-    await status_message.edit('Video thumbnails successfully generated.')
+    await status_message.edit(t('video_thumbnails_generated'))
 
 
 async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -856,13 +854,13 @@ async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     for percentage in range(60, 100, 10)
                 ],
             ]
-            await event.edit('Choose the target compression percentage:', buttons=buttons)
+            await event.edit(f'{t('choose_target_compression_percentage')}:', buttons=buttons)
             return
     else:
         target_percentage = int(event.message.text.split('compress ')[1])
 
     if target_percentage < 20 or target_percentage > 90:
-        await event.reply('Compression percentage must be between 20 and 90.')
+        await event.reply(t('compression_percentage_must_be_between_20_and_90'))
         return
 
     reply_message = await get_reply_message(event, previous=True)
@@ -884,12 +882,12 @@ async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
         f'"{{output}}"'
     )
     data = await process_media(
-        event, ffmpeg_command, reply_message.file.ext, feedback_text='Video compressed successfully'
+        event, ffmpeg_command, reply_message.file.ext, feedback_text=t('video_compressed')
     )
     compression_ratio = (1 - (data['output_size'] / reply_message.file.size)) * 100
     feedback_text = (
-        f'\nTarget compression: {target_percentage}%\n'
-        f'Actual compression: {compression_ratio:.2f}%\n'
+        f'\n{t('target_compression')}: {target_percentage}%\n'
+        f'{t("actual_compression")}: {compression_ratio:.2f}%\n'
     )
     status_message = data['status_message']
     assert isinstance(status_message, Message)
@@ -909,16 +907,13 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
                 [Button.inline(f'CRF {crf}', f'm|video_x265|{crf}') for crf in range(20, 25, 2)],
                 [Button.inline(f'CRF {crf}', f'm|video_x265|{crf}') for crf in range(25, 29, 2)],
             ]
-            await event.edit(
-                'Choose the CRF value (20-28, lower is better quality but larger file size):',
-                buttons=buttons,
-            )
+            await event.edit(f'{t('choose_crf')}:', buttons=buttons)
             return
     else:
         crf = int(event.message.text.split('x265 ')[1])
 
     if crf < 20 or crf > 28:
-        await event.reply('CRF value must be between 20 and 28.')
+        await event.reply(t('crf_value_must_be_between_20_and_28'))
         return
 
     reply_message = await get_reply_message(event, previous=True)
@@ -933,11 +928,11 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
         event,
         ffmpeg_command,
         reply_message.file.ext,
-        feedback_text='Video encoded with x265 successfully',
+        feedback_text=t('video_x265_encoded'),
     )
 
     compression_ratio = (1 - (data['output_size'] / reply_message.file.size)) * 100
-    feedback_text = f'\nCompression ratio: {compression_ratio:.2f}%\n'
+    feedback_text = f'\n{t('compression_ratio')}: {compression_ratio:.2f}%\n'
     status_message = data['status_message']
     assert isinstance(status_message, Message)
     await status_message.edit(data['status_text'] + feedback_text)
@@ -950,11 +945,7 @@ async def video_create_initial(event: NewMessage.Event | CallbackQuery.Event) ->
     video_create_states[event.sender_id]['files'] = []
     reply_message = await get_reply_message(event, previous=True)
     video_create_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply(
-        'Send a subtitle file (.srt) or a photo to use.',
-        reply_to=reply_message.id,
-        buttons=Button.clear(),
-    )
+    await event.reply(t('send_subtitle_or_photo'), reply_to=reply_message.id)
 
 
 async def video_create_process(event: NewMessage.Event) -> None:
@@ -963,8 +954,8 @@ async def video_create_process(event: NewMessage.Event) -> None:
         event.chat_id, ids=video_create_states[event.sender_id]['files'][0]
     )
     input_message: Message = event.message
-    status_message: Message = await event.reply('Starting video creation process...')
-    progress_message: Message = await event.respond('<pre>Process output:</pre>')
+    status_message: Message = await event.reply(t('starting_video_creation'))
+    progress_message: Message = await event.respond(f'<pre>{t('process_output')}:</pre>')
 
     audio_file = Path(TMP_DIR / audio_message.file.name)
     input_file = Path(
@@ -995,15 +986,15 @@ async def video_create_process(event: NewMessage.Event) -> None:
             f'-pix_fmt yuv420p "{output_file.name}"'
         )
     else:
-        await status_message.edit('Unsupported input file format.')
+        await status_message.edit(t('unsupported_input_file_format'))
         raise StopPropagation
 
     await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
     if not output_file.exists() or not output_file.stat().st_size:
-        await status_message.edit('Video creation failed.')
+        await status_message.edit(t('video_creation_failed'))
     else:
         await upload_file(event, output_file, progress_message)
-        await status_message.edit('Video successfully created.')
+        await status_message.edit(t('video_created'))
         output_file.unlink(missing_ok=True)
 
     audio_file.unlink(missing_ok=True)
@@ -1026,7 +1017,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     Button.inline('Vosk', 'm|transcribe|vosk'),
                 ]
             ]
-            await event.edit('Choose the transcription method:', buttons=buttons)
+            await event.edit(f'{t('choose_transcription_method')}:', buttons=buttons)
             return
     else:
         transcription_method = (
@@ -1036,18 +1027,18 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     if transcription_method == 'whisper':
         whisper_model_path = getenv('WHISPER_MODEL_PATH')
         if not whisper_model_path:
-            await event.reply('Please set WHISPER_MODEL_PATH environment variable.')
+            await event.reply(t('please_set_whisper_model_path'))
             return
     # if transcription_method == 'wit':
     else:
         wit_access_tokens = getenv('WIT_CLIENT_ACCESS_TOKENS')
         if not wit_access_tokens:
-            await event.reply('Please set WIT_CLIENT_ACCESS_TOKENS environment variable.')
+            await event.reply(t('please_set_wit_client_access_tokens'))
             return
 
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply('Starting transcription process...')
-    progress_message = await event.reply('<pre>Process output:</pre>')
+    status_message = await event.reply(t('starting_transcription'))
+    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1083,8 +1074,8 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     caption=f'<code>{renamed_file.name}</code>',
                 )
             else:
-                await status_message.edit(f'Failed to transcribe {renamed_file.name}')
-    await status_message.edit('Transcription completed.')
+                await status_message.edit(f'{t('failed_to_transcribe')} {renamed_file.name}')
+    await status_message.edit(t('transcription_completed'))
     rmtree(output_dir)
     await delete_message_after(progress_message)
     if delete_message_after_process:
@@ -1100,11 +1091,11 @@ async def fix_stereo_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
         else:
             buttons = [
                 [
-                    Button.inline(channel.capitalize(), f'm|media_stereo|{channel}')
+                    Button.inline(t(channel), f'm|media_stereo|{channel}')
                     for channel in ('right', 'left')
                 ]
             ]
-            await event.edit('Use audio of which channel:', buttons=buttons)
+            await event.edit(f'{t('use_audio_of_which_channel')}:', buttons=buttons)
             return
     else:
         channel = event.message.text.split('stereo ')[1]
@@ -1152,12 +1143,12 @@ handler = partial(dynamic_handler, handlers)
 
 class Media(ModuleBase):
     name = 'Media'
-    description = 'Media processing commands'
+    description = t('_media_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'audio compress': Command(
             name='audio compress',
             handler=handler,
-            description='[bitrate] - compress audio to [bitrate] kbps',
+            description=t('_audio_compress_description'),
             pattern=re.compile(r'^/(audio)\s+(compress)\s+(\d+)$'),
             condition=partial(has_media, audio=True),
             is_applicable_for_reply=True,
@@ -1165,7 +1156,7 @@ class Media(ModuleBase):
         'audio convert': Command(
             name='audio convert',
             handler=handler,
-            description='Convert a video or voice note to an audio',
+            description=t('_audio_convert_description'),
             pattern=re.compile(r'^/(audio)\s+(convert)$'),
             condition=partial(has_media, not_audio=True),
             is_applicable_for_reply=True,
@@ -1173,7 +1164,7 @@ class Media(ModuleBase):
         'audio metadata': Command(
             name='audio metadata',
             handler=handler,
-            description='[title] - [artist] - Set title and artist of an audio file',
+            description=t('_audio_metadata_description'),
             pattern=re.compile(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$'),
             condition=partial(has_media, audio=True),
             is_applicable_for_reply=True,
@@ -1181,7 +1172,7 @@ class Media(ModuleBase):
         'audio trim': Command(
             name='audio trim',
             handler=handler,
-            description='Trim audio silence',
+            description=t('_audio_trim_description'),
             pattern=re.compile(r'^/(audio)\s+(trim)$'),
             condition=partial(has_media, audio_or_voice=True),
             is_applicable_for_reply=True,
@@ -1189,7 +1180,7 @@ class Media(ModuleBase):
         'media amplify': Command(
             name='audio amplify',
             handler=handler,
-            description='[factor] - Amplify audio volume by the specified factor (e.g., 1.5 for 50% increase)',
+            description=t('_media_amplify_description'),
             pattern=re.compile(r'^/(media)\s+(amplify)\s+(\d+(\.\d+)?)$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
@@ -1197,7 +1188,7 @@ class Media(ModuleBase):
         'media convert': Command(
             name='media convert',
             handler=handler,
-            description='[format] - Convert media to specified format',
+            description=t('_media_convert_description'),
             pattern=re.compile(r'^/(media)\s+(convert)\s+(\w+)$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
@@ -1205,7 +1196,7 @@ class Media(ModuleBase):
         'media cut': Command(
             name='media cut',
             handler=handler,
-            description='[HH:MM:SS HH:MM:SS] - Cut audio/video from start time to end time',
+            description=t('_media_cut_description'),
             pattern=re.compile(
                 r'^/(media)\s+(cut)\s+(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}'
                 r'(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$'
@@ -1216,8 +1207,7 @@ class Media(ModuleBase):
         'media split': Command(
             name='media split',
             handler=handler,
-            description='[duration]h/m/s - Split audio/video into segments of specified duration '
-            '(e.g., 30m, 1h, 90s)',
+            description=t('_media_split_description'),
             pattern=re.compile(r'^/(media)\s+(split)\s+(\d+[hms])$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
@@ -1225,7 +1215,7 @@ class Media(ModuleBase):
         'media merge': Command(
             name='media merge',
             handler=handler,
-            description='Merge multiple files',
+            description=t('_media_merge_description'),
             pattern=re.compile(r'^/(media)\s+(merge)$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
@@ -1233,7 +1223,7 @@ class Media(ModuleBase):
         'media info': Command(
             name='media info',
             handler=handler,
-            description='Get media info',
+            description=t('_media_info_description'),
             pattern=re.compile(r'^/(media)\s+(info)$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
@@ -1241,7 +1231,7 @@ class Media(ModuleBase):
         'media stereo': Command(
             name='media stereo',
             handler=handler,
-            description='Fix stereo audio by using one channel',
+            description=t('_media_stereo_description'),
             pattern=re.compile(r'^/(media)\s+(stereo)\s+(right|left)$'),
             condition=partial(has_media, audio_or_voice=True),
             is_applicable_for_reply=True,
@@ -1249,7 +1239,7 @@ class Media(ModuleBase):
         'transcribe': Command(
             name='transcribe',
             handler=handler,
-            description='[wit|whisper|vosk]: Transcribe audio or video to text and subtitle formats',
+            description=t('_transcribe_description'),
             pattern=re.compile(r'^/(transcribe)(?:\s+(wit|whisper|vosk))?$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
@@ -1257,7 +1247,7 @@ class Media(ModuleBase):
         'video create': Command(
             name='video create',
             handler=handler,
-            description='Create a video from audio and subtitle files',
+            description=t('_video_create_description'),
             pattern=re.compile(r'^/(video)\s+(create)$'),
             condition=partial(has_media, audio_or_voice=True),
             is_applicable_for_reply=True,
@@ -1265,7 +1255,7 @@ class Media(ModuleBase):
         'video compress': Command(
             name='video compress',
             handler=handler,
-            description='[PERCENTAGE] - Compress video to target percentage of original size (20-90)',
+            description=t('_video_compress_description'),
             pattern=re.compile(r'^/(video)\s+(compress)\s+(\d{1,2})$'),
             condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
@@ -1273,7 +1263,7 @@ class Media(ModuleBase):
         'video mute': Command(
             name='video mute',
             handler=handler,
-            description='Mute video',
+            description=t('_video_mute_description'),
             pattern=re.compile(r'^/(video)\s+(mute)$'),
             condition=partial(has_media, video_or_video_note=True),
             is_applicable_for_reply=True,
@@ -1281,7 +1271,7 @@ class Media(ModuleBase):
         'video resize': Command(
             name='video resize',
             handler=handler,
-            description='[quality] - Resize video to specified quality (144/240/360/480/720)',
+            description=t('_video_resize_description'),
             pattern=re.compile(
                 rf'^/(video)\s+(resize)\s+({'|'.join(map(str, ALLOWED_VIDEO_QUALITIES))})$'
             ),
@@ -1291,7 +1281,7 @@ class Media(ModuleBase):
         'video subtitle': Command(
             name='video subtitle',
             handler=handler,
-            description='Extract subtitle streams from a video',
+            description=t('_video_subtitle_description'),
             pattern=re.compile(r'^/(video)\s+(subtitle)$'),
             condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
@@ -1299,7 +1289,7 @@ class Media(ModuleBase):
         'video thumbnails': Command(
             name='video thumbnails',
             handler=handler,
-            description='Generate a grid of 16 thumbnails from a video',
+            description=t('_video_thumbnails_description'),
             pattern=re.compile(r'^/(video)\s+(thumbnails)$'),
             condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
@@ -1307,7 +1297,7 @@ class Media(ModuleBase):
         'video update': Command(
             name='video update',
             handler=handler,
-            description='Replace audio track of a video without re-encoding',
+            description=t('_video_update_description'),
             pattern=re.compile(r'^/(video)\s+(update)$'),
             condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
@@ -1315,7 +1305,7 @@ class Media(ModuleBase):
         'video x265': Command(
             name='video x265',
             handler=handler,
-            description='[CRF] - Encode video with x265 codec and specified CRF value (20-28, lower is better quality)',
+            description=t('_video_x265_description'),
             pattern=re.compile(r'^/(video)\s+(x265)\s+(\d{2})$'),
             condition=partial(has_media, video=True),
             is_applicable_for_reply=True,
@@ -1323,7 +1313,7 @@ class Media(ModuleBase):
         'voice': Command(
             name='voice',
             handler=convert_to_voice_note,
-            description='Convert to voice note',
+            description=t('_voice_description'),
             pattern=re.compile(r'^/(voice)$'),
             condition=partial(has_media, not_voice=True),
             is_applicable_for_reply=True,

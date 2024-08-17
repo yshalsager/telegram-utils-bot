@@ -17,6 +17,7 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import upload_file
 from src.utils.filters import has_valid_url
+from src.utils.i18n import t
 from src.utils.json import json_options, process_dict
 from src.utils.patterns import HTTP_URL_PATTERN, YOUTUBE_URL_PATTERN
 from src.utils.progress import progress_callback
@@ -52,7 +53,7 @@ def download_hook(d: dict[str, Any], message: Message) -> None:
         total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
         current = d.get('downloaded_bytes', 0)
         run_coroutine_threadsafe(
-            progress_callback(current, total, message, 'Downloading'),
+            progress_callback(current, total, message, t('downloading')),
             get_running_loop(),
         )
 
@@ -95,7 +96,7 @@ def calculate_common_formats_and_sizes(
 
 
 async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    progress_message = await event.reply('Fetching information...')
+    progress_message = await event.reply(t('fetching_information'))
     message = (
         await get_reply_message(event, previous=True)
         if isinstance(event, CallbackQuery.Event)
@@ -103,7 +104,7 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     )
     match = re.search(HTTP_URL_PATTERN, message.raw_text)
     if not match:
-        await progress_message.edit('No valid URL found in the message.')
+        await progress_message.edit(t('no_valid_url_found'))
         return
     link = match.group(0)
     ydl_opts = {
@@ -129,11 +130,11 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
         if not edited:
             await progress_message.delete()
     except Exception as e:  # noqa: BLE001
-        await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
+        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
 
 
 async def get_subtitles(event: NewMessage.Event) -> None:
-    progress_message = await event.reply('Downloading subtitles...')
+    progress_message = await event.reply(t('downloading_subtitles'))
     message = (
         await get_reply_message(event, previous=True)
         if isinstance(event, CallbackQuery.Event)
@@ -142,7 +143,7 @@ async def get_subtitles(event: NewMessage.Event) -> None:
     if match := re.search(HTTP_URL_PATTERN, message.raw_text):
         link = match.group(0)
     else:
-        await event.edit('No valid URL found in the message.')
+        await progress_message.edit(t('no_valid_url_found'))
         return
     if match := re.search(r'\s+([a-z]{2})\s+', message.raw_text):
         language = match.group(1)
@@ -162,14 +163,14 @@ async def get_subtitles(event: NewMessage.Event) -> None:
             None, partial(YoutubeDL(ydl_opts).extract_info, link, download=True)
         )
     except Exception as e:  # noqa: BLE001
-        await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
+        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
         return
 
     entries = info_dict.get('entries', [info_dict])
     for entry in entries:
         subs = entry.get('requested_subtitles', {})
         if not subs:
-            await progress_message.edit(f'No subtitles found for {entry.get("id")}.')
+            await progress_message.edit(t('no_subtitles_found', item=entry.get('id')))
             continue
         for lang, sub_info in subs.items():
             vtt_path = Path(sub_info.get('filepath', ''))
@@ -194,7 +195,7 @@ async def get_subtitles(event: NewMessage.Event) -> None:
 
 
 async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    progress_message = await event.reply('Fetching available formats...')
+    progress_message = await event.reply(t('fetching_available_formats'))
     message = (
         await get_reply_message(event, previous=True)
         if isinstance(event, CallbackQuery.Event)
@@ -203,7 +204,7 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if match := re.search(HTTP_URL_PATTERN, message.raw_text):
         link = match.group(0)
     else:
-        await event.edit('No valid URL found in the message.')
+        await progress_message.edit(t('no_valid_url_found'))
         return
     try:
         ydl_opts = {
@@ -217,7 +218,7 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
             calculate_common_formats_and_sizes(info_dict)
         )
         if not common_formats:
-            await progress_message.edit('No formats found.')
+            await progress_message.edit(t('no_formats_found'))
             return
 
         format_list = []
@@ -235,7 +236,7 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await edit_or_send_as_file(
             event,
             progress_message,
-            text=f'<b>Available formats ({entry_count} items):</b>\n\n{'\n'.join(format_list)}',
+            text=f'<b>{t('available_formats')} ({entry_count} items):</b>\n\n{'\n'.join(format_list)}',
             file_name=f"{info_dict['id']}_formats.txt",
             caption=info_dict['webpage_url'],
         )
@@ -251,9 +252,9 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     )
     is_command_event = isinstance(event, NewMessage.Event)
     if is_command_event or is_url_event:
-        text = 'Choose format type:'
+        text = t('choose_format_type')
         buttons = [
-            [Button.inline('Audio', 'ytdown|audio|'), Button.inline('Video', 'ytdown|video|')]
+            [Button.inline(t('audio'), 'ytdown|audio|'), Button.inline(t('video'), 'ytdown|video|')]
         ]
         progress_message = (
             await event.reply(text, buttons=buttons)
@@ -266,12 +267,12 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if match := re.search(HTTP_URL_PATTERN, reply_message.raw_text):
         link = match.group(0)
     else:
-        await event.edit('No valid URL found in the message.')
+        await event.edit(t('no_valid_url_found'))
         return
     _, _type, _format = event.data.decode().split('|')
 
     if _type in ('audio', 'video') and not _format:
-        progress_message = await event.edit('Fetching available formats...')
+        progress_message = await event.reply(t('fetching_available_formats'))
         ydl_opts = {**params, 'listformats': True}
         info_dict = await get_running_loop().run_in_executor(
             None, partial(YoutubeDL(ydl_opts).extract_info, link, download=False)
@@ -280,7 +281,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             calculate_common_formats_and_sizes(info_dict)
         )
         if not common_formats:
-            await progress_message.edit('No formats found.')
+            await progress_message.edit(t('no_formats_found'))
             return
 
         buttons = []
@@ -296,13 +297,15 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 format_name = f"{f['format']} | {f['ext']} | {naturalsize(total_size, binary=True)}"
                 buttons.append([Button.inline(format_name, f'ytdown|{_type}|{format_id}')])
         if not buttons:
-            await progress_message.edit('No suitable formats found.')
+            await progress_message.edit(t('no_suitable_formats_found'))
             return
-        await event.edit(f'Choose {_type} format for ({entry_count}) items:', buttons=buttons)
+        await event.edit(
+            t('choose_format_for', type=_type, entry_count=entry_count), buttons=buttons
+        )
         return
 
     # User selected a specific format
-    progress_message = await event.edit('Starting download...')
+    progress_message = await event.edit(t('starting_download'))
     format_id = _format if _type == 'audio' else f'{_format}+worstaudio/best'
     ydl_opts = {
         **params,
@@ -330,7 +333,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         entries = info_dict.get('entries', [info_dict])  # Handle both single videos and playlists
         for entry in entries:
             file_path = Path(TMP_DIR / f"{entry['id']}.{entry['ext']}")
-            await progress_message.edit('Uploading file...')
+            await progress_message.edit(t('uploading_file'))
             if entry.get('vcodec') == 'none':  # audio
                 attributes = [
                     DocumentAttributeAudio(
@@ -364,22 +367,20 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             )
             file_path.unlink(missing_ok=True)
 
-        await progress_message.edit('Download and upload completed.')
+        await progress_message.edit(t('download_and_upload_completed'))
     except Exception as e:  # noqa: BLE001
-        await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
+        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
 
 
 async def download_audio_segment(event: NewMessage.Event) -> None:
-    progress_message = await event.reply('Starting audio download...')
+    progress_message = await event.reply(t('starting_audio_download'))
     message = event.message
     match = re.search(
         rf'^/ytaudio\s+(?P<url>{HTTP_URL_PATTERN})\s+(?P<start>\d{{2}}:\d{{2}}:\d{{2}})\s+(?P<end>\d{{2}}:\d{{2}}:\d{{2}})$',
         message.raw_text,
     )
     if not match:
-        await progress_message.edit(
-            'Invalid command format. Use: /ytaudio [URL] [start_time] [end_time]'
-        )
+        await progress_message.edit(t('invalid_ytaudio_command'))
         return
 
     start_time = match.group('start')
@@ -406,7 +407,7 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
             None, partial(YoutubeDL(ydl_opts).extract_info, match.group('url'), download=True)
         )
         file_path = Path(TMP_DIR / f"{info_dict['id']}-{start_seconds}-{end_seconds}.m4a")
-        await progress_message.edit('Uploading audio segment...')
+        await progress_message.edit(t('uploading_audio_segment'))
         attributes = [
             DocumentAttributeAudio(
                 duration=end_seconds - start_seconds,
@@ -425,19 +426,19 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
             attributes=attributes,
         )
         file_path.unlink(missing_ok=True)
-        await progress_message.edit('Audio segment download and upload completed.')
+        await progress_message.editt(t('audio_segment_download_and_upload_completed'))
     except Exception as e:  # noqa: BLE001
-        await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
+        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
 
 
 class YTDLP(ModuleBase):
     name = 'YTDLP'
-    description = 'Use YT-DLP'
+    description = t('_ytdlp_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'ytaudio': Command(
             name='ytaudio',
             handler=download_audio_segment,
-            description='[url] [start_time] [end_time]: Download audio segment from YouTube video.',
+            description=t('_ytaudio_description'),
             pattern=re.compile(
                 rf'^/ytaudio\s+{HTTP_URL_PATTERN}\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}$'
             ),
@@ -446,14 +447,14 @@ class YTDLP(ModuleBase):
         ),
         'ytdown': Command(
             handler=download_media,
-            description='[url]: Download YouTube video or audio.',
+            description=t('_ytdown_description'),
             pattern=re.compile(rf'^/ytdown\s+{HTTP_URL_PATTERN}$'),
             condition=has_valid_url,
             is_applicable_for_reply=True,
         ),
         'ytformats': Command(
             handler=get_formats,
-            description='[url]: Get available formats for a YouTube video.',
+            description=t('_ytformats_description'),
             pattern=re.compile(rf'^/ytformats\s+{HTTP_URL_PATTERN}$'),
             condition=has_valid_url,
             is_applicable_for_reply=True,
@@ -461,7 +462,7 @@ class YTDLP(ModuleBase):
         'ytinfo': Command(
             name='ytinfo',
             handler=get_info,
-            description='[url]: Get video information as JSON.',
+            description=t('_ytinfo_description'),
             pattern=re.compile(rf'^/ytinfo\s+{HTTP_URL_PATTERN}$'),
             condition=has_valid_url,
             is_applicable_for_reply=True,
@@ -469,7 +470,7 @@ class YTDLP(ModuleBase):
         'ytsub': Command(
             name='ytsub',
             handler=get_subtitles,
-            description='[lang] [url]: Get YouTube video subtitles.',
+            description=t('_ytsub_description'),
             pattern=re.compile(rf'^/ytsub\s+([a-z]{{2}})\s+{YOUTUBE_URL_PATTERN}$'),
             condition=has_valid_url,
             is_applicable_for_reply=True,

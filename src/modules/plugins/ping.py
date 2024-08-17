@@ -6,6 +6,7 @@ from telethon.events import NewMessage
 
 from src.modules.base import ModuleBase
 from src.utils.command import Command
+from src.utils.i18n import t
 
 
 async def pong(event: NewMessage.Event) -> None:
@@ -16,12 +17,12 @@ async def pong(event: NewMessage.Event) -> None:
 
 class Ping(ModuleBase):
     name = 'Ping'
-    description = 'Ping the bot.'
+    description = t('_ping_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'ping': Command(
             name='ping',
             handler=pong,
-            description='Ping the bot.',
+            description=t('_ping_description'),
             pattern=re.compile(r'^/ping$'),
         )
     }

@@ -7,7 +7,7 @@
 [![Patreon](https://img.shields.io/badge/Patreon-Support-F96854?style=flat&labelColor=F96854&logo=Patreon&logoColor=white&link=https://www.patreon.com/XiaomiFirmwareUpdater)](https://www.patreon.com/XiaomiFirmwareUpdater)
 [![Liberapay](https://img.shields.io/badge/Liberapay-Support-F6C915?style=flat&labelColor=F6C915&logo=Liberapay&logoColor=white&link=https://liberapay.com/yshalsager)](https://liberapay.com/yshalsager)
 
-A versatile modular Telegram bot with multiple features.
+A versatile multilingual modular Telegram bot with multiple features.
 
 ## Features
 
@@ -48,6 +48,7 @@ A versatile modular Telegram bot with multiple features.
 - Extract subtitles from videos
 - Replace audio in videos
 - Convert videos to different formats
+- Create a video from audio, and photo or subtitles
 
 ### Web Interactions
 
@@ -73,10 +74,10 @@ A versatile modular Telegram bot with multiple features.
 ## Usage
 
 - Start the bot by sending `/start` in private or adding it to a group.
-- Use `/commands` to get a list of available commands and their usage.
+- Use `/help` to get a list of available commands and their usage.
 - For file conversions, simply send a file to the bot and follow the prompts.
 - Use inline queries for web searches by typing `@your_bot_username` followed by your search query. You can list all
-  inline command using `@your_bot_username commands`.
+  inline command using `@your_bot_username help`.
 
 ## Setup
 
@@ -134,6 +135,7 @@ python3 -m src
 - [OCRmyPDF](https://github.com/ocrmypdf/OCRmyPDF)
 - [tafrigh](https://github.com/ieasybooks/tafrigh)
 - [tahweel](https://github.com/ieasybooks/tahweel)
+- [Plate](https://github.com/delivrance/plate)
 
 ## Resources
 
@@ -179,3 +181,11 @@ To use Jurigged:
 ```bash
 poetry run jurigged -v -m src
 ```
+
+## Internationalization (i18n)
+
+- We use [Plate](https://github.com/delivrance/plate) library to translate the bot's messages.
+- Translations are stored as JSON files in the `src/i18n/locales` directory, the default locale is `en_US`.
+- To add a new language, create a new JSON file in the `src/i18n/locales` directory, with the corresponding language
+  code, and translate the messages to that language.
+- Set the `BOT_LANGUAGE` environment variable to the desired language code.

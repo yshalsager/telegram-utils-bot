@@ -7,6 +7,7 @@ from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
 from src.utils.downloads import upload_file
+from src.utils.i18n import t
 
 
 async def get_reply_message(
@@ -29,7 +30,7 @@ async def edit_or_send_as_file(
         await message.edit(text)
         return True
     except MessageTooLongError:
-        progress_message = await event.reply('Sending file...')
+        progress_message = await event.reply(t('sending_file'))
         with NamedTemporaryFile(mode='w+', suffix='.txt') as temp_file:
             temp_file.write(text)
             temp_file.flush()

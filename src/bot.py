@@ -17,6 +17,7 @@ from telethon.events import CallbackQuery, InlineQuery, NewMessage, StopPropagat
 
 from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN, PARENT_DIR
 from src.modules.base import InlineModuleBase, ModuleBase
+from src.utils.i18n import t
 from src.utils.modules_registry import ModuleRegistry
 from src.utils.permission_manager import PermissionManager
 from src.utils.telegram import get_reply_message
@@ -58,7 +59,7 @@ async def handle_restart() -> None:
     await bot.edit_message(
         restart_message['chat'],
         restart_message['message'],
-        'Restarted Successfully!',
+        t('restarted_successfully'),
     )
     restart_path.unlink()
 
@@ -80,12 +81,12 @@ async def handle_module_execution(
     try:
         await task
     except CancelledError:
-        await response_func('Operation cancelled.')
+        await response_func(t('operation_cancelled'))
     except StopPropagation:
         pass
     except Exception as e:  # noqa: BLE001
         logger.error(f'Error in module {module.name}: {e!s}')
-        await response_func(f'An error occurred: {e!s}')
+        await response_func(t('an_error_occurred', error=f'{e!s}'))
     finally:
         if task_id in event.client.active_tasks:
             task = event.client.active_tasks[task_id]
@@ -121,15 +122,17 @@ async def handle_messages(event: NewMessage.Event) -> None:
     if applicable_commands := await modules_registry.get_applicable_commands(event):
         keyboard = [
             [
-                Button.inline(command, data=f'm|{command.replace(' ', '_')}')
+                Button.inline(
+                    t(f'_{command.replace(" ", "_")}'), data=f'm|{command.replace(' ', '_')}'
+                )
                 for command in row
                 if command is not None
             ]
             for row in list(zip_longest(*[iter(sorted(applicable_commands))] * 3, fillvalue=None))
         ]
-        await event.reply('Choose an option:', buttons=keyboard)
+        await event.reply(t('choose_an_option'), buttons=keyboard)
     elif event.is_private:
-        await event.reply('No applicable modules found for this input.')
+        await event.reply(t('no_applicable_modules'))
     raise StopPropagation
 
 
@@ -159,7 +162,7 @@ async def handle_inline_query(event: InlineQuery.Event) -> None:
 
 
 async def start_command(event: NewMessage.Event) -> None:
-    await event.reply('Welcome! Use /commands to see available commands.')
+    await event.reply(t('welcome'))
     raise StopPropagation
 
 
@@ -167,10 +170,10 @@ async def cancel_command(event: NewMessage.Event) -> None:
     original_message = await get_reply_message(event)
     task_id = f'{original_message.chat_id}_{original_message.id}'
     if not getattr(event.client, 'active_tasks', {}).get(task_id):
-        await event.reply('No active operation found for this command.')
+        await event.reply(t('no_active_operation'))
         return
     event.client.active_tasks[task_id].cancel()
-    await event.reply('Operation cancellation requested.')
+    await event.reply(t('operation_cancellation_requested'))
     raise StopPropagation
 
 

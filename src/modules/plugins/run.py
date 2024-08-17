@@ -2,7 +2,7 @@ from asyncio import sleep
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from tempfile import NamedTemporaryFile
-from typing import ClassVar
+from typing import ClassVar, cast
 
 import regex as re
 from telethon.errors import FloodWaitError, MessageNotModifiedError
@@ -13,6 +13,7 @@ from src import BOT_ADMINS
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_owner_in_private
+from src.utils.i18n import t
 from src.utils.run import (
     ADMIN_TIMEOUT_SECONDS,
     MAX_MESSAGE_LENGTH,
@@ -34,9 +35,9 @@ async def stream_shell_output(
     max_length: int = MAX_MESSAGE_LENGTH,
 ) -> str:
     if not status_message:
-        status_message = await event.reply('Starting process...')
+        status_message = await event.reply(t('starting_process'))
     if not progress_message:
-        progress_message = await event.reply('<pre>Process output:</pre>')
+        progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
     runner = run_subprocess_shell if shell else run_subprocess_exec
     timeout = ADMIN_TIMEOUT_SECONDS if event.sender_id in BOT_ADMINS else TIMEOUT_SECONDS
     buffer = ''
@@ -66,13 +67,15 @@ async def stream_shell_output(
 
     # Final update
     if not buffer:
-        buffer = 'Empty output'
+        buffer = t('empty_output')
     with suppress(MessageNotModifiedError):
         await progress_message.edit(
             f'<pre>{buffer if len(buffer) < MAX_MESSAGE_LENGTH else buffer[:MAX_MESSAGE_LENGTH]}</pre>'
         )
 
-    status = 'Process completed' if code == 0 else f'Process failed with return code {code}'
+    status = (
+        t('process_completed') if code == 0 else t('process_failed_with_return_code', code=code)
+    )
     start_time = (
         event.date.replace(tzinfo=UTC)
         if hasattr(event, 'date')
@@ -81,9 +84,9 @@ async def stream_shell_output(
     end_time = datetime.now(UTC)
     elapsed_time = end_time - start_time
     status += (
-        f'\nStarted at {start_time.strftime("%Y-%m-%d %H:%M:%S")}\n'
-        f'Finished at {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")}\n'
-        f'Elapsed time: {elapsed_time}'
+        f'\n{t('started_at')} {start_time.strftime("%Y-%m-%d %H:%M:%S")}\n'
+        f'{t("finished_at")} {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")}\n'
+        f'{t("elapsed_time")}: {elapsed_time}'
     )
     await status_message.edit(status)
     event.client.loop.create_task(delete_message_after(progress_message))
@@ -93,14 +96,13 @@ async def stream_shell_output(
             mode='w+', prefix=f'{start_time.strftime("%Y%m%d_%H%M%S")}_', suffix='.txt'
         ) as temp_file:
             temp_file.write(buffer)
-            temp_file.seek(
-                0
-            )  # Go back to the start of the file to ensure it's read from the beginning
+            # Go back to the start of the file to ensure it's read from the beginning
+            temp_file.seek(0)
             await event.client.send_file(
                 event.chat_id,
                 file=temp_file.name,
             )
-    return status
+    return cast(str, status)
 
 
 async def run_shell(event: NewMessage.Event) -> None:
@@ -113,17 +115,17 @@ async def run_exec(event: NewMessage.Event) -> None:
 
 class Shell(ModuleBase):
     name = 'Subprocess'
-    description = 'Run a shell command and stream its output.'
+    description = t('_shell_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'shell': Command(
             handler=run_shell,
-            description='Run a shell command',
+            description=t('_shell_description'),
             pattern=re.compile(r'^/shell\s+(.+)$'),
             condition=is_owner_in_private,
         ),
         'exec': Command(
             handler=run_exec,
-            description='Execute a command',
+            description=t('_exec_description'),
             pattern=re.compile(r'^/exec\s+(.+)$'),
             condition=is_owner_in_private,
         ),

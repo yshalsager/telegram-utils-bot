@@ -13,6 +13,7 @@ API_ID = '0000000'
 API_HASH = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 # the Telegram account IDs that will have administrator permissions of the bot
 BOT_ADMINS = '000000,000000,000000'
+BOT_LANGUAGE = 'en_US'
 #TELEGRAM_LOG_CHAT_ID = '-10000000000'
 DEBUG = 1
 

@@ -21,8 +21,8 @@ async def progress_callback(current: float, total: float, event: Message, action
         remaining_time = (total - current) / speed if speed > 0 else 0
         progress_callback.last_updates[key] = (now, current, start_time)  # type: ignore[attr-defined]
 
-        text = f'<b>{action}...</b>\n\n'
-        text += f'{naturalsize(current)} of {naturalsize(total)} '
+        text = f'<b>{action}…</b>\n\n'
+        text += f'{naturalsize(current)} / {naturalsize(total)} '
         if speed > 0:
             text += f'🌐 {naturalsize(speed)}/s '
         text += f'⏱️ {precisedelta(elapsed_time)}'

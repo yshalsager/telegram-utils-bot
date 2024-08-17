@@ -12,6 +12,7 @@ from telethon.tl.types import DocumentAttributeFilename
 
 from src.utils.fast_telethon import download_file as fast_download_file
 from src.utils.fast_telethon import upload_file as fast_upload_file
+from src.utils.i18n import t
 from src.utils.progress import progress_callback
 
 
@@ -63,14 +64,14 @@ async def download_file(
             reply_message.document,
             temp_file,
             progress_callback=lambda current, total: progress_callback(
-                current, total, progress_message, 'Downloading'
+                current, total, progress_message, t('downloading')
             ),
         )
     else:
         await reply_message.download_media(
             file=temp_file,
             progress_callback=lambda current, total: progress_callback(
-                current, total, progress_message, 'Downloading'
+                current, total, progress_message, t('downloading')
             ),
         )
     return Path(temp_file.name)
@@ -91,7 +92,7 @@ async def upload_file(
             file_to_upload,
             output_file.name,
             progress_callback=lambda current, total: progress_callback(
-                current, total, progress_message, 'Uploading'
+                current, total, progress_message, t('uploading')
             ),
         )
     await event.client.send_file(

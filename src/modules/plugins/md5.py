@@ -9,12 +9,13 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import download_file
 from src.utils.filters import has_file
+from src.utils.i18n import t
 from src.utils.telegram import get_reply_message
 
 
 async def calculate_md5(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply('Starting MD5 hash calculation...')
+    progress_message = await event.reply(t('md5_hashing_started'))
 
     with NamedTemporaryFile() as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -28,12 +29,12 @@ async def calculate_md5(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 class MD5Hash(ModuleBase):
     name = 'MD5 Hash'
-    description = 'Calculate MD5 hash of a Telegram file'
+    description = t('_md5_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'md5': Command(
             name='md5',
             handler=calculate_md5,
-            description='Calculate MD5 hash of a Telegram file',
+            description=t('_md5_description'),
             pattern=re.compile(r'^/md5$'),
             condition=has_file,
             is_applicable_for_reply=True,

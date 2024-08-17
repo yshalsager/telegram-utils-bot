@@ -12,6 +12,7 @@ from src.utils.command import Command
 from src.utils.downloads import get_download_name, upload_file
 from src.utils.fast_telethon import download_file
 from src.utils.filters import has_file, is_valid_reply_state
+from src.utils.i18n import t
 from src.utils.progress import progress_callback
 from src.utils.reply import ReplyState, StateT, handle_callback_query_for_reply_state
 from src.utils.telegram import get_reply_message
@@ -24,7 +25,7 @@ reply_states: StateT = defaultdict(
 async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         return await handle_callback_query_for_reply_state(
-            event, reply_states, 'Please provide a new filename for the file.'
+            event, reply_states, t('please_provide_a_new_filename')
         )
 
     if event.sender_id in reply_states:
@@ -39,10 +40,10 @@ async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     new_filename_with_ext = get_download_name(reply_message, new_filename)
     if new_filename_with_ext.name == reply_message.file.name:
-        await event.reply('The new filename is the same as the old one.')
+        await event.reply(t('the_new_filename_is_the_same'))
         return None
 
-    progress_message = await event.reply('Starting file rename process...')
+    progress_message = await event.reply(t('starting_file_rename'))
 
     with NamedTemporaryFile(delete=False) as temp_file:
         await download_file(
@@ -50,7 +51,7 @@ async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
             reply_message.document,
             temp_file,
             progress_callback=lambda current, total: progress_callback(
-                current, total, progress_message, 'Downloading'
+                current, total, progress_message, t('downloading')
             ),
         )
         temp_file_path = Path(temp_file.name)
@@ -60,7 +61,7 @@ async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
     await upload_file(event, new_file_path, progress_message)
     new_file_path.unlink(missing_ok=True)
 
-    await progress_message.edit(f'File successfully renamed to: {new_filename_with_ext}')
+    await progress_message.edit(f'{t('file_renamed')}: {new_filename_with_ext}')
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
     raise StopPropagation
@@ -68,11 +69,11 @@ async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 class Rename(ModuleBase):
     name = 'Rename'
-    description = 'Rename a Telegram file'
+    description = t('_rename_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'rename': Command(
             handler=rename,
-            description='[new filename] Rename a Telegram file',
+            description=t('_rename_description'),
             pattern=re.compile(r'^/rename\s+(.+)$'),
             condition=has_file,
             is_applicable_for_reply=True,

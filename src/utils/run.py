@@ -8,6 +8,7 @@ from signal import SIGKILL
 from typing import Any
 
 from src import TMP_DIR
+from src.utils.i18n import t
 
 MAX_MESSAGE_LENGTH = 4000  # Max is 4096 but we leave some buffer for formatting
 TIMEOUT_SECONDS = 60 * 10  # 10 minutes timeout for user commands
@@ -99,12 +100,12 @@ async def _run_subprocess(  # noqa: C901, PLR0912
 
     except TimeoutError:
         logger.info(f'Timeout while running command: {cmd}')
-        output += f'\nProcess timed out after {timeout} seconds.\n'
+        output += f'\n{t("process_timed_out_after", timeout=timeout)}\n'
         yield output, None
 
     except Exception as err:  # noqa: BLE001
         logger.error(f'Error while running command: {cmd}')
-        output += f'\nError occurred: {err}\n'
+        output += f'\n{t('an_error_occurred', error=err)}\n'
         yield output, None
 
     finally:
@@ -132,6 +133,6 @@ async def run_command(
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except TimeoutError:
-        return 'Process timed out', -1
+        return t('process_timed_out'), -1
     output = (stdout + stderr).decode('utf-8').strip()
     return output, (process.returncode or 0)

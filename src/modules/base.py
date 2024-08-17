@@ -8,6 +8,7 @@ from telethon.events import CallbackQuery, InlineQuery, NewMessage
 from telethon.tl.custom import Message
 
 from src.utils.command import Command, InlineCommand
+from src.utils.i18n import t
 from src.utils.patterns import HTTP_URL_PATTERN
 from src.utils.telegram import get_reply_message
 
@@ -43,7 +44,7 @@ async def dynamic_handler(
         command = ' '.join(' '.join(i for i in event.pattern_match.groups() if i).split(' ')[:2])
     handler = handlers.get(command) or handlers.get(command.split(' ', 1)[0])
     if not handler:
-        await event.reply('Command not found.')
+        await event.reply(t('command_not_found'))
         return
 
     await handler(event)

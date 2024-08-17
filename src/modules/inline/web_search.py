@@ -14,6 +14,7 @@ from telethon.errors import QueryIdInvalidError
 from src.modules.base import InlineModuleBase
 from src.utils.command import InlineCommand
 from src.utils.http import fetch_json
+from src.utils.i18n import t
 from src.utils.quran import surah_names
 
 ddg_search = DuckDuckGoSearch()
@@ -30,9 +31,9 @@ async def list_all_inline_commands(event: events.InlineQuery.Event) -> None:
     button_grid = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
 
     result = await event.builder.article(
-        title='Available Inline Commands',
-        description='Click a button to start using a command',
-        text='Here are the available web search commands:',
+        title=t('available_inline_commands'),
+        description=t('click_a_button_to_start_using_a_command'),
+        text=f'{t('available_web_search_commands')}:',
         buttons=button_grid,
     )
 
@@ -48,7 +49,7 @@ async def handle_duckduckgo_search(event: events.InlineQuery.Event) -> None:
     try:
         results: SearchResult = await ddg_search.async_search(query, 1)
     except Exception as e:  # noqa: BLE001
-        logging.error(f'Error in DuckDuckGo search: {e}')
+        logging.error(f'{t('error_in_duckduckgo_search')}: {e}')
         return
 
     inline_results = []
@@ -82,7 +83,7 @@ async def handle_wikipedia_search(event: events.InlineQuery.Event) -> None:
     try:
         pages = wikipedia.search(query, 5)
     except Exception as e:  # noqa: BLE001
-        logging.error(f'Error in Wikipedia search: {e}')
+        logging.error(f'{t('error_in_wikipedia_search')}: {e}')
         return
     if not pages:
         return
@@ -162,7 +163,7 @@ async def handle_hadith_search(event: events.InlineQuery.Event) -> None:
             await event.builder.article(
                 title=title,
                 description=f'{description} | {text[:100]}',
-                text=content[:4093] + '...',
+                text=content[:4093] + '…',
                 parse_mode='html',
             )
         )
@@ -197,8 +198,8 @@ async def handle_exchange(event: events.InlineQuery.Event) -> None:
     description = f'{conversion_result:.2f} {to_currency}'
     content = (
         f"<b>{amount} {from_currency} = {conversion_result:.2f} {to_currency}</b>\n\n"
-        f"Exchange rate: 1 {from_currency} = {conversion_rate:.4f} {to_currency}\n"
-        f"Last updated: {data['time_last_update_utc']}\n"
+        f"{t('exchange_rate')}: 1 {from_currency} = {conversion_rate:.4f} {to_currency}\n"
+        f"{t('last_updated')}: {data['time_last_update_utc']}\n"
     )
 
     inline_result = await event.builder.article(
@@ -216,33 +217,33 @@ class WebSearch(InlineModuleBase):
     description = 'Search the web using search engines'
     inline_commands: ClassVar[InlineModuleBase.InlineCommandsT] = {
         'commands': InlineCommand(
-            pattern=re.compile(r'^commands$'),
+            pattern=re.compile(r'^(commands|help)$'),
             handler=list_all_inline_commands,
-            name='List commands',
+            name=t('list_commands'),
         ),
         'ddg': InlineCommand(
             pattern=re.compile(r'^ddg\s+(.+)$'),
             handler=handle_duckduckgo_search,
-            name='DuckDuckGo Search',
+            name=t('duckduckgo_search'),
         ),
         'exchange': InlineCommand(
             pattern=re.compile(r'^exchange\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})\s+([A-Z]{3})$'),
             handler=handle_exchange,
-            name='Currency Exchange',
+            name=t('currency_exchange'),
         ),
         'hadith': InlineCommand(
             pattern=re.compile(r'^hadith\s+(.+)$'),
             handler=handle_hadith_search,
-            name='Hadith Search',
+            name=t('hadith_search'),
         ),
         'quran': InlineCommand(
             pattern=re.compile(r'^quran\s+(.+)$'),
             handler=handle_quran_search,
-            name='Quran Search',
+            name=t('quran_search'),
         ),
         'wiki': InlineCommand(
             pattern=re.compile(r'^wiki\s+([a-z]{2})\s+(.+)$'),
             handler=handle_wikipedia_search,
-            name='Wikipedia Search',
+            name=t('wikipedia_search'),
         ),
     }

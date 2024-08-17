@@ -10,18 +10,19 @@ from telethon.events import CallbackQuery, NewMessage
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_admin_in_private
+from src.utils.i18n import t
 from src.utils.telegram import get_reply_message
 
 
 async def list_tasks(event: NewMessage.Event) -> None:
     active_tasks: dict[str, Task] = getattr(event.client, 'active_tasks', {})
     if not active_tasks:
-        await event.reply('No active tasks.')
+        await event.reply(t('no_active_tasks'))
         return
     reply_message = await get_reply_message(event) or event.message
     current_task_id = f'{reply_message.chat_id}_{reply_message.id}'
 
-    message = '<b>Active tasks:</b>\n\n'
+    message = f'<b>{t('active_tasks')}:</b>\n\n'
     for task_id, task in active_tasks.items():
         if task_id == current_task_id:
             continue
@@ -52,7 +53,7 @@ async def list_tasks(event: NewMessage.Event) -> None:
                 message += ' - <i>Unknown</i>\n'
         except Exception as err:  # noqa: BLE001
             logging.error(err)
-            message += f"Couldn't get command info {err!s}\n"
+            message += f"{t("couldn't_get_command_info")} {err!s}\n"
 
             # message += f"Status: {'Running' if not task.done() else 'Completed'}\n"
         # message += f"Cancelled: {'Yes' if task.cancelled() else 'No'}\n"
@@ -82,36 +83,36 @@ async def cancel_task(event: NewMessage.Event) -> None:
             task = active_tasks[task_id]
             task.cancel()
             del active_tasks[task_id]
-        await event.reply('All tasks have been cancelled.')
+        await event.reply(t('all_tasks_cancelled'))
         return
 
     if task_id not in active_tasks:
-        await event.reply(f'Task with ID {task_id} not found.')
+        await event.reply(t('task_not_found', task_id=task_id))
         return
 
     task = active_tasks[task_id]
     if task.done():
-        await event.reply(f'Task {task_id} has already completed.')
+        await event.reply(t('task_already_completed', task_id=task_id))
     else:
         task.cancel()
-        await event.reply(f'Task {task_id} has been cancelled.')
+        await event.reply(t('task_cancelled', task_id=task_id))
 
     del active_tasks[task_id]
 
 
 class TasksManager(ModuleBase):
     name = 'Tasks Manager'
-    description = 'Manage tasks running in the bot'
+    description = t('_tasks_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'tasks': Command(
             handler=list_tasks,
-            description='List all active tasks',
+            description=t('_tasks_description'),
             pattern=re.compile(r'^/tasks$'),
             condition=is_admin_in_private,
         ),
         'tasks cancel': Command(
             handler=cancel_task,
-            description='Cancel a specific task or all tasks',
+            description=t('_tasks_cancel_description'),
             pattern=re.compile(r'^/tasks\s+cancel\s+([\w_]+)$'),
             condition=is_admin_in_private,
         ),

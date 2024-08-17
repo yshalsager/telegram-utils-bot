@@ -9,6 +9,7 @@ from src import bot
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_admin_in_private
+from src.utils.i18n import t
 
 
 async def list_plugins(event: NewMessage.Event) -> None:
@@ -23,13 +24,14 @@ async def list_plugins(event: NewMessage.Event) -> None:
     enabled_text = ', '.join(sorted(enabled_modules)) if enabled_modules else 'None'
     disabled_text = ', '.join(sorted(disabled_modules)) if disabled_modules else 'None'
     await event.reply(
-        f'<b>Enabled modules</b>: {enabled_text}\n' f'<b>Disabled modules</b>: {disabled_text}',
+        f'<b>{t("enabled_modules")}</b>: {enabled_text}\n'
+        f'<b>{t("disabled_modules")}</b>: {disabled_text}',
     )
 
 
 async def list_commands(event: NewMessage.Event) -> None:
     all_commands: dict[str, ModuleBase.CommandsT] = bot.modules_registry.get_all_commands(event)
-    help_text = '<b>Available commands</b>:\n\n'
+    help_text = f'<b>{t("available_commands")}</b>:\n\n'
     for module, commands in all_commands.items():
         if not commands:
             continue
@@ -57,37 +59,37 @@ async def manage_plugins(event: NewMessage.Event) -> None:
     action, module_name = event.message.text.split('plugins ')[1].split(' ')
     if action == 'enable':
         bot.modules_registry.enable_module(module_name)
-        await event.reply(f'Module {module_name} enabled')
+        await event.reply(t('module_enabled', module_name=module_name))
     if action == 'disable':
         bot.modules_registry.disable_module(module_name)
-        await event.reply(f'Module {module_name} disabled')
+        await event.reply(t('module_disabled', module_name=module_name))
 
 
 class PluginManager(ModuleBase):
     name = 'Plugin Manager'
-    description = 'Manage bot plugins and commands'
+    description = t('_plugins_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'plugins': Command(
             handler=list_plugins,
-            description='List all plugins and their status',
+            description=t('_plugins_description'),
             pattern=re.compile(r'^/plugins$'),
             condition=is_admin_in_private,
         ),
         'commands': Command(
             handler=list_commands,
-            description='List all available commands',
+            description=t('_commands_description'),
             pattern=re.compile(r'^/commands$'),
             condition=is_admin_in_private,
         ),
         'plugins enable': Command(
             handler=manage_plugins,
-            description='Enable a plugin',
+            description=t('_plugins_enable_description'),
             pattern=re.compile(r'^/plugins\s+enable\s+(\w+)$'),
             condition=is_admin_in_private,
         ),
         'plugins disable': Command(
             handler=manage_plugins,
-            description='Disable a plugin',
+            description=t('_plugins_disable_description'),
             pattern=re.compile(r'^/plugins\s+disable\s+(\w+)$'),
             condition=is_admin_in_private,
         ),
