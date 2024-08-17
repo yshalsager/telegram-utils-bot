@@ -18,6 +18,7 @@ A versatile multilingual modular Telegram bot with multiple features.
 - Task management and cancellation
 - Help command for instructions
 - Bot restart and update functionality
+- Broadcast messages to all users
 
 ### File Management
 

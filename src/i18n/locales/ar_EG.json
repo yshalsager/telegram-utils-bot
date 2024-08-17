@@ -341,5 +341,10 @@
   "_video_x265": "ضغط x265",
   "_video_x265_description": "[CRF] - تشفير الفيديو باستخدام برنامج ترميز x265 وقيمة CRF المحددة (20-28، الأقل يعني جودة أفضل).",
   "_voice": "إلى صوتية",
-  "_voice_description": "التحويل إلى ملاحظة صوتية."
+  "_voice_description": "التحويل إلى ملاحظة صوتية.",
+  "_broadcast": "بث رسالة",
+  "_broadcast_description": "بث رسالة إلى مستخدمي البوت.",
+  "broadcasting_message": "بدء بث الرسالة إلى مستخدمي البوت",
+  "broadcasting_progress": "تقدم الإرسال: {progress}/{total}",
+  "broadcasting_completed": "اكتمل الإرسال. أرسلت الرسالة إلى {total} مستخدم. {success} نجحت، و{failed} فشلت."
 }

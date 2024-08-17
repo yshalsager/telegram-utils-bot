@@ -10,9 +10,10 @@ import regex as re
 from telethon.events import NewMessage
 
 from src import PARENT_DIR
+from src.bot import permission_manager
 from src.modules.base import ModuleBase
 from src.utils.command import Command
-from src.utils.filters import is_admin_in_private
+from src.utils.filters import is_admin_in_private, is_reply_in_private
 from src.utils.i18n import t
 from src.utils.run import run_command
 
@@ -46,10 +47,49 @@ async def update(event: NewMessage.Event) -> None:
     return await restart(event)
 
 
+async def broadcast(event: NewMessage.Event) -> None:
+    """Broadcast a message to all bot users."""
+    users = list({i for _ in permission_manager.module_permissions.values() for i in _})
+    if not users:
+        return
+
+    success_count = 0
+    fail_count = 0
+    reply_message = await event.get_reply_message()
+    progress_message = await event.reply(t('broadcasting_message'))
+
+    for user_id in users:
+        try:
+            await event.client.send_message(user_id, reply_message)
+        except Exception:  # noqa: BLE001
+            fail_count += 1
+
+        success_count += 1
+        if (success_count + fail_count) % 5 == 0:
+            await progress_message.edit(
+                t('broadcasting_progress', progress=success_count + fail_count, total=len(users))
+            )
+
+    await progress_message.edit(
+        t(
+            'broadcasting_completed',
+            success=success_count,
+            failed=fail_count,
+            total=len(users),
+        )
+    )
+
+
 class Admin(ModuleBase):
     name = 'Admin'
     description = t('_admin_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
+        'broadcast': Command(
+            handler=broadcast,
+            description=t('_broadcast_description'),
+            pattern=re.compile(r'^/broadcast$'),
+            condition=lambda e, m: is_admin_in_private(e, m) and is_reply_in_private(e, m),
+        ),
         'restart': Command(
             handler=restart,
             description=t('_restart_description'),

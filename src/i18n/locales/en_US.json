@@ -341,5 +341,10 @@
   "_video_x265": "video x265",
   "_video_x265_description": "[CRF] - Encode video with x265 codec and specified CRF value (20-28, lower is better quality).",
   "_voice": "voice",
-  "_voice_description": "Convert to voice note."
+  "_voice_description": "Convert to voice note.",
+  "_broadcast": "broadcast",
+  "_broadcast_description": "Broadcast a message to bot users.",
+  "broadcasting_message": "Broadcasting message",
+  "broadcasting_progress": "Broadcasting progress: {progress}/{total}",
+  "broadcasting_completed": "Broadcasting completed, message was sent to {total} users, {success} succeeded, {failed} failed."
 }
