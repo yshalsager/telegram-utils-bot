@@ -1,5 +1,7 @@
 """Bot Admin module."""
 
+import logging
+from asyncio import sleep
 from os import execl
 from pathlib import Path
 from sys import executable
@@ -7,6 +9,7 @@ from typing import ClassVar
 
 import orjson
 import regex as re
+from telethon.errors import FloodWaitError
 from telethon.events import NewMessage
 
 from src import PARENT_DIR
@@ -57,25 +60,31 @@ async def broadcast(event: NewMessage.Event) -> None:
     fail_count = 0
     reply_message = await event.get_reply_message()
     progress_message = await event.reply(t('broadcasting_message'))
+    users_count = len(users)
 
     for user_id in users:
         try:
             await event.client.send_message(user_id, reply_message)
-        except Exception:  # noqa: BLE001
+        except FloodWaitError as e:
+            await sleep(e.seconds + 1)
+            await event.client.send_message(user_id, reply_message)
+        except Exception as e:  # noqa: BLE001
+            logging.error(f'Error broadcasting message to {user_id}: {e}')
             fail_count += 1
 
         success_count += 1
         if (success_count + fail_count) % 5 == 0:
             await progress_message.edit(
-                t('broadcasting_progress', progress=success_count + fail_count, total=len(users))
+                t('broadcasting_progress', progress=success_count + fail_count, total=users_count)
             )
+        await sleep(0.25)
 
     await progress_message.edit(
         t(
             'broadcasting_completed',
             success=success_count,
             failed=fail_count,
-            total=len(users),
+            total=users_count,
         )
     )
 
