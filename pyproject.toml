@@ -19,7 +19,7 @@ regex = "^2024.5.15"
 search-engine-parser = "^0.6.8"
 tafrigh = { extras = ["wit", "whisper"], version = "^1.6.0" }
 wikipedia = "^1.4.0"
-vosk = "0.3.44"
+vosk = "0.3.45"
 yt-dlp = "^2024.7.25"
 pymupdf = "^1.24.9"
 tahweel = "^0.0.13"

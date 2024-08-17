@@ -3888,17 +3888,15 @@ test = ["covdefaults (>=2.3)", "coverage (>=7.2.7)", "coverage-enable-subprocess
 
 [[package]]
 name = "vosk"
-version = "0.3.44"
+version = "0.3.45"
 description = "Offline open source speech recognition API based on Kaldi and Vosk"
 optional = false
 python-versions = ">=3"
 files = [
-    {file = "vosk-0.3.44-py3-none-linux_armv7l.whl", hash = "sha256:a0d4a2c384692d721d4cda58aa79aac22edb0c445759e9ca2df61f44a5d2fdda"},
-    {file = "vosk-0.3.44-py3-none-macosx_10_6_universal2.whl", hash = "sha256:029d0b3d6a5cff874c575b8a5814a4cccfb37608cff52e846c02a8c67a882801"},
-    {file = "vosk-0.3.44-py3-none-manylinux2014_aarch64.whl", hash = "sha256:9995b7fa5434b134b4bd09897e2490dbc56115c2ad2943c030621e10c7037b34"},
-    {file = "vosk-0.3.44-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:2652ef213c4c7807dc40af1e7aa578dcccfc4dc4192822a26bc45a9591bcbf76"},
-    {file = "vosk-0.3.44-py3-none-win32.whl", hash = "sha256:93895a51b8bd7b4c780eef05a3d99bf2af03f02fe5f4e4bba3da17bd0fd69138"},
-    {file = "vosk-0.3.44-py3-none-win_amd64.whl", hash = "sha256:45b1b1136a5cba6066c51da9f852dca7a855744db4ab72b23750c681d36f3202"},
+    {file = "vosk-0.3.45-py3-none-linux_armv7l.whl", hash = "sha256:4221f83287eefe5abbe54fc6f1da5774e9e3ffcbbdca1705a466b341093b072e"},
+    {file = "vosk-0.3.45-py3-none-manylinux2014_aarch64.whl", hash = "sha256:54efb47dd890e544e9e20f0316413acec7f8680d04ec095c6140ab4e70262704"},
+    {file = "vosk-0.3.45-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:25e025093c4399d7278f543568ed8cc5460ac3a4bf48c23673ace1e25d26619f"},
+    {file = "vosk-0.3.45-py3-none-win_amd64.whl", hash = "sha256:6994ddc68556c7e5730c3b6f6bad13320e3519b13ce3ed2aa25a86724e7c10ac"},
 ]
 
 [package.dependencies]
@@ -4274,4 +4272,4 @@ test = ["pytest (>=8.1,<9.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "52223b755378bd68037756a41f5e7d335947c256c121fa64bf80241b7b3adb94"
+content-hash = "4b557870976ac25fd5e1b5869ef4ac48bb01347209cb4cc6e4f70e81fff96153"
