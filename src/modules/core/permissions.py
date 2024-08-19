@@ -27,10 +27,10 @@ async def manage_permissions(event: NewMessage.Event) -> None:
     for module_name in [module.strip() for module in _modules.split(',')]:
         if action == 'add':
             permission_manager.add_user_to_module(module_name, user_id)
-            results.append(t('permissions_user_added', user_id=user_id, module=module_name))
+            results.append(t('permissions_user_added', user_id=user_id, module_name=module_name))
         elif action == 'remove':
             permission_manager.remove_user_from_module(module_name, user_id)
-            results.append(t('permissions_user_removed', user_id=user_id, module=module_name))
+            results.append(t('permissions_user_removed', user_id=user_id, module_name=module_name))
 
     await event.reply('\n'.join(results))
 
