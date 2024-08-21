@@ -833,6 +833,7 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
             await status_message.edit(t('thumbnail_generation_failed'))
             return
         await upload_file(event, output_file, progress_message)
+        await upload_file(event, output_file, progress_message, force_document=True)
 
     await status_message.edit(t('video_thumbnails_generated'))
 
