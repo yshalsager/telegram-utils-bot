@@ -270,9 +270,10 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.edit(t('no_valid_url_found'))
         return
     _, _type, _format = event.data.decode().split('|')
+    progress_message = await event.reply(t('starting_process'))
 
     if _type in ('audio', 'video') and not _format:
-        progress_message = await event.reply(t('fetching_available_formats'))
+        await progress_message.edit(t('fetching_available_formats'))
         ydl_opts = {**params, 'listformats': True}
         info_dict = await get_running_loop().run_in_executor(
             None, partial(YoutubeDL(ydl_opts).extract_info, link, download=False)
@@ -300,12 +301,12 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             await progress_message.edit(t('no_suitable_formats_found'))
             return
         await event.edit(
-            t('choose_format_for', type=_type, entry_count=entry_count), buttons=buttons
+            t('choose_format_for', type=t(_type), entry_count=entry_count), buttons=buttons
         )
         return
 
     # User selected a specific format
-    progress_message = await event.edit(t('starting_download'))
+    await progress_message.edit(t('starting_download'))
     format_id = _format if _type == 'audio' else f'{_format}+worstaudio/best'
     ydl_opts = {
         **params,
