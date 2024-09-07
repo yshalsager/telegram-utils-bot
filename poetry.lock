@@ -3405,13 +3405,13 @@ dev = ["hypothesis (>=6.70.0)", "pytest (>=7.1.0)"]
 
 [[package]]
 name = "tafrigh"
-version = "1.6.0"
+version = "1.6.1"
 description = "تفريغ النصوص وإنشاء ملفات SRT و VTT باستخدام نماذج Whisper وتقنية wit.ai."
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "tafrigh-1.6.0-py3-none-any.whl", hash = "sha256:c104d5fa49ea0341ff81cbe9034fa7f76866aebe33e4dbbe2e621a1ee23aabc9"},
-    {file = "tafrigh-1.6.0.tar.gz", hash = "sha256:705e9208a51afe499857c9112af52661ef8cdedfa2f05eead7343d7b703b5c5c"},
+    {file = "tafrigh-1.6.1-py3-none-any.whl", hash = "sha256:79f9acaed15f2914576a1aac6c677214c5955bad60c8388a21699111c2b0396c"},
+    {file = "tafrigh-1.6.1.tar.gz", hash = "sha256:5d6da824daa47e5bd87fdcc8245f1eca8087a7a6a2ca8585084c28ef866aaefd"},
 ]
 
 [package.dependencies]
@@ -3421,8 +3421,8 @@ openai-whisper = {version = ">=20231117", optional = true, markers = "extra == \
 pydub = {version = ">=0.25.1", optional = true, markers = "extra == \"wit\""}
 requests = {version = ">=2.32.0", optional = true, markers = "extra == \"wit\""}
 stable-ts = {version = ">=2.17.2", optional = true, markers = "extra == \"whisper\""}
-tqdm = ">=4.66.4"
-yt-dlp = ">=2024.7.9"
+tqdm = ">=4.66.5"
+yt-dlp = ">=2024.8.6"
 
 [package.extras]
 whisper = ["faster-whisper (>=1.0.2)", "openai-whisper (>=20231117)", "stable-ts (>=2.17.2)"]
