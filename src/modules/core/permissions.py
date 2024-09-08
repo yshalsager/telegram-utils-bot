@@ -12,7 +12,7 @@ from src.utils.i18n import t
 
 
 async def manage_permissions(event: NewMessage.Event) -> None:
-    match = re.match(r'^/permissions\s+(add|remove)\s+([\w, ]+)\s+(\d+)$', event.message.text)
+    match = re.match(r'^/permissions\s+(add|remove)\s+([\w, ]+)\s+(-?\d+)$', event.message.text)
     if not match:
         await event.reply(t('permissions_invalid_command'))
         return
@@ -95,13 +95,13 @@ class Permissions(ModuleBase):
         'permissions add': Command(
             handler=manage_permissions,
             description=t('_permissions_add_description'),
-            pattern=re.compile(r'^/permissions\s+add\s+([\w, ]+)\s+(\d+)$'),
+            pattern=re.compile(r'^/permissions\s+add\s+([\w, ]+)\s+(-?\d+)$'),
             condition=is_admin_in_private,
         ),
         'permissions remove': Command(
             handler=manage_permissions,
             description=t('_permissions_remove_description'),
-            pattern=re.compile(r'^/permissions\s+remove\s+([\w, ]+)\s+(\d+)$'),
+            pattern=re.compile(r'^/permissions\s+remove\s+([\w, ]+)\s+(-?\d+)$'),
             condition=is_admin_in_private,
         ),
         'permissions': Command(
