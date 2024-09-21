@@ -634,13 +634,13 @@ files = [
 
 [[package]]
 name = "codefind"
-version = "0.1.6"
+version = "0.1.7"
 description = "Find code objects and their referents"
 optional = false
-python-versions = "<4.0,>=3.8"
+python-versions = ">=3.8"
 files = [
-    {file = "codefind-0.1.6-py3-none-any.whl", hash = "sha256:0a3b8a441d881a4ba81bede611c11deb56c920a6fcee038dc4bd6e3e6869c67b"},
-    {file = "codefind-0.1.6.tar.gz", hash = "sha256:2447fb7c09a57369e131f8087be1640304500d960f742e65c7d9b07ed00fff19"},
+    {file = "codefind-0.1.7-py3-none-any.whl", hash = "sha256:5f1305b0992185cc87f28925c4449d04a256389099d46a489e619a296a802a29"},
+    {file = "codefind-0.1.7.tar.gz", hash = "sha256:a2ec8a2c0180399ea838dfcdcc344ca89f97b8aa293bc17b22b2c023aba06fbc"},
 ]
 
 [[package]]
@@ -1458,23 +1458,23 @@ ansicon = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
 name = "jurigged"
-version = "0.5.8"
+version = "0.6.0"
 description = "Live update of Python functions"
 optional = false
-python-versions = "<4.0,>=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "jurigged-0.5.8-py3-none-any.whl", hash = "sha256:29c66ac2fa5425444bf77bd517d577d41a3cb8532f8dcb9b2ace7d949028fb75"},
-    {file = "jurigged-0.5.8.tar.gz", hash = "sha256:abe0b425370d6f30178fb4a81a27d2b7b18798015c447673b94d958c839f43ea"},
+    {file = "jurigged-0.6.0-py3-none-any.whl", hash = "sha256:27829ebb9f2f909c7d35d14331ba73bcbcf1a3f4aa9da3778fee4c1d0ebf245f"},
+    {file = "jurigged-0.6.0.tar.gz", hash = "sha256:301d38e497474abd27c2906e3f74e1ad26836771d13108c6ccd8c03598b35d3a"},
 ]
 
 [package.dependencies]
-blessed = ">=1.17.12,<2.0.0"
-codefind = ">=0.1.3,<0.2.0"
-ovld = ">=0.3.1,<0.4.0"
-watchdog = ">=1.0.2"
+blessed = ">=1.20.0"
+codefind = ">=0.1.7,<0.2.0"
+ovld = ">=0.4.0,<0.5.0"
+watchdog = ">=4.0.2"
 
 [package.extras]
-develoop = ["giving (>=0.4.1,<0.5.0)", "rich (>=10.13.0)"]
+develoop = ["giving (>=0.4.3,<0.5.0)", "rich (>=10.13.0)"]
 
 [[package]]
 name = "llvmlite"
@@ -2382,13 +2382,13 @@ files = [
 
 [[package]]
 name = "ovld"
-version = "0.3.8"
+version = "0.4.3"
 description = "Overloading Python functions"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "ovld-0.3.8-py3-none-any.whl", hash = "sha256:d2ab11e9cedad5cb049052dbc0e308cee3350134314133256e0ea8a2056dbbef"},
-    {file = "ovld-0.3.8.tar.gz", hash = "sha256:dd6b76c2c59c017e0775e4faf007f34e187adf1c7cbc02d511a552b284374337"},
+    {file = "ovld-0.4.3-py3-none-any.whl", hash = "sha256:33e7ee30f61abb70e989bb872c32485af180658caa847e85c14e43e4b52e815c"},
+    {file = "ovld-0.4.3.tar.gz", hash = "sha256:a5e04bad2a8aca1323a0e8af0864358806ce4289aad4378232af4163279ae8c8"},
 ]
 
 [[package]]
@@ -4303,4 +4303,4 @@ test = ["pytest (>=8.1,<9.0)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "0c91d1024819727016716ed2e2ebe7a0b7f6c88950b2a4c653527b07f8acef44"
+content-hash = "40b4b836cd89db234a5028831b9a7d309ebe16a99249021bebd8db9a74c65cb2"
