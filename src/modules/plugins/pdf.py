@@ -549,7 +549,7 @@ class PDF(ModuleBase):
             handler=handler,
             description=t('_ocr_description'),
             pattern=re.compile(r'^/(pdf)\s+(ocr)\s+?([\w+]{3,})?$'),
-            condition=has_pdf_file,
+            condition=lambda e, m: has_pdf_file(e, m) or has_photo_or_photo_file(e, m),
             is_applicable_for_reply=True,
         ),
     }
