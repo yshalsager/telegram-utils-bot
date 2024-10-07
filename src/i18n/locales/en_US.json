@@ -215,6 +215,8 @@
   "_pdf_description": "Convert image to PDF.",
   "_pdf_compress": "compress",
   "_pdf_compress_description": "Compress PDF file.",
+  "_pdf_crop": "crop",
+  "_pdf_crop_description": "Crop PDF file.",
   "_pdf_extract": "extract",
   "_pdf_extract_description": "[pages] - Extract specific pages from PDF.",
   "_pdf_images": "images",

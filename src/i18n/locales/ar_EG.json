@@ -215,6 +215,8 @@
   "_pdf_description": "تحويل الصورة إلى PDF.",
   "_pdf_compress": "ضغط PDF",
   "_pdf_compress_description": "ضغط ملف PDF.",
+  "_pdf_crop": "قص PDF",
+  "_pdf_crop_description": "قص ملف PDF.",
   "_pdf_extract": "استخراج PDF",
   "_pdf_extract_description": "[pages] - استخراج صفحات محددة من PDF.",
   "_pdf_images": "PDF إلى صور",

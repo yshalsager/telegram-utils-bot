@@ -61,7 +61,7 @@ A versatile multilingual modular Telegram bot with multiple features.
 ### Text, Document, and Audio Processing
 
 - OCR (Optical Character Recognition) using Tesseract and Google
-- PDF processing: text extraction, compression, page extraction
+- PDF processing: text extraction, compression, page extraction, cropping, splitting, and merging
 - Transcription
 
 ### Utility Functions

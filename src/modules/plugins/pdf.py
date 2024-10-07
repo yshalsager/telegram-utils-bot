@@ -421,9 +421,41 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         event.client.loop.create_task(delete_message_after(await event.get_message()))
 
 
+async def crop_pdf_whitespace(event: NewMessage.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await event.reply(t('_pdf_crop_description'))
+
+    with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+
+        with pymupdf.open(temp_file_path) as pdf_doc:
+            for page in pdf_doc:
+                rect = pymupdf.Rect()
+                for item in page.get_bboxlog():
+                    rect |= item[1]  # Join this bbox into the result
+
+                margin = 20  # Add margin of 20 to all sides
+                rect.x0 = max(0, rect.x0 - margin)
+                rect.y0 = max(0, rect.y0 - margin)
+                rect.x1 = min(page.rect.width, rect.x1 + margin)
+                rect.y1 = min(page.rect.height, rect.y1 + margin)
+                page.set_cropbox(rect)
+
+            output_file = temp_file_path.with_name(
+                f'{Path(reply_message.file.name or "document").stem}_cropped.pdf'
+            )
+            pdf_doc.save(output_file)
+
+        await upload_file(event, output_file, progress_message)
+        output_file.unlink(missing_ok=True)
+
+    await progress_message.edit(t('pdf_whitespace_cropping_completed'))
+
+
 handlers: CommandHandlerDict = {
     'pdf': image_to_pdf,
     'pdf compress': compress_pdf,
+    'pdf crop': crop_pdf_whitespace,
     'pdf extract': extract_pdf_pages,
     'pdf images': convert_to_images,
     'pdf merge': merge_pdf_initial,
@@ -453,6 +485,14 @@ class PDF(ModuleBase):
             handler=handler,
             description=t('_pdf_compress_description'),
             pattern=re.compile(r'^/(pdf)\s+(compress)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf crop': Command(
+            name='pdf crop',
+            handler=handler,
+            description=t('_pdf_crop_description'),
+            pattern=re.compile(r'^/pdf\s+crop$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),
