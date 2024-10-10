@@ -92,7 +92,7 @@ async def merge_pdf_process(event: CallbackQuery.Event) -> None:
                 with pymupdf.open(temp_file_path) as pdf_doc:
                     merged_pdf.insert_pdf(pdf_doc)
         with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as out_file:
-            merged_pdf.save(out_file.name)
+            merged_pdf.save(out_file.name, deflate=True, deflate_images=True, deflate_fonts=False, use_objstms=True)
             output_file_path = Path(out_file.name)
             if output_file_path.exists() and output_file_path.stat().st_size:
                 output_file_path = output_file_path.rename(
@@ -149,7 +149,7 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     output_file = temp_file_path.with_name(
                         f'{Path(reply_message.file.name).stem}_{i + 1}.pdf'
                     )
-                    new_doc.save(output_file)
+                    new_doc.save(output_file, deflate=True, deflate_images=True, deflate_fonts=False, use_objstms=True)
                     await upload_file(event, output_file, progress_message)
                     output_file.unlink(missing_ok=True)
 
@@ -201,7 +201,7 @@ async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> No
             output_file = temp_file_path.with_name(
                 f'{Path(reply_message.file.name).stem}_extracted.pdf'
             )
-            doc.save(output_file)
+            doc.save(output_file, deflate=True, deflate_images=True, deflate_fonts=False, use_objstms=True)
             await upload_file(event, output_file, progress_message)
             output_file.unlink(missing_ok=True)
 
