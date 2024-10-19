@@ -30,7 +30,7 @@ plate = "^1.0.1"
 ipython = "^8.26.0"
 pre-commit = "^3.7.1"
 mypy = "^1.10.1"
-ruff = "^0.6.0"
+ruff = "^0.7.0"
 jurigged = "^0.6.0"
 
 [build-system]
