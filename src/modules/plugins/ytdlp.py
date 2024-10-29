@@ -124,7 +124,7 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
             file_name=f"{info_dict['id']}.json",
             caption=f"<b>{info_dict['title']}</b>\n\n"
             f"👤 <a href='{info_dict.get('uploader_url', '')}'>{info_dict.get('uploader', '')}</a>\n"
-            f"📽️ {len(info_dict.get('entries', [1]))} items\n"
+            f"📽️ {len(info_dict.get('entries', [1]))}\n"
             f"{info_dict['webpage_url']}",
         )
         if not edited:

@@ -448,16 +448,15 @@ async def merge_media_process(event: CallbackQuery.Event) -> None:
     status_message = await event.respond(t('starting_merge'))
     progress_message = await event.respond(f'<pre>{t('process_output')}:</pre>')
 
-    temp_files = []
+    temp_files: list[str] = []
     try:
         with NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as file_list:
             for file_id in files:
                 message = await event.client.get_messages(event.chat_id, ids=file_id)
-                temp_file = NamedTemporaryFile(suffix=message.file.ext, delete=False)
-                temp_files.append(temp_file)
-                await download_file(event, temp_file, message, progress_message)
-                file_list.write(f"file '{temp_file.name}'\n")
-                temp_file.close()  # Close but don't delete
+                with NamedTemporaryFile(suffix=message.file.ext, delete=False) as temp_file:
+                    temp_files.append(temp_file.name)
+                    await download_file(event, temp_file, message, progress_message)
+                    file_list.write(f"file '{temp_file.name}'\n")
 
         with NamedTemporaryFile(suffix=message.file.ext, delete=False) as output_file:
             ffmpeg_command = f'ffmpeg -hide_banner -y -f concat -safe 0 -i "{file_list.name}" -c copy "{output_file.name}"'
@@ -477,8 +476,8 @@ async def merge_media_process(event: CallbackQuery.Event) -> None:
     finally:
         # Clean up temporary files
         with contextlib.suppress(OSError):
-            for temp_file in temp_files:
-                Path(temp_file.name).unlink(missing_ok=True)
+            for path in temp_files:
+                Path(path).unlink(missing_ok=True)
             Path(file_list.name).unlink(missing_ok=True)
             Path(output_file.name).unlink(missing_ok=True)
         merge_states.pop(event.sender_id)
