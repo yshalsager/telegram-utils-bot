@@ -2994,19 +2994,19 @@ windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
 name = "pymupdf"
-version = "1.24.12"
+version = "1.24.13"
 description = "A high performance Python library for data extraction, analysis, conversion & manipulation of PDF (and other) documents."
 optional = false
 python-versions = ">=3.9"
 files = [
-    {file = "PyMuPDF-1.24.12-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:2228a46edc53bf8f83cbe5a8cf0a83bb8cf406614e6976906d3655355e079ec5"},
-    {file = "PyMuPDF-1.24.12-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:deac1546a80afc0930ffefb9714ff8aec54210ed2b1d8ecdd44e4c2b9e0ee839"},
-    {file = "PyMuPDF-1.24.12-cp39-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:d4a387a0e98a63b1ccc326032ffe7d3982d3d92495b661ca89ea634048e11f4e"},
-    {file = "PyMuPDF-1.24.12-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:dd8e8a24601c4483ed8a3699922fe48ad0179d28121816a131ba8c4534ad5682"},
-    {file = "PyMuPDF-1.24.12-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:f021d5060f946662345d62564fb06c4289d8522d4a249543e26de5f9ff3c9d06"},
-    {file = "PyMuPDF-1.24.12-cp39-abi3-win32.whl", hash = "sha256:2d099328fefdf0ee53a4146db9b05aab120b6e4d68cc4510c07a706fed19625a"},
-    {file = "PyMuPDF-1.24.12-cp39-abi3-win_amd64.whl", hash = "sha256:9017bb5c05e3480c1f5a15671be9208363e0a31307445480ac5a810672f7342e"},
-    {file = "PyMuPDF-1.24.12.tar.gz", hash = "sha256:ba6d212d7a286b6fab9024c669aa314edfcbdd5b45fa6f5ea5d463a9e7576e52"},
+    {file = "PyMuPDF-1.24.13-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:c11bb9198af69d490b4b346421db827d875a28fbc760d239e691d4b3ed12b5ad"},
+    {file = "PyMuPDF-1.24.13-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:240d5c43daa9278db50d609162b48f673ab256d7e5c73eea67af517c1fc2d47c"},
+    {file = "PyMuPDF-1.24.13-cp39-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:e4c8808e62afbbde0f7b9c4151c4b1a5735911c2d39c34332860df600dba76f8"},
+    {file = "PyMuPDF-1.24.13-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:c830610e4fde237fcf0532f1f8c1381453f48c164a5eadd0c6e5fd0bea1ca8e3"},
+    {file = "PyMuPDF-1.24.13-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:4520558580ac6b5a7164fda29fbc14e39d3114fd803420721500edbf47d04872"},
+    {file = "PyMuPDF-1.24.13-cp39-abi3-win32.whl", hash = "sha256:ab22828d4fc205791ef1332a64893cbfc38cd9c331c5f46ae4537372ffee6fc1"},
+    {file = "PyMuPDF-1.24.13-cp39-abi3-win_amd64.whl", hash = "sha256:ec17914e4a560f4070212a2e84db5cc8b561d85d1ead193605a22f9561b03148"},
+    {file = "PyMuPDF-1.24.13.tar.gz", hash = "sha256:6ec3ab3c6d5cba60bfcf58daaa2d1a5b700b0366ce52be666445007351461fa4"},
 ]
 
 [[package]]
