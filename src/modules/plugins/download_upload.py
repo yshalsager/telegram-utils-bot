@@ -76,8 +76,8 @@ async def upload_from_url_command(event: NewMessage.Event) -> None:
     else:
         await event.reply(t('no_valid_url_found'))
         return
-    if custom := message.raw_text.split('|', 1):
-        custom_name = custom[1].strip() if len(custom) > 1 else None
+    if custom := (message.raw_text or '').split('|', 1):
+        custom_name = custom[1].strip() if len(custom) > 1 else ''
     progress_message = await event.reply(t('starting_file_download'))
 
     with NamedTemporaryFile(dir=DOWNLOADS_DIR, delete=False) as temp_file:
