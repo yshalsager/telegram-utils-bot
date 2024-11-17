@@ -42,7 +42,7 @@ async def update(event: NewMessage.Event) -> None:
         return None
     await message.edit(f'{t("git_update_successful_updating_requirements")}\n<pre>{output}</pre>')
 
-    output, code = await run_command('pip install --upgrade -r requirements.txt', cwd=PARENT_DIR)
+    output, code = await run_command('uv sync --frozen --no-cache', cwd=PARENT_DIR)
     if code and code != 0:
         await message.edit(f'{t("failed_to_update_requirements")}:\n<pre>{output}</pre>')
         return None
