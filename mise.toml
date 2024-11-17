@@ -1,9 +1,9 @@
 [tools]
-poetry = 'latest'
-python = '3.13.0'
+uv = 'latest'
+python = '3.12.0'
 
 [tasks.default]
-run = 'python -m src'
+run = 'python3 -m src'
 
 [env]
 # the Telegram bot token https://telegram.me/BotFather
