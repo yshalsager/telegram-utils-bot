@@ -64,8 +64,8 @@ async def _run_subprocess(  # noqa: C901, PLR0912
     stderr_reader = read_stream(process.stderr)
 
     pending: dict[str, asyncio.Task] = {
-        'stdout': asyncio.create_task(stdout_reader.__anext__(), name='stdout'),  # type: ignore[arg-type]
-        'stderr': asyncio.create_task(stderr_reader.__anext__(), name='stderr'),  # type: ignore[arg-type]
+        'stdout': asyncio.create_task(stdout_reader.__anext__(), name='stdout'),
+        'stderr': asyncio.create_task(stderr_reader.__anext__(), name='stderr'),
     }
     try:
         while pending or not process_task.done():
@@ -82,7 +82,7 @@ async def _run_subprocess(  # noqa: C901, PLR0912
                         output += line
                         yield output, None
                         pending[task.get_name()] = asyncio.create_task(
-                            (  # type: ignore[arg-type]
+                            (
                                 stdout_reader if task.get_name() == 'stdout' else stderr_reader
                             ).__anext__(),
                             name=task.get_name(),
