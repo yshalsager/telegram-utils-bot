@@ -32,11 +32,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 
 WORKDIR /code
 COPY pyproject.toml uv.lock /code/
-RUN uv sync --frozen --no-cache
-ENV PATH="/code/.venv/bin:$PATH"
-
 RUN useradd -m appuser
 USER appuser
 
+RUN uv sync --frozen --no-cache
+ENV PATH="/code/.venv/bin:$PATH"
 WORKDIR /code/app
 CMD ["python", "-m", "src"]
