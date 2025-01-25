@@ -20,7 +20,7 @@ dependencies = [
     "tafrigh[wit,whisper]>=1.6.0",
     "wikipedia>=1.4.0",
     "vosk==0.3.44",
-    "yt-dlp[default]>=2024.11.04",
+    "yt-dlp[default]>=2025.01.15",
     "pymupdf>=1.24.9",
     "tahweel>=0.0.13",
     "ocrmypdf>=16.4.2",
