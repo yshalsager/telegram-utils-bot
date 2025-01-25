@@ -37,7 +37,7 @@ async def stream_shell_output(
     if not status_message:
         status_message = await event.reply(t('starting_process'))
     if not progress_message:
-        progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
+        progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
     runner = run_subprocess_shell if shell else run_subprocess_exec
     timeout = ADMIN_TIMEOUT_SECONDS if event.sender_id in BOT_ADMINS else TIMEOUT_SECONDS
     buffer = ''
@@ -84,7 +84,7 @@ async def stream_shell_output(
     end_time = datetime.now(UTC)
     elapsed_time = end_time - start_time
     status += (
-        f'\n{t('started_at')} {start_time.strftime("%Y-%m-%d %H:%M:%S")}\n'
+        f'\n{t("started_at")} {start_time.strftime("%Y-%m-%d %H:%M:%S")}\n'
         f'{t("finished_at")} {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")}\n'
         f'{t("elapsed_time")}: {elapsed_time}'
     )

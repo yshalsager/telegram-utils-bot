@@ -122,7 +122,7 @@ async def process_media(
     if not reply_message:
         reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply(t('starting_process'))
-    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
+    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
 
     with NamedTemporaryFile(dir=TMP_DIR) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -212,7 +212,7 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     for bitrate in [64, 96, 128]
                 ],
             ]
-            await event.edit(f'{t('choose_bitrate')}:', buttons=buttons)
+            await event.edit(f'{t("choose_bitrate")}:', buttons=buttons)
             return
     elif match := re.search(r'(\d+)$', event.message.text):
         audio_bitrate = match.group(1)
@@ -255,7 +255,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return await handle_callback_query_for_reply_state(
             event,
             reply_states,
-            f'{t('enter_cut_points')} (<code>00:00:00 00:30:00 00:45:00 01:15:00</code>)',
+            f'{t("enter_cut_points")} (<code>00:00:00 00:30:00 00:45:00 01:15:00</code>)',
         )
     if event.sender_id in reply_states:
         reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
@@ -280,7 +280,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return None
 
     status_message = await event.reply(t('starting_cut'))
-    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
+    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
     with NamedTemporaryFile(suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         input_file = get_download_name(reply_message)
@@ -340,7 +340,7 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         segment_duration = duration
     status_message = await event.reply(t('starting_process'))
 
-    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
+    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
     with NamedTemporaryFile() as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         input_file = get_download_name(reply_message)
@@ -381,7 +381,7 @@ async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await download_file(event, temp_file, reply_message, progress_message)
         output, code = await run_command(ffprobe_command.format(input=temp_file.name))
         if code:
-            message = f'{t('failed_to_get_info')}\n<pre>{output}</pre>'
+            message = f'{t("failed_to_get_info")}\n<pre>{output}</pre>'
         else:
             info = orjson.dumps(process_dict(orjson.loads(output)), option=json_options).decode()
             message = f'<pre>{info}</pre>'
@@ -446,7 +446,7 @@ async def merge_media_process(event: CallbackQuery.Event) -> None:
         return
 
     status_message = await event.respond(t('starting_merge'))
-    progress_message = await event.respond(f'<pre>{t('process_output')}:</pre>')
+    progress_message = await event.respond(f'<pre>{t("process_output")}:</pre>')
 
     temp_files: list[str] = []
     try:
@@ -486,7 +486,7 @@ async def merge_media_process(event: CallbackQuery.Event) -> None:
 async def trim_silence(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply(t('starting_silence_trimming'))
-    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
+    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
     extension = reply_message.file.ext
 
     with (
@@ -550,7 +550,7 @@ async def mute_video(event: NewMessage.Event) -> None:
 async def extract_subtitle(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply(t('starting_subtitle_extraction'))
-    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
+    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
 
     with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
         await download_file(event, input_file, reply_message, progress_message)
@@ -628,7 +628,7 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 [Button.inline(f'{ext}', f'm|media_convert|{ext}') for ext in row if ext]
                 for row in list(zip_longest(*[iter(formats)] * 3, fillvalue=None))
             ]
-            await event.edit(f'{t('choose_target_format')}:', buttons=buttons)
+            await event.edit(f'{t("choose_target_format")}:', buttons=buttons)
             return
     else:
         target_format = event.message.text.split('convert ')[1].lower()
@@ -636,8 +636,8 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             target_format = target_format[1:]
         if target_format not in ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS:
             await event.reply(
-                f'{t('unsupported_media_type')}.\n'
-                f'{t('allowed_formats')}: {", ".join(ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS)}'
+                f'{t("unsupported_media_type")}.\n'
+                f'{t("allowed_formats")}: {", ".join(ALLOWED_VIDEO_FORMATS | ALLOWED_AUDIO_FORMATS)}'
             )
             return
     reply_message = await get_reply_message(event, previous=True)
@@ -681,7 +681,7 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     for quality in sorted(ALLOWED_VIDEO_QUALITIES)
                 ]
             ]
-            await event.edit(f'{t('choose_target_quality')}:', buttons=buttons)
+            await event.edit(f'{t("choose_target_quality")}:', buttons=buttons)
             return
     else:
         quality = event.message.text.split('resize ')[1]
@@ -689,7 +689,7 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     quality = int(quality)
     if quality not in ALLOWED_VIDEO_QUALITIES:
         await event.reply(
-            f'{t('invalid_target_quality')}. {t('please_choose_from')} {", ".join(map(str, ALLOWED_VIDEO_QUALITIES))}.'
+            f'{t("invalid_target_quality")}. {t("please_choose_from")} {", ".join(map(str, ALLOWED_VIDEO_QUALITIES))}.'
         )
         return
 
@@ -722,7 +722,7 @@ async def video_update_process(event: NewMessage.Event) -> None:
     )
     audio_message = event.message
     status_message = await event.reply(t('starting_audio_update'))
-    progress_message = await event.respond(f'<pre>{t('process_output')}:</pre>')
+    progress_message = await event.respond(f'<pre>{t("process_output")}:</pre>')
 
     with (
         NamedTemporaryFile(suffix=video_message.file.ext) as video_file,
@@ -805,7 +805,7 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply(t('starting_thumbnail_generation'))
-    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
+    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
 
     with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
         await download_file(event, input_file, reply_message, progress_message)
@@ -854,7 +854,7 @@ async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     for percentage in range(60, 100, 10)
                 ],
             ]
-            await event.edit(f'{t('choose_target_compression_percentage')}:', buttons=buttons)
+            await event.edit(f'{t("choose_target_compression_percentage")}:', buttons=buttons)
             return
     else:
         target_percentage = int(event.message.text.split('compress ')[1])
@@ -886,7 +886,7 @@ async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     )
     compression_ratio = (1 - (data['output_size'] / reply_message.file.size)) * 100
     feedback_text = (
-        f'\n{t('target_compression')}: {target_percentage}%\n'
+        f'\n{t("target_compression")}: {target_percentage}%\n'
         f'{t("actual_compression")}: {compression_ratio:.2f}%\n'
     )
     status_message = data['status_message']
@@ -907,7 +907,7 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
                 [Button.inline(f'CRF {crf}', f'm|video_x265|{crf}') for crf in range(20, 25, 2)],
                 [Button.inline(f'CRF {crf}', f'm|video_x265|{crf}') for crf in range(25, 29, 2)],
             ]
-            await event.edit(f'{t('choose_crf')}:', buttons=buttons)
+            await event.edit(f'{t("choose_crf")}:', buttons=buttons)
             return
     else:
         crf = int(event.message.text.split('x265 ')[1])
@@ -932,7 +932,7 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
     )
 
     compression_ratio = (1 - (data['output_size'] / reply_message.file.size)) * 100
-    feedback_text = f'\n{t('compression_ratio')}: {compression_ratio:.2f}%\n'
+    feedback_text = f'\n{t("compression_ratio")}: {compression_ratio:.2f}%\n'
     status_message = data['status_message']
     assert isinstance(status_message, Message)
     await status_message.edit(data['status_text'] + feedback_text)
@@ -955,7 +955,7 @@ async def video_create_process(event: NewMessage.Event) -> None:
     )
     input_message: Message = event.message
     status_message: Message = await event.reply(t('starting_video_creation'))
-    progress_message: Message = await event.respond(f'<pre>{t('process_output')}:</pre>')
+    progress_message: Message = await event.respond(f'<pre>{t("process_output")}:</pre>')
 
     audio_file = Path(TMP_DIR / audio_message.file.name)
     input_file = Path(
@@ -1017,7 +1017,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     Button.inline('Vosk', 'm|transcribe|vosk'),
                 ]
             ]
-            await event.edit(f'{t('choose_transcription_method')}:', buttons=buttons)
+            await event.edit(f'{t("choose_transcription_method")}:', buttons=buttons)
             return
     else:
         transcription_method = (
@@ -1038,7 +1038,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
 
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply(t('starting_transcription'))
-    progress_message = await event.reply(f'<pre>{t('process_output')}:</pre>')
+    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1074,7 +1074,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     caption=f'<code>{renamed_file.name}</code>',
                 )
             else:
-                await status_message.edit(f'{t('failed_to_transcribe')} {renamed_file.name}')
+                await status_message.edit(f'{t("failed_to_transcribe")} {renamed_file.name}')
     await status_message.edit(t('transcription_completed'))
     rmtree(output_dir)
     await delete_message_after(progress_message)
@@ -1095,7 +1095,7 @@ async def fix_stereo_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     for channel in ('right', 'left')
                 ]
             ]
-            await event.edit(f'{t('use_audio_of_which_channel')}:', buttons=buttons)
+            await event.edit(f'{t("use_audio_of_which_channel")}:', buttons=buttons)
             return
     else:
         channel = event.message.text.split('stereo ')[1]
@@ -1273,7 +1273,7 @@ class Media(ModuleBase):
             handler=handler,
             description=t('_video_resize_description'),
             pattern=re.compile(
-                rf'^/(video)\s+(resize)\s+({'|'.join(map(str, ALLOWED_VIDEO_QUALITIES))})$'
+                rf'^/(video)\s+(resize)\s+({"|".join(map(str, ALLOWED_VIDEO_QUALITIES))})$'
             ),
             condition=partial(has_media, video=True),
             is_applicable_for_reply=True,

@@ -40,7 +40,7 @@ async def list_permissions(event: NewMessage.Event) -> None:
         await event.reply(t('no_permissions_found'))
         return
 
-    message = f'<b>{t('modules_permissions')}</b>:\n\n'
+    message = f'<b>{t("modules_permissions")}</b>:\n\n'
     for module, users in permission_manager.module_permissions.items():
         message += f'<i>{module}</i>\n{", ".join(f'<a href="tg://user?id={user}">{user}</a>' for user in users)}\n'
     await event.reply(message)
@@ -80,7 +80,7 @@ async def list_all_users(event: NewMessage.Event) -> None:
         await event.reply(t('no_users_found'))
         return
 
-    message = f'<b>{t('all_users_with_permissions')}:</b>\n\n'
+    message = f'<b>{t("all_users_with_permissions")}:</b>\n\n'
     for user_id, modules in sorted(user_to_modules.items()):
         modules_list = ', '.join(modules)
         message += f'- <a href="tg://user?id={user_id}">{user_id}</a>: {modules_list}\n'

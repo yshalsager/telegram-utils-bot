@@ -27,7 +27,7 @@ def load_modules(directory: str) -> list[ModuleBase]:
         )
     ]
     logger.info(
-        f'found modules: {", ".join([module.__name__.split('.')[-1] for module in found_modules])}'
+        f'found modules: {", ".join([module.__name__.split(".")[-1] for module in found_modules])}'
     )
 
     loaded_module_classes: list[ModuleBase] = []
@@ -39,9 +39,14 @@ def load_modules(directory: str) -> list[ModuleBase]:
         ):
             loaded_module_classes.append(module_class())
     logger.info(
-        f'loaded modules: {", ".join(
-            [f'{module.name} {list(module.commands.keys())}' for module in loaded_module_classes]
-        )}'
+        f'loaded modules: {
+            ", ".join(
+                [
+                    f"{module.name} {list(module.commands.keys())}"
+                    for module in loaded_module_classes
+                ]
+            )
+        }'
     )
     return loaded_module_classes
 

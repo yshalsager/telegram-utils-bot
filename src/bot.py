@@ -123,7 +123,7 @@ async def handle_messages(event: NewMessage.Event) -> None:
         keyboard = [
             [
                 Button.inline(
-                    t(f'_{command.replace(" ", "_")}'), data=f'm|{command.replace(' ', '_')}'
+                    t(f'_{command.replace(" ", "_")}'), data=f'm|{command.replace(" ", "_")}'
                 )
                 for command in row
                 if command is not None
@@ -199,7 +199,7 @@ async def run_bot() -> None:
     bot.add_event_handler(
         handle_commands,
         NewMessage(
-            pattern=rf'^/(\w+)(?:@{bot_info['username']})?\s?(.+)?',
+            pattern=rf'^/(\w+)(?:@{bot_info["username"]})?\s?(.+)?',
             func=lambda x: not any(
                 x.message.text.startswith(c) for c in ('/start', '/help', '/cancel')
             ),

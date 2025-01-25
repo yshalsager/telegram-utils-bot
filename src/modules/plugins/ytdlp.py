@@ -121,11 +121,11 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
             event,
             progress_message,
             text=f'<pre>{json_str}</pre>',
-            file_name=f"{info_dict['id']}.json",
-            caption=f"<b>{info_dict['title']}</b>\n\n"
+            file_name=f'{info_dict["id"]}.json',
+            caption=f'<b>{info_dict["title"]}</b>\n\n'
             f"👤 <a href='{info_dict.get('uploader_url', '')}'>{info_dict.get('uploader', '')}</a>\n"
-            f"📽️ {len(info_dict.get('entries', [1]))}\n"
-            f"{info_dict['webpage_url']}",
+            f'📽️ {len(info_dict.get("entries", [1]))}\n'
+            f'{info_dict["webpage_url"]}',
         )
         if not edited:
             await progress_message.delete()
@@ -181,7 +181,7 @@ async def get_subtitles(event: NewMessage.Event) -> None:
             await convert_subtitles(vtt_path, srt_path, txt_path)
             for file in [srt_path, txt_path]:
                 file_path = file.rename(
-                    file.with_stem(f"{re.sub('[/:*"\'<>|]', '_', entry['title'])}-{lang}")
+                    file.with_stem(f'{re.sub("[/:*\"'<>|]", "_", entry["title"])}-{lang}')
                 )
                 await upload_file(
                     event,
@@ -229,15 +229,15 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
             if f['vcodec'] != 'none':
                 total_size += worst_audio_size * entry_count
             format_name = (
-                f"🖥 {f['format']} | 📁 {f['ext']} | 💾 {naturalsize(total_size, binary=True)}"
+                f'🖥 {f["format"]} | 📁 {f["ext"]} | 💾 {naturalsize(total_size, binary=True)}'
             )
             format_list.append(format_name)
 
         await edit_or_send_as_file(
             event,
             progress_message,
-            text=f'<b>{t('available_formats')} ({entry_count} items):</b>\n\n{'\n'.join(format_list)}',
-            file_name=f"{info_dict['id']}_formats.txt",
+            text=f'<b>{t("available_formats")} ({entry_count} items):</b>\n\n{"\n".join(format_list)}',
+            file_name=f'{info_dict["id"]}_formats.txt',
             caption=info_dict['webpage_url'],
         )
     except Exception as e:  # noqa: BLE001
@@ -295,7 +295,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             if (_type == 'audio' and f['acodec'] != 'none' and f['vcodec'] == 'none') or (
                 _type == 'video' and f['vcodec'] != 'none'
             ):
-                format_name = f"{f['format']} | {f['ext']} | {naturalsize(total_size, binary=True)}"
+                format_name = f'{f["format"]} | {f["ext"]} | {naturalsize(total_size, binary=True)}'
                 buttons.append([Button.inline(format_name, f'ytdown|{_type}|{format_id}')])
         if not buttons:
             await progress_message.edit(t('no_suitable_formats_found'))
@@ -333,7 +333,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         )
         entries = info_dict.get('entries', [info_dict])  # Handle both single videos and playlists
         for entry in entries:
-            file_path = Path(TMP_DIR / f"{entry['id']}.{entry['ext']}")
+            file_path = Path(TMP_DIR / f'{entry["id"]}.{entry["ext"]}')
             await progress_message.edit(t('uploading_file'))
             if entry.get('vcodec') == 'none':  # audio
                 attributes = [
@@ -352,18 +352,18 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     )
                 ]
             file_path = file_path.rename(
-                file_path.with_name(f"{re.sub('[/:*"\'<>|]', '_', entry['title'])}.{entry['ext']}")
+                file_path.with_name(f'{re.sub("[/:*\"'<>|]", "_", entry["title"])}.{entry["ext"]}')
             )
             await upload_file(
                 event,
                 file_path,
                 progress_message,
-                caption=f"<b>{entry['title']}</b>\n\n"
-                f"👤 {entry.get('uploader', '')}\n"
-                f"⏱ {entry.get('duration_string', '')}\n"
-                f"💾 {naturalsize(entry.get('filesize_approx', 0), binary=True)}\n"
-                f"📅 {entry.get('upload_date', '')}\n\n"
-                f"{entry['webpage_url']}",
+                caption=f'<b>{entry["title"]}</b>\n\n'
+                f'👤 {entry.get("uploader", "")}\n'
+                f'⏱ {entry.get("duration_string", "")}\n'
+                f'💾 {naturalsize(entry.get("filesize_approx", 0), binary=True)}\n'
+                f'📅 {entry.get("upload_date", "")}\n\n'
+                f'{entry["webpage_url"]}',
                 attributes=attributes,
             )
             file_path.unlink(missing_ok=True)
@@ -407,12 +407,12 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
         info_dict = await get_running_loop().run_in_executor(
             None, partial(YoutubeDL(ydl_opts).extract_info, match.group('url'), download=True)
         )
-        file_path = Path(TMP_DIR / f"{info_dict['id']}-{start_seconds}-{end_seconds}.m4a")
+        file_path = Path(TMP_DIR / f'{info_dict["id"]}-{start_seconds}-{end_seconds}.m4a')
         await progress_message.edit(t('uploading_audio_segment'))
         attributes = [
             DocumentAttributeAudio(
                 duration=end_seconds - start_seconds,
-                title=f"{info_dict['title']} ({start_time} - {end_time})",
+                title=f'{info_dict["title"]} ({start_time} - {end_time})',
                 performer=info_dict.get('uploader'),
             )
         ]
@@ -420,10 +420,10 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
             event,
             file_path,
             progress_message,
-            caption=f"<b>{info_dict['title']}</b> ({start_time} - {end_time})\n\n"
-            f"👤 {info_dict.get('uploader', '')}\n"
-            f"⏱ {end_seconds - start_seconds} seconds\n"
-            f"{info_dict['webpage_url']}",
+            caption=f'<b>{info_dict["title"]}</b> ({start_time} - {end_time})\n\n'
+            f'👤 {info_dict.get("uploader", "")}\n'
+            f'⏱ {end_seconds - start_seconds} seconds\n'
+            f'{info_dict["webpage_url"]}',
             attributes=attributes,
         )
         file_path.unlink(missing_ok=True)

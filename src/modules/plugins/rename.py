@@ -61,7 +61,7 @@ async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
     await upload_file(event, new_file_path, progress_message)
     new_file_path.unlink(missing_ok=True)
 
-    await progress_message.edit(f'{t('file_renamed')}: {new_filename_with_ext}')
+    await progress_message.edit(f'{t("file_renamed")}: {new_filename_with_ext}')
     if event.sender_id in reply_states:
         del reply_states[event.sender_id]
     raise StopPropagation
