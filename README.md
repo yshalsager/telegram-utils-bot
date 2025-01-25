@@ -150,7 +150,7 @@ This project uses several tools to streamline the development process:
 
 ### mise
 
-We use [mise](https://mise.jdx.dev/) for managing project-level dependencies and environment variables. mise helps
+[mise](https://mise.jdx.dev/) is used for managing project-level dependencies and environment variables. mise helps
 ensure consistent development environments across different machines.
 
 To get started with mise:
@@ -170,7 +170,7 @@ To set up the project with UV:
 
 ### Jurigged for Live Reload
 
-We use [Jurigged](https://github.com/breuleux/jurigged) for live code reloading during development. This allows you to
+[Jurigged](https://github.com/breuleux/jurigged) is used for live code reloading during development. This allows you to
 see changes in your code immediately without manually restarting the application.
 
 To use Jurigged:
@@ -185,7 +185,7 @@ uv run jurigged -v -m src
 
 ## Internationalization (i18n)
 
-- We use [Plate](https://github.com/delivrance/plate) library to translate the bot's messages.
+- [Plate](https://github.com/delivrance/plate) library is used to translate the bot's messages.
 - Translations are stored as JSON files in the `src/i18n/locales` directory, the default locale is `en_US`.
 - To add a new language, create a new JSON file in the `src/i18n/locales` directory, with the corresponding language
   code, and translate the messages to that language.
