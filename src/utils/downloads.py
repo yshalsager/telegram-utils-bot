@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from io import BufferedWriter
+from io import BufferedRandom, BufferedWriter
 from pathlib import Path
 from tempfile import _TemporaryFileWrapper
 from typing import Any
@@ -54,7 +54,7 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
 
 async def download_file(
     event: NewMessage.Event,
-    temp_file: _TemporaryFileWrapper | BufferedWriter,
+    temp_file: _TemporaryFileWrapper | BufferedRandom | BufferedWriter,
     reply_message: Message,
     progress_message: Message,
 ) -> Path:
