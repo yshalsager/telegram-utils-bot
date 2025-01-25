@@ -53,7 +53,7 @@ async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -
         with download_to.open('wb') as temp_file:
             temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
             temp_file_path.rename(download_to)
-    await progress_message.edit(f'{t('file_downloaded')}: <code>{download_to}</code>')
+    await progress_message.edit(f'{t("file_downloaded")}: <code>{download_to}</code>')
 
 
 async def upload_file_command(event: NewMessage.Event) -> None:
@@ -61,7 +61,7 @@ async def upload_file_command(event: NewMessage.Event) -> None:
     for file_path in PARENT_DIR.glob(event.message.text.split(maxsplit=1)[1].strip()):
         if file_path.exists():
             await upload_file(event, file_path, progress_message)
-            await progress_message.edit(f'{t('file_uploaded')}: <code>{file_path.name}</code>')
+            await progress_message.edit(f'{t("file_uploaded")}: <code>{file_path.name}</code>')
             return
     await progress_message.edit(t('no_files_found'))
 
@@ -116,7 +116,7 @@ async def upload_as_file_or_media(event: NewMessage.Event | CallbackQuery.Event)
         temp_file_path = temp_file_path.rename(temp_file_path.with_name(output_file_name))
         await upload_file(event, temp_file_path, progress_message, force_document=force_document)
 
-    await progress_message.edit(f'{t('file_uploaded_as')} {_type}: <code>{output_file_name}</code>')
+    await progress_message.edit(f'{t("file_uploaded_as")} {_type}: <code>{output_file_name}</code>')
 
 
 class DownloadUpload(ModuleBase):

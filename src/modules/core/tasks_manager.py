@@ -22,7 +22,7 @@ async def list_tasks(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event) or event.message
     current_task_id = f'{reply_message.chat_id}_{reply_message.id}'
 
-    message = f'<b>{t('active_tasks')}:</b>\n\n'
+    message = f'<b>{t("active_tasks")}:</b>\n\n'
     for task_id, task in active_tasks.items():
         if task_id == current_task_id:
             continue
@@ -53,7 +53,7 @@ async def list_tasks(event: NewMessage.Event) -> None:
                 message += ' - <i>Unknown</i>\n'
         except Exception as err:  # noqa: BLE001
             logging.error(err)
-            message += f"{t("couldn't_get_command_info")} {err!s}\n"
+            message += f'{t("couldn't_get_command_info")} {err!s}\n'
 
             # message += f"Status: {'Running' if not task.done() else 'Completed'}\n"
         # message += f"Cancelled: {'Yes' if task.cancelled() else 'No'}\n"

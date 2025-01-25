@@ -17,7 +17,7 @@ from src.utils.progress import progress_callback
 
 
 def get_default_filename() -> str:
-    return f"{datetime.now(UTC).strftime('%Y-%m-%d_%H-%M-%S')}"
+    return f'{datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")}'
 
 
 def get_download_name(message: Message, new_filename: str = '') -> Path:
@@ -33,7 +33,7 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
                 ),
                 message.file.name if (message.file and message.file.name) else None,
             )
-            or f"{get_default_filename()}.{mime_type or 'unknown'}"
+            or f'{get_default_filename()}.{mime_type or "unknown"}'
         )
     else:
         original_filename = (

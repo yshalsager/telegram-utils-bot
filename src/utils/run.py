@@ -105,7 +105,7 @@ async def _run_subprocess(  # noqa: C901, PLR0912
 
     except Exception as err:  # noqa: BLE001
         logger.error(f'Error while running command: {cmd}')
-        output += f'\n{t('an_error_occurred', error=err)}\n'
+        output += f'\n{t("an_error_occurred", error=err)}\n'
         yield output, None
 
     finally:

@@ -52,14 +52,14 @@ async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     zip_longest(*[iter(sorted(ALLOWED_OUTPUT_FORMATS))] * 3, fillvalue=None)
                 )
             ]
-            await event.edit(f'{t('choose_target_format')}:', buttons=buttons)
+            await event.edit(f'{t("choose_target_format")}:', buttons=buttons)
             return
     else:
         target_format = event.message.text.split('convert ')[1]
         if target_format not in ALLOWED_OUTPUT_FORMATS:
             await event.reply(
-                f'{t('unsupported_media_type')}.\n'
-                f'{t('allowed_formats')}: {", ".join(ALLOWED_OUTPUT_FORMATS)}'
+                f'{t("unsupported_media_type")}.\n'
+                f'{t("allowed_formats")}: {", ".join(ALLOWED_OUTPUT_FORMATS)}'
             )
             return
     reply_message = await get_reply_message(event, previous=True)
@@ -85,13 +85,13 @@ async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def trim_image(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply(f'{t('trimming_image')}…')
+    progress_message = await event.reply(f'{t("trimming_image")}…')
     with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         try:
             trimmed_image = crop_image_white_borders(temp_file_path)
         except Exception as e:  # noqa: BLE001
-            await progress_message.edit(f"{t('failed_to_trim_image')}\n{e}")
+            await progress_message.edit(f'{t("failed_to_trim_image")}\n{e}')
         output_file = temp_file_path.with_name(
             f'{Path(reply_message.file.name or "image").stem}_trimmed.jpg'
         )

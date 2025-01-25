@@ -123,7 +123,7 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return await handle_callback_query_for_reply_state(
             event,
             reply_states,
-            f'{t('pdf_split_pages_number')}:',
+            f'{t("pdf_split_pages_number")}:',
         )
 
     if event.sender_id in reply_states:
@@ -189,7 +189,7 @@ def parse_page_numbers(input_string: str) -> list[int]:
 async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         return await handle_callback_query_for_reply_state(
-            event, reply_states, f'{t('pdf_extract_pages')}:'
+            event, reply_states, f'{t("pdf_extract_pages")}:'
         )
 
     if event.sender_id in reply_states:
@@ -243,7 +243,7 @@ async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> No
             buttons = [
                 [Button.inline('ZIP', 'm|pdf_images|ZIP'), Button.inline('PDF', 'm|pdf_images|PDF')]
             ]
-            await event.edit(f'{t('choose_output_format')}:', buttons=buttons)
+            await event.edit(f'{t("choose_output_format")}:', buttons=buttons)
             return
     else:
         args = event.message.text.split('images')
@@ -384,7 +384,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     for opt in ['screen', 'ebook', 'printer', 'prepress', 'default']
                 ]
             ]
-            await event.edit(f'{t('choose_ghostscript_compression')}:', buttons=buttons)
+            await event.edit(f'{t("choose_ghostscript_compression")}:', buttons=buttons)
             return
         if event.data.decode().startswith('m|pdf_compress|'):
             parts = event.data.decode().split('|')
@@ -398,7 +398,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     Button.inline('PyMuPDF', 'm|pdf_compress|pymupdf'),
                 ]
             ]
-            await event.edit(f'{t('choose_compression_method')}:', buttons=buttons)
+            await event.edit(f'{t("choose_compression_method")}:', buttons=buttons)
             return
     else:
         method = 'pymupdf'
@@ -434,7 +434,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         compression_ratio = (1 - (output_file.stat().st_size / reply_message.file.size)) * 100
         await upload_file(event, output_file, progress_message)
         output_file.unlink(missing_ok=True)
-        feedback_text = f'{t('compression')}: {compression_ratio:.2f}%\n'
+        feedback_text = f'{t("compression")}: {compression_ratio:.2f}%\n'
         await progress_message.edit(feedback_text)
 
     if delete_message_after_process:

@@ -33,7 +33,7 @@ async def list_all_inline_commands(event: events.InlineQuery.Event) -> None:
     result = await event.builder.article(
         title=t('available_inline_commands'),
         description=t('click_a_button_to_start_using_a_command'),
-        text=f'{t('available_web_search_commands')}:',
+        text=f'{t("available_web_search_commands")}:',
         buttons=button_grid,
     )
 
@@ -49,7 +49,7 @@ async def handle_duckduckgo_search(event: events.InlineQuery.Event) -> None:
     try:
         results: SearchResult = await ddg_search.async_search(query, 1)
     except Exception as e:  # noqa: BLE001
-        logging.error(f'{t('error_in_duckduckgo_search')}: {e}')
+        logging.error(f'{t("error_in_duckduckgo_search")}: {e}')
         return
 
     inline_results = []
@@ -83,7 +83,7 @@ async def handle_wikipedia_search(event: events.InlineQuery.Event) -> None:
     try:
         pages = wikipedia.search(query, 5)
     except Exception as e:  # noqa: BLE001
-        logging.error(f'{t('error_in_wikipedia_search')}: {e}')
+        logging.error(f'{t("error_in_wikipedia_search")}: {e}')
         return
     if not pages:
         return
@@ -197,9 +197,9 @@ async def handle_exchange(event: events.InlineQuery.Event) -> None:
     title = f'{amount} {from_currency} to {to_currency}'
     description = f'{conversion_result:.2f} {to_currency}'
     content = (
-        f"<b>{amount} {from_currency} = {conversion_result:.2f} {to_currency}</b>\n\n"
-        f"{t('exchange_rate')}: 1 {from_currency} = {conversion_rate:.4f} {to_currency}\n"
-        f"{t('last_updated')}: {data['time_last_update_utc']}\n"
+        f'<b>{amount} {from_currency} = {conversion_result:.2f} {to_currency}</b>\n\n'
+        f'{t("exchange_rate")}: 1 {from_currency} = {conversion_rate:.4f} {to_currency}\n'
+        f'{t("last_updated")}: {data["time_last_update_utc"]}\n'
     )
 
     inline_result = await event.builder.article(
