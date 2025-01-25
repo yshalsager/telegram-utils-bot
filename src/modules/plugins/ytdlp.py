@@ -18,7 +18,7 @@ from src.utils.command import Command
 from src.utils.downloads import upload_file
 from src.utils.filters import has_valid_url
 from src.utils.i18n import t
-from src.utils.json import json_options, process_dict
+from src.utils.json_processing import json_options, process_dict
 from src.utils.patterns import HTTP_URL_PATTERN, YOUTUBE_URL_PATTERN
 from src.utils.progress import progress_callback
 from src.utils.subtitles import convert_subtitles

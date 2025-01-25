@@ -27,7 +27,7 @@ from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.filters import has_media, is_valid_reply_state
 from src.utils.i18n import t
-from src.utils.json import json_options, process_dict
+from src.utils.json_processing import json_options, process_dict
 from src.utils.reply import (
     MergeState,
     ReplyState,

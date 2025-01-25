@@ -8,7 +8,7 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_reply_in_private
 from src.utils.i18n import t
-from src.utils.json import json_options, process_dict
+from src.utils.json_processing import json_options, process_dict
 
 
 async def to_json(event: NewMessage.Event) -> None:

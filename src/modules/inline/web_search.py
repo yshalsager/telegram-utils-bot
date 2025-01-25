@@ -13,9 +13,9 @@ from telethon.errors import QueryIdInvalidError
 
 from src.modules.base import InlineModuleBase
 from src.utils.command import InlineCommand
-from src.utils.http import fetch_json
 from src.utils.i18n import t
 from src.utils.quran import surah_names
+from src.utils.web import fetch_json
 
 ddg_search = DuckDuckGoSearch()
 
