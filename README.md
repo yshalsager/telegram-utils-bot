@@ -158,15 +158,15 @@ To get started with mise:
 1. Install mise by following the instructions on the [official website](https://mise.jdx.dev/).
 2. Run `mise install` in the project root to set up the development environment.
 
-### Poetry
+### UV
 
-[Poetry](https://python-poetry.org/) is used for dependency management and packaging. It provides a clean,
+[UV](https://docs.astral.sh/uv/) is used for dependency management and packaging. It provides a clean,
 version-controlled way to manage project dependencies.
 
-To set up the project with Poetry:
+To set up the project with UV:
 
-1. Install Poetry by following the instructions on the [official website](https://python-poetry.org/docs/#installation).
-2. Run `poetry install` to install project dependencies.
+1. Install UV by following the instructions on the [official website](https://docs.astral.sh/uv/getting-started/installation/).
+2. Run `uv sync` to install project dependencies.
 
 ### Jurigged for Live Reload
 
@@ -175,12 +175,12 @@ see changes in your code immediately without manually restarting the application
 
 To use Jurigged:
 
-1. Make sure you have installed the project dependencies using Poetry, including dev
-   dependencies `poetry install --with dev`.
+1. Make sure you have installed the project dependencies using UV, including dev
+   dependencies `uv sync --dev`.
 2. Run the bot with Jurigged:
 
 ```bash
-poetry run jurigged -v -m src
+uv run jurigged -v -m src
 ```
 
 ## Internationalization (i18n)
