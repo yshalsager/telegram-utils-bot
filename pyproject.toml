@@ -25,6 +25,7 @@ dependencies = [
     "tahweel>=0.0.13",
     "ocrmypdf>=16.4.2",
     "plate>=1.0.1",
+    "llm>=0.20",
 ]
 
 [dependency-groups]

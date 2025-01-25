@@ -348,5 +348,9 @@
   "_broadcast_description": "بث رسالة إلى مستخدمي البوت.",
   "broadcasting_message": "بدء بث الرسالة إلى مستخدمي البوت",
   "broadcasting_progress": "تقدم الإرسال: {progress}/{total}",
-  "broadcasting_completed": "اكتمل الإرسال. أرسلت الرسالة إلى {total} مستخدم. {success} نجحت، و{failed} فشلت."
+  "broadcasting_completed": "اكتمل الإرسال. أرسلت الرسالة إلى {total} مستخدم. {success} نجحت، و{failed} فشلت.",
+  "_ai_module_description": "أوامر AI.",
+  "_gemini_ocr": "OCR جيميني",
+  "_gemini_ocr_description": "التفريغ باستخدام جوجل جيميني.",
+  "missing_api_key": "مفتاح API مفقود"
 }

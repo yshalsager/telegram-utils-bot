@@ -348,5 +348,9 @@
   "_broadcast_description": "Broadcast a message to bot users.",
   "broadcasting_message": "Broadcasting message",
   "broadcasting_progress": "Broadcasting progress: {progress}/{total}",
-  "broadcasting_completed": "Broadcasting completed, message was sent to {total} users, {success} succeeded, {failed} failed."
+  "broadcasting_completed": "Broadcasting completed, message was sent to {total} users, {success} succeeded, {failed} failed.",
+  "_ai_module_description": "AI related commands.",
+  "_gemini_ocr": "Gemini OCR",
+  "_gemini_ocr_description": "Perform OCR using Google Gemini.",
+  "missing_api_key": "Missing API key"
 }

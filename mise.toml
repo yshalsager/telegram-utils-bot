@@ -28,6 +28,9 @@ WHISPER_MODEL_PATH = ''
 # https://github.com/ieasybooks/tahweel
 # Path to the service account credentials JSON file
 SERVICE_ACCOUNT_FILE = ''
+# https://github.com/simonw/llm
+# Google Gemini AI API key
+LLM_GEMINI_KEY = ''
 
 [env.mise]
 file = '.env'
