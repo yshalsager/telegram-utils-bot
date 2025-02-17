@@ -3,6 +3,7 @@ Telegram Bot
 """
 
 import logging
+import traceback
 from asyncio import CancelledError, Task, create_task, get_event_loop, sleep
 from collections.abc import Callable, Coroutine
 from contextlib import suppress
@@ -85,7 +86,9 @@ async def handle_module_execution(
     except StopPropagation:
         pass
     except Exception as e:  # noqa: BLE001
-        logger.error(f'Error in module {module.name}: {e!s}')
+        logger.error(
+            f'Error in module {module.name}: {"\n".join(traceback.format_exception(None, e, e.__traceback__))}'
+        )
         await response_func(t('an_error_occurred', error=f'{e!s}'))
     finally:
         if task_id in event.client.active_tasks:
