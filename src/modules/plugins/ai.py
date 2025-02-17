@@ -12,7 +12,6 @@ import regex as re
 from telethon.events import CallbackQuery, NewMessage
 from tenacity import (
     retry,
-    retry_if_exception_message,
     retry_if_exception_type,
     stop_after_attempt,
     wait_random_exponential,
@@ -37,7 +36,7 @@ OCR_PROMPT = (
 
 
 @retry(
-    retry=(retry_if_exception_type(llm.ModelError) & retry_if_exception_message(match='quota')),
+    retry=(retry_if_exception_type(llm.errors.ModelError)),
     wait=wait_random_exponential(multiplier=1, max=40),
     stop=stop_after_attempt(3),
 )
