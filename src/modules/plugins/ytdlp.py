@@ -320,10 +320,10 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 'add_metadata': True,
                 'add_chapters': True,
             },
-            {
-                'key': 'EmbedThumbnail',
-                'already_have_thumbnail': False,
-            },
+            # {
+            #     'key': 'EmbedThumbnail',
+            #     'already_have_thumbnail': False,
+            # },
         ],
     }
 
