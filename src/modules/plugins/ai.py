@@ -10,6 +10,13 @@ import llm
 import pymupdf
 import regex as re
 from telethon.events import CallbackQuery, NewMessage
+from tenacity import (
+    retry,
+    retry_if_exception_message,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_random_exponential,
+)
 
 from src import TMP_DIR
 from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
@@ -27,6 +34,15 @@ OCR_PROMPT = (
     'Add \n\n between each paragraph. '
     'Correct spelling and punctuations if there are any problems with them.'
 )
+
+
+@retry(
+    retry=(retry_if_exception_type(llm.ModelError) & retry_if_exception_message(match='quota')),
+    wait=wait_random_exponential(multiplier=1, max=40),
+    stop=stop_after_attempt(3),
+)
+async def perform_ocr(model: llm.AsyncModel, page: Path) -> llm.AsyncResponse:
+    return await model.prompt(OCR_PROMPT, attachments=[llm.Attachment(path=str(page))])
 
 
 async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -60,9 +76,7 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         output_file = temp_file_path.with_suffix('.txt')
         with output_file.open('w') as out:
             for idx, page in enumerate(sorted(output_dir.glob('*.png')), start=1):
-                response = await model.prompt(
-                    OCR_PROMPT, attachments=[llm.Attachment(path=str(page))]
-                )
+                response = await perform_ocr(model, page)
                 out.write(await response.text() + '\n\n')
                 if idx % 15 == 0:  # each 15 pages, update the progress message
                     await progress_message.edit(f'<pre>{idx} / {total_pages}</pre>')
