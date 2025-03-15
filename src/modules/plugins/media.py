@@ -867,7 +867,7 @@ async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     # Calculate target bitrate
     calculated_percentage = 100 - target_percentage
     target_size = (calculated_percentage / 100) * reply_message.file.size
-    target_bitrate = int(floor(target_size * 8 / reply_message.file.duration))
+    target_bitrate = floor(target_size * 8 / reply_message.file.duration)
     bitrate = (
         f'{target_bitrate // 1000000}M'
         if target_bitrate // 1000000 >= 1
