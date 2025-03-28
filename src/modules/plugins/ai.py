@@ -1,8 +1,11 @@
+import logging
+from asyncio import sleep
 from functools import partial
 from os import getenv
 from pathlib import Path
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
+from time import time
 from typing import ClassVar
 from uuid import uuid4
 
@@ -10,12 +13,6 @@ import llm
 import pymupdf
 import regex as re
 from telethon.events import CallbackQuery, NewMessage
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_random_exponential,
-)
 
 from src import TMP_DIR
 from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
@@ -26,7 +23,8 @@ from src.utils.i18n import t
 from src.utils.run import run_subprocess_exec
 from src.utils.telegram import get_reply_message
 
-OCR_MODEL = 'gemini-2.0-flash-exp'
+OCR_MODEL = 'gemini-2.0-flash'
+OCR_MODEL_RPM = 15
 OCR_PROMPT = (
     'OCR this PDF page. DONt REMOVE ARABIC Taskheel. '
     'NO text modifications. NO entries from you. '
@@ -35,13 +33,35 @@ OCR_PROMPT = (
 )
 
 
-@retry(
-    retry=(retry_if_exception_type(llm.errors.ModelError)),
-    wait=wait_random_exponential(multiplier=1, max=40),
-    stop=stop_after_attempt(3),
-)
-async def perform_ocr(model: llm.AsyncModel, page: Path) -> llm.AsyncResponse:
-    return await model.prompt(OCR_PROMPT, attachments=[llm.Attachment(path=str(page))])
+logger = logging.getLogger(__name__)
+
+
+class RateLimiter:
+    """Simple rate limiter to control API request rates."""
+
+    def __init__(self, max_requests_per_minute: int) -> None:
+        self.max_requests_per_minute = max_requests_per_minute
+        self.request_timestamps: list[float] = []
+
+    async def wait_if_needed(self) -> None:
+        """Wait if the current request would exceed the rate limit."""
+        current_time = time()
+        # Remove timestamps older than 1 minute
+        self.request_timestamps = [ts for ts in self.request_timestamps if current_time - ts < 60]
+
+        # If we've reached the limit, wait until we can make another request
+        if len(self.request_timestamps) >= self.max_requests_per_minute:
+            oldest_timestamp = self.request_timestamps[0]
+            wait_time = 60 - (current_time - oldest_timestamp)
+            if wait_time > 0:
+                logger.info(f'Rate limit reached. Waiting for {wait_time:.2f} seconds...')
+                await sleep(wait_time)
+
+        # Add the current request timestamp
+        self.request_timestamps.append(time())
+
+
+rate_limiter = RateLimiter(max_requests_per_minute=OCR_MODEL_RPM)
 
 
 async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -75,9 +95,12 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         output_file = temp_file_path.with_suffix('.txt')
         with output_file.open('w') as out:
             for idx, page in enumerate(sorted(output_dir.glob('*.png')), start=1):
-                response = await perform_ocr(model, page)
+                await rate_limiter.wait_if_needed()
+                response = await model.prompt(
+                    OCR_PROMPT, attachments=[llm.Attachment(path=str(page))]
+                )
                 out.write(await response.text() + '\n\n')
-                if idx % 15 == 0:  # each 15 pages, update the progress message
+                if idx % 10 == 0:  # each 10 pages, update the progress message
                     await progress_message.edit(f'<pre>{idx} / {total_pages}</pre>')
 
         output_file = output_file.rename(
