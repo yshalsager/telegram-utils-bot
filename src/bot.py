@@ -15,7 +15,6 @@ import regex as re
 from orjson import orjson
 from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, InlineQuery, NewMessage, StopPropagation
-from tenacity import RetryError
 
 from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN, PARENT_DIR
 from src.modules.base import InlineModuleBase, ModuleBase
@@ -86,10 +85,6 @@ async def handle_module_execution(
         await response_func(t('operation_cancelled'))
     except StopPropagation:
         pass
-    except RetryError as e:
-        logger.warning(
-            f'Tenacity RetryError in module {module.name}: {"\n".join(traceback.format_exception(None, e, e.__traceback__))}'
-        )
     except Exception as e:  # noqa: BLE001
         logger.error(
             f'Error in module {module.name}: {"\n".join(traceback.format_exception(None, e, e.__traceback__))}'
