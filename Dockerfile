@@ -16,7 +16,8 @@ RUN echo 'deb http://deb.debian.org/debian bookworm main non-free contrib' >> /e
     mime-support \
     # OCR
     tesseract-ocr \
-    tesseract-ocr-all \
+    tesseract-ocr-ara \
+    tesseract-ocr-eng \
     # PDF compression
     ghostscript \
     # for tahweel
