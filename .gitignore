@@ -78,6 +78,7 @@ tmp_*
 *.zip
 *.session
 *.session-journal
+bin/
 downloads/
 tmp/
 restart.json

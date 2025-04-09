@@ -2554,6 +2554,7 @@ dependencies = [
     { name = "vosk" },
     { name = "wikipedia" },
     { name = "yt-dlp", extra = ["default"] },
+    { name = "yt-dlp-get-pot-rustypipe" },
 ]
 
 [package.dev-dependencies]
@@ -2586,6 +2587,7 @@ requires-dist = [
     { name = "vosk", specifier = "==0.3.44" },
     { name = "wikipedia", specifier = ">=1.4.0" },
     { name = "yt-dlp", extras = ["default"], specifier = ">=2025.1.15" },
+    { name = "yt-dlp-get-pot-rustypipe", specifier = ">=0.1.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -3017,4 +3019,26 @@ default = [
     { name = "requests" },
     { name = "urllib3" },
     { name = "websockets" },
+]
+
+[[package]]
+name = "yt-dlp-get-pot"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/77/6d252ce1a4aa24871e5518737016e2d1bf4d2fffc425767611964fd31fa6/yt_dlp_get_pot-0.3.0.tar.gz", hash = "sha256:ac9530b9e7b3d667235b9119da475f595d2dc7e6f6bbf98b965011be454e8833", size = 9814 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/64/be/3e5551e12943554f66a72f6128862ea7dc11d2429abe957d6d7b5d2b463c/yt_dlp_get_pot-0.3.0-py3-none-any.whl", hash = "sha256:a49a596a3e3c02cd9ce051192ea3fe8168cf24ece8954bed6aa331a87d86954f", size = 8009 },
+]
+
+[[package]]
+name = "yt-dlp-get-pot-rustypipe"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "yt-dlp" },
+    { name = "yt-dlp-get-pot" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/74/19/6ce0a4c40acf3fe359a2ce54ab6e826b1d82fc4bdcede448e9cf44aa47a6/yt_dlp_get_pot_rustypipe-0.1.0.tar.gz", hash = "sha256:322078eb5f5fcb848627a07a1383e2f7d7716c00df3a9228c0919214ee609852", size = 4669 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/c6/6fa14dcb9e777b8fc0585c51904b9b26f628ef48442984592475ad866db0/yt_dlp_get_pot_rustypipe-0.1.0-py3-none-any.whl", hash = "sha256:e0cd0526665955a6bf65929c311fca3524accdf2f57c41eb2e5850a309685cfc", size = 4596 },
 ]
