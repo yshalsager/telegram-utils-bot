@@ -1,16 +1,19 @@
 [tools]
-uv = 'latest'
 python = '3.13.2'
+uv = 'latest'
 
 [tasks.default]
-run = 'python3 -m src'
+run = 'uv run -m src'
+
+[tasks.dev]
+run = 'uv run jurigged -v -m src'
 
 [env]
 # the Telegram bot token https://telegram.me/BotFather
 BOT_TOKEN = '0000000000:aaaaaaaaaaaaaaaaaaaa'
 # to connect to MTProto, which we use to upload media files (retrieve from https://my.telegram.org)
-API_ID = '0000000'
 API_HASH = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+API_ID = '0000000'
 # the Telegram account IDs that will have administrator permissions of the bot
 BOT_ADMINS = '000000,000000,000000'
 BOT_LANGUAGE = 'en_US'
@@ -23,8 +26,8 @@ HADITH_SEARCH_ENDPOINT = ''
 EXCHANGE_RATE_API_KEY = ''
 # https://github.com/ieasybooks/tafrigh/blob/main/README.en.md
 # A list of access tokens separated by space
-WIT_CLIENT_ACCESS_TOKENS = ''
 WHISPER_MODEL_PATH = ''
+WIT_CLIENT_ACCESS_TOKENS = ''
 # https://github.com/ieasybooks/tahweel
 # Path to the service account credentials JSON file
 SERVICE_ACCOUNT_FILE = ''
