@@ -346,7 +346,9 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         )
         entries = info_dict.get('entries', [info_dict])  # Handle both single videos and playlists
         for entry in entries:
-            file_path = Path(TMP_DIR / f'{entry["id"]}.{entry["ext"]}')
+            file_path = Path(
+                TMP_DIR / f'{entry["id"]}.{entry["ext"] if _type == "video" else "m4a"}'
+            )
             await progress_message.edit(t('uploading_file'))
             if entry.get('vcodec') == 'none':  # audio
                 attributes = [
@@ -365,7 +367,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     )
                 ]
             file_path = file_path.rename(
-                file_path.with_name(f'{re.sub("[/:*\"'<>|]", "_", entry["title"])}.{entry["ext"]}')
+                file_path.with_stem(f'{re.sub("[/:*\"'<>|]", "_", entry["title"])}')
             )
             await upload_file(
                 event,
