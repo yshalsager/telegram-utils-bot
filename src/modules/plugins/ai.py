@@ -20,7 +20,6 @@ from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.filters import has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
-from src.utils.run import run_subprocess_exec
 from src.utils.telegram import get_reply_message
 
 OCR_MODEL = 'gemini-2.0-flash'
@@ -62,6 +61,7 @@ class RateLimiter:
 
 
 rate_limiter = RateLimiter(max_requests_per_minute=OCR_MODEL_RPM)
+max_retries = 3
 
 
 async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -72,10 +72,7 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     try:
         model = llm.get_async_model(OCR_MODEL)
     except llm.UnknownModelError:
-        async for _ in run_subprocess_exec('uv run --no-project llm install llm-gemini'):
-            pass
-        model = llm.get_async_model(OCR_MODEL)
-    if not model:
+        await event.reply(f'{t("invalid_model")}: <code>{OCR_MODEL}</code>')
         return
 
     reply_message = await get_reply_message(event, previous=True)
@@ -95,12 +92,27 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         output_file = temp_file_path.with_suffix('.txt')
         with output_file.open('w') as out:
             for idx, page in enumerate(sorted(output_dir.glob('*.png')), start=1):
-                await rate_limiter.wait_if_needed()
-                response = await model.prompt(
-                    OCR_PROMPT, attachments=[llm.Attachment(path=str(page))]
-                )
-                out.write(await response.text() + '\n\n')
-                if idx % 10 == 0:  # each 10 pages, update the progress message
+                retry_count = 0
+                backoff_time = 10
+                try:
+                    await rate_limiter.wait_if_needed()
+                    while retry_count <= max_retries:
+                        response = await model.prompt(
+                            OCR_PROMPT, attachments=[llm.Attachment(path=str(page))]
+                        )
+                        out.write(await response.text() + '\n\n')
+                        break
+                except llm.errors.ModelError as e:
+                    retry_count += 1
+                    if 'The model is overloaded' in str(e) and retry_count <= max_retries:
+                        await sleep(backoff_time)
+                        backoff_time *= 2
+                    else:
+                        logger.error(f'Failed to process page {idx}: {e}')
+                        out.write(f'[Error processing page {idx}]\n\n')
+                        break
+
+                if idx % 10 == 0:
                     await progress_message.edit(f'<pre>{idx} / {total_pages}</pre>')
 
         output_file = output_file.rename(

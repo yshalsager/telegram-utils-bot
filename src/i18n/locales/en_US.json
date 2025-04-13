@@ -352,5 +352,6 @@
   "_ai_module_description": "AI related commands.",
   "_gemini_ocr": "Gemini OCR",
   "_gemini_ocr_description": "Perform OCR using Google Gemini.",
-  "missing_api_key": "Missing API key"
+  "missing_api_key": "Missing API key",
+  "invalid_model": "Invalid model"
 }

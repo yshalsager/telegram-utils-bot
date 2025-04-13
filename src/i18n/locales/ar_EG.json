@@ -352,5 +352,6 @@
   "_ai_module_description": "أوامر AI.",
   "_gemini_ocr": "OCR جيميني",
   "_gemini_ocr_description": "التفريغ باستخدام جوجل جيميني.",
-  "missing_api_key": "مفتاح API مفقود"
+  "missing_api_key": "مفتاح API مفقود",
+  "invalid_model": "نموذج غير صالح"
 }
