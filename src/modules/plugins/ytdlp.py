@@ -329,6 +329,10 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 'add_metadata': True,
                 'add_chapters': True,
             },
+            {
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'm4a',
+            },
             # {
             #     'key': 'EmbedThumbnail',
             #     'already_have_thumbnail': False,
