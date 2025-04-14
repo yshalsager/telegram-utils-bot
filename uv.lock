@@ -2438,7 +2438,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/66/b7/4a1bc231e0681ebf3
 
 [[package]]
 name = "stable-ts"
-version = "2.18.2"
+version = "2.19.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -2447,7 +2447,7 @@ dependencies = [
     { name = "torchaudio" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/65/66/df6acb2911765108c7d9a310f2e312893e14e18edde7d2fd1da3d990eac4/stable_ts-2.18.2.tar.gz", hash = "sha256:0dc5f063b89eb51f579c7d7102f98ff49a48adbd04f3ff7b3ed8436dda20b643", size = 182295 }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/ac/d20363d42adeff035ebe5ce791a9cfc902ed932c02b070ad588c96bf7eef/stable_ts-2.19.0.tar.gz", hash = "sha256:de4cde5f7405283981a672b2220c4fee41d3ee90044ab0903e32a52247db8aec", size = 185260 }
 
 [[package]]
 name = "stack-data"
@@ -2486,16 +2486,16 @@ wheels = [
 
 [[package]]
 name = "tafrigh"
-version = "1.7.3"
+version = "1.7.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numba" },
     { name = "tqdm" },
-    { name = "yt-dlp" },
+    { name = "yt-dlp", extra = ["default"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fa/22/22aea23d2a15051ad2e7152fd2ae1615b1b4095fc77de338e06f84f6b365/tafrigh-1.7.3.tar.gz", hash = "sha256:af42497fb8bd5e53d603a3ba1644a6ec88ef2311f2686f2496444d3ab34dca53", size = 26322 }
+sdist = { url = "https://files.pythonhosted.org/packages/d1/a6/b6e3414470cb1fc07ce9be9e123b4a9e4e6233e3aae61a556e872e02bd2a/tafrigh-1.7.6.tar.gz", hash = "sha256:7f6985127afe270b1d589ae9533a3c7c3141c14eea2d16a59db96dbc47040595", size = 25494 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/46/b8d1f8ff89a7eb4cf26edd56179f99547011cce937082191acb32838c6bd/tafrigh-1.7.3-py3-none-any.whl", hash = "sha256:5de0999545e020c526c6d3f8c65f278cc8f366e50a90fc467403e9fa34937cd3", size = 25671 },
+    { url = "https://files.pythonhosted.org/packages/0f/08/e80c91b39aaae6cc10b2be05cb4671282e0047e07db620c202d1d366d2b6/tafrigh-1.7.6-py3-none-any.whl", hash = "sha256:ebd33468bb679339c1d5426d7c514db75ddfd23092047a25ff98f835af821859", size = 25700 },
 ]
 
 [package.optional-dependencies]
@@ -2581,7 +2581,7 @@ requires-dist = [
     { name = "pymupdf", specifier = ">=1.24.9" },
     { name = "regex", specifier = ">=2024.5.15" },
     { name = "search-engine-parser", specifier = ">=0.6.8" },
-    { name = "tafrigh", extras = ["wit", "whisper"], specifier = ">=1.6.0" },
+    { name = "tafrigh", extras = ["wit", "whisper"], specifier = ">=1.7.6" },
     { name = "tahweel", specifier = ">=0.0.13" },
     { name = "telethon", specifier = ">=1.28.5" },
     { name = "vosk", specifier = "==0.3.44" },
