@@ -253,7 +253,7 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
 
 
-async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912
+async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912, PLR0915
     is_url_event = (
         isinstance(event, CallbackQuery.Event)
         and event.data
@@ -317,27 +317,31 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     # User selected a specific format
     await progress_message.edit(t('starting_download'))
     format_id = _format if _type == 'audio' else f'{_format}+worstaudio/best'
+    post_processors = [
+        {
+            'key': 'FFmpegMetadata',
+            'add_metadata': True,
+            'add_chapters': True,
+        },
+        {
+            'key': 'EmbedThumbnail',
+            'already_have_thumbnail': False,
+        },
+    ]
+    if _type == 'audio':
+        post_processors.append(
+            {
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'm4a',
+            }
+        )
     ydl_opts = {
         **params,
         'format': format_id,
         'outtmpl': str(TMP_DIR / '%(id)s.%(ext)s'),
         'progress_hooks': [lambda d: download_hook(d, progress_message)],
         'writethumbnail': True,
-        'postprocessors': [
-            {
-                'key': 'FFmpegMetadata',
-                'add_metadata': True,
-                'add_chapters': True,
-            },
-            {
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'm4a',
-            },
-            # {
-            #     'key': 'EmbedThumbnail',
-            #     'already_have_thumbnail': False,
-            # },
-        ],
+        'postprocessors': post_processors,
     }
 
     try:
