@@ -19,6 +19,7 @@ from src.utils.command import Command
 from src.utils.filters import is_admin_in_private, is_reply_in_private
 from src.utils.i18n import t
 from src.utils.run import run_command
+from src.utils.telegram import edit_or_send_as_file
 
 
 async def restart(event: NewMessage.Event) -> None:
@@ -44,7 +45,9 @@ async def update(event: NewMessage.Event) -> None:
 
     output, code = await run_command('uv sync --frozen --no-cache', cwd=PARENT_DIR)
     if code and code != 0:
-        await message.edit(f'{t("failed_to_update_requirements")}:\n<pre>{output}</pre>')
+        await edit_or_send_as_file(
+            event, message, f'{t("failed_to_update_requirements")}:\n<pre>{output}</pre>'
+        )
         return None
     await message.edit(t('updated_successfully'))
     return await restart(event)
