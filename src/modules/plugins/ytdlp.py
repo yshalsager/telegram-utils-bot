@@ -322,11 +322,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             'key': 'FFmpegMetadata',
             'add_metadata': True,
             'add_chapters': True,
-        },
-        {
-            'key': 'EmbedThumbnail',
-            'already_have_thumbnail': False,
-        },
+        }
     ]
     if _type == 'audio':
         post_processors.append(
