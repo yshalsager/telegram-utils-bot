@@ -22,8 +22,8 @@ from src.utils.filters import has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
 from src.utils.telegram import get_reply_message
 
-OCR_MODEL = 'gemini-2.0-flash'
-OCR_MODEL_RPM = 15
+OCR_MODEL = 'gemini-2.5-flash-preview-04-17'
+OCR_MODEL_RPM = 10
 OCR_PROMPT = (
     'OCR this PDF page. DONt REMOVE ARABIC Taskheel. '
     'NO text modifications. NO entries from you. '

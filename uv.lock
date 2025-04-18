@@ -1118,16 +1118,16 @@ wheels = [
 
 [[package]]
 name = "llm-gemini"
-version = "0.16"
+version = "0.18.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "ijson" },
     { name = "llm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fe/5f/58bbf28b707351705d375bc12d4980406d1c7261d26e2e98260c8c2a83e7/llm_gemini-0.16.tar.gz", hash = "sha256:48e485e5d6acbac8aa7e1ce9ebffd6c6e7531d5230208ea996ae4dd2a8edf848", size = 13509 }
+sdist = { url = "https://files.pythonhosted.org/packages/51/2a/1ce727b4c572739ae807d42f91629d0eb37ea4901b347e4133be6841da6b/llm_gemini-0.18.1.tar.gz", hash = "sha256:199d4fa463b76d22d9fe02257aab8812176ec140740f928a9ee63bc6a53e2a41", size = 14235 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/57/1c/939ac8f97bb6a4b727c043a3d1ab3ced57b43c97e0fd7d07ac18ffeca95d/llm_gemini-0.16-py3-none-any.whl", hash = "sha256:1b36a46daa119158ef36f0f86f64197776bd701be8355b9c6da078232b5d57b7", size = 12583 },
+    { url = "https://files.pythonhosted.org/packages/9b/09/648ada10de3e919d73c48e0dcafa6c52d63dd16adc6ce29233ccdf4d4620/llm_gemini-0.18.1-py3-none-any.whl", hash = "sha256:962a40bee3d5503b6718d8520cbe88537fed1350357e9f862ea1713c62001807", size = 13105 },
 ]
 
 [[package]]
@@ -2573,7 +2573,7 @@ requires-dist = [
     { name = "hachoir", specifier = ">=3.2.0" },
     { name = "humanize", specifier = ">=4.10.0" },
     { name = "llm", specifier = ">=0.20" },
-    { name = "llm-gemini", specifier = ">=0.16" },
+    { name = "llm-gemini", specifier = ">=0.18" },
     { name = "ocrmypdf", specifier = ">=16.4.2" },
     { name = "orjson", specifier = ">=3.10.6" },
     { name = "plate", specifier = ">=1.0.1" },

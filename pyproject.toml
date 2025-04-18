@@ -27,7 +27,7 @@ dependencies = [
     "ocrmypdf>=16.4.2",
     "plate>=1.0.1",
     "llm>=0.20",
-    "llm-gemini>=0.16",
+    "llm-gemini>=0.18",
 ]
 
 [dependency-groups]
