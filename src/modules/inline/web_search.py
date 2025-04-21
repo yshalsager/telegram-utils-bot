@@ -3,11 +3,10 @@ from contextlib import suppress
 from os import getenv
 from typing import ClassVar
 from urllib import parse
+from urllib.parse import quote_plus
 
 import regex as re
 import wikipedia
-from search_engine_parser.core.base import SearchResult
-from search_engine_parser.core.engines.duckduckgo import Search as DuckDuckGoSearch
 from telethon import Button, events
 from telethon.errors import QueryIdInvalidError
 
@@ -17,7 +16,15 @@ from src.utils.i18n import t
 from src.utils.quran import surah_names
 from src.utils.web import fetch_json
 
-ddg_search = DuckDuckGoSearch()
+ENGINES = [
+    'ddg',
+    'brave',
+    'yandex',
+    'google',
+    'startpage',
+    'qwant',
+]
+API_BASE_URL = 'https://4get.tux.pizza/api/v1/web'
 
 
 async def list_all_inline_commands(event: events.InlineQuery.Event) -> None:
@@ -41,39 +48,81 @@ async def list_all_inline_commands(event: events.InlineQuery.Event) -> None:
         await event.answer([result])
 
 
-async def handle_duckduckgo_search(event: events.InlineQuery.Event) -> None:
-    query = event.text[4:].strip()
+async def handle_web_search(event: events.InlineQuery.Event) -> None:
+    """Handles web searches using the 4get API for various engines."""
+    match = re.match(rf'^({"|".join(ENGINES)})\s+(.+)$', event.query.query)
+    if not match:
+        return
+
+    engine = match.group(1)
+    query = match.group(2).strip()
+
     if not query:
         return
 
+    search_url = f'{API_BASE_URL}?s={quote_plus(query)}&scraper={engine}'
+
     try:
-        results: SearchResult = await ddg_search.async_search(query, 1)
-    except Exception as e:  # noqa: BLE001
-        logging.error(f'{t("error_in_duckduckgo_search")}: {e}')
-        return
+        data = await fetch_json(search_url)
 
-    inline_results = []
-    for result in results:
-        title = result.get('titles', 'No title')
-        link = result.get('links', '')
-        if not link:
-            continue
-        if link.startswith('//'):
-            link = f'https:{link}'
-        elif not link.startswith('http:'):
-            link = f'https://{link}'
-        description = result.get('descriptions', 'No description')
-
-        inline_results.append(
-            await event.builder.article(
-                title=title,
-                description=description,
-                text=f'<b>{title}</b>\n\n{description}\n\n{link}',
+        if not data or data.get('status') != 'ok':
+            status_code = data.get('status') if data else 'No response'
+            logging.error(
+                f'{t("error_in_web_search", default=f"Error in {engine} search")}: Received status code {status_code}'
             )
-        )
+            await event.answer(
+                results=[
+                    await event.builder.article(
+                        title=t('error_occurred'),
+                        description=f'{t("error_in_web_search")}: Status {status_code}',
+                        text=f'{t("error_in_web_search")}: Status {status_code}',
+                    )
+                ]
+            )
+            return
 
-    with suppress(QueryIdInvalidError):
-        await event.answer(inline_results)
+        inline_results = []
+        results = data.get('web')
+        if not results:
+            inline_results.append(
+                await event.builder.article(
+                    title=t('no_results_found'),
+                    text=f'{t("no_results_found")} ({engine.capitalize()})',
+                )
+            )
+        else:
+            for result in results:
+                url = result.get('url')
+                if not url:
+                    continue  # Skip results without a URL
+
+                title = result.get('title')
+                description = result.get('description')
+                text_content = f'<b>{title}</b>\n\n{description}\n\n{url}'
+
+                inline_results.append(
+                    await event.builder.article(
+                        title=title,
+                        description=description,
+                        text=text_content,
+                        parse_mode='html',
+                        thumb=result.get('thumbnail', {}).get('url'),
+                    )
+                )
+
+        with suppress(QueryIdInvalidError):
+            await event.answer(inline_results)
+
+    except Exception as e:
+        logging.exception(f"An unexpected error occurred during {engine} search for '{query}': {e}")
+        await event.answer(
+            results=[
+                await event.builder.article(
+                    title=t('error_in_web_search'),
+                    text=str(e),
+                )
+            ]
+        )
 
 
 async def handle_wikipedia_search(event: events.InlineQuery.Event) -> None:
@@ -221,11 +270,15 @@ class WebSearch(InlineModuleBase):
             handler=list_all_inline_commands,
             name=t('list_commands'),
         ),
-        'ddg': InlineCommand(
-            pattern=re.compile(r'^ddg\s+(.+)$'),
-            handler=handle_duckduckgo_search,
-            name=t('duckduckgo_search'),
-        ),
+        # Add commands for each supported engine
+        **{
+            engine: InlineCommand(
+                pattern=re.compile(rf'^{engine}\s+(.+)$'),
+                handler=handle_web_search,
+                name=t(f'{engine}_search'),
+            )
+            for engine in ENGINES
+        },
         'exchange': InlineCommand(
             pattern=re.compile(r'^exchange\s+(\d+(?:\.\d+)?)\s+([A-Z]{3})\s+([A-Z]{3})$'),
             handler=handle_exchange,
