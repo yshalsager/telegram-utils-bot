@@ -8,33 +8,33 @@ authors = [
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
-    "Telethon>=1.28.5",
-    "cryptg>=0.4.0",
-    "aiohttp>=3.10.2",
-    "hachoir>=3.2.0",
-    "humanize>=4.10.0",
-    "orjson>=3.10.6",
+    "Telethon>=1.40.0",
+    "cryptg>=0.5.0.post0",
+    "aiohttp>=3.11.18",
+    "hachoir>=3.3.0",
+    "humanize>=4.12.2",
+    "orjson>=3.10.16",
     "pydub>=0.25.1",
-    "regex>=2024.5.15",
+    "regex>=2024.11.6",
     "tafrigh[wit,whisper]>=1.7.6",
     "wikipedia>=1.4.0",
     "vosk==0.3.44",
     "yt-dlp[default]>=2025.03.31",
     "yt-dlp-get-pot-rustypipe>=0.1.0",
-    "pymupdf>=1.24.9",
-    "tahweel>=0.0.13",
-    "ocrmypdf>=16.4.2",
+    "pymupdf>=1.25.5",
+    "tahweel>=0.1.0",
+    "ocrmypdf>=16.10.0",
     "plate>=1.0.1",
-    "llm>=0.20",
-    "llm-gemini>=0.18",
+    "llm>=0.24.2",
+    "llm-gemini>=0.18.1",
 ]
 
 [dependency-groups]
 dev = [
-    "ipython>=8.26.0",
-    "pre-commit>=3.7.1",
-    "mypy>=1.10.1",
-    "ruff>=0.7.0",
+    "ipython>=9.1.0",
+    "pre-commit>=4.2.0",
+    "mypy>=1.15.0",
+    "ruff>=0.11.6",
     "jurigged>=0.6.0",
 ]
 
