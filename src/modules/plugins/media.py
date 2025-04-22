@@ -1027,7 +1027,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     wit_access_tokens, whisper_model_path = None, None
     if transcription_method == 'whisper':
         whisper_model_path = getenv('WHISPER_MODEL_PATH')
-        whisper_api_key = getenv('LLM_GROQ_KEY')
+        whisper_api_key = getenv('GROQ_API_KEY')
         if not whisper_model_path and not whisper_api_key:
             await event.reply(t('please_set_whisper_model_path'))
             return

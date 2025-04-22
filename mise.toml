@@ -37,7 +37,7 @@ SERVICE_ACCOUNT_FILE = ''
 LLM_GEMINI_KEY = ''
 # https://github.com/angerman/llm-groq
 # Groq API key
-LLM_GROQ_KEY = ''
+GROQ_API_KEY = ''
 LLM_TRANSCRIPTION_MODEL = 'groq/whisper-large-v3'
 
 [env.mise]
