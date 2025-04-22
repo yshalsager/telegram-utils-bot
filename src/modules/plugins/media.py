@@ -1010,6 +1010,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         if event.data.decode().startswith('m|transcribe|'):
             transcription_method = event.data.decode().split('|')[-1]
             delete_message_after_process = True
+            language = 'ar'
         else:
             buttons = [
                 [
@@ -1021,9 +1022,9 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             await event.edit(f'{t("choose_transcription_method")}:', buttons=buttons)
             return
     else:
-        transcription_method = (
-            event.message.text.split(' ')[-1] if event.message.text != '/transcribe' else 'wit'
-        )
+        match = Media.commands['transcribe'].pattern.match(event.message.text)
+        transcription_method = match.group(2) if match else 'wit'
+        language = match.group(3) if match else 'ar'
     wit_access_tokens, whisper_model_path = None, None
     if transcription_method == 'whisper':
         whisper_model_path = getenv('WHISPER_MODEL_PATH')
@@ -1065,9 +1066,18 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     f'ffmpeg -hide_banner -y -i "{temp_file.name}" '
                     f'-vn -c:a libopus -b:a 32k "{tmp_file_path.with_suffix(".ogg")}"'
                 )
-                await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+                output, status_code = await run_command(ffmpeg_command)
+                if status_code != 0:
+                    tmp_file_path.unlink(missing_ok=True)
+                    await status_message.edit(
+                        t('an_error_occurred', error=f'\n<pre>{output}</pre>')
+                    )
+                    return
                 tmp_file_path = tmp_file_path.with_suffix('.ogg')
-            response = model.prompt(attachments=[Attachment(path=tmp_file_path)])
+            response = model.prompt(
+                attachments=[Attachment(path=tmp_file_path)],
+                language=language,
+            )
             response.on_done(lambda _: tmp_file_path.unlink(missing_ok=True))
             transcription = response.text()
             await edit_or_send_as_file(
@@ -1269,7 +1279,7 @@ class Media(ModuleBase):
             name='transcribe',
             handler=handler,
             description=t('_transcribe_description'),
-            pattern=re.compile(r'^/(transcribe)(?:\s+(wit|whisper|vosk))?$'),
+            pattern=re.compile(r'^/(transcribe)(?:\s+(wit|whisper|vosk))?(?:\s+(\w{2,3}))?$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
