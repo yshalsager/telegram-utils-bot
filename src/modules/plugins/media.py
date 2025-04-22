@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import orjson
 import regex as re
+from llm import Attachment, get_model
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 from telethon import Button, TelegramClient
@@ -1003,7 +1004,7 @@ async def video_create_process(event: NewMessage.Event) -> None:
     raise StopPropagation
 
 
-async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912
+async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912, PLR0915
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
         if event.data.decode().startswith('m|transcribe|'):
@@ -1026,8 +1027,12 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     wit_access_tokens, whisper_model_path = None, None
     if transcription_method == 'whisper':
         whisper_model_path = getenv('WHISPER_MODEL_PATH')
-        if not whisper_model_path:
+        whisper_api_key = getenv('LLM_GROQ_KEY')
+        if not whisper_model_path and not whisper_api_key:
             await event.reply(t('please_set_whisper_model_path'))
+            return
+        if not whisper_api_key and not whisper_model_path:
+            await event.reply(t('please_set_whisper_api_key'))
             return
     # if transcription_method == 'wit':
     else:
@@ -1050,6 +1055,27 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 f'vosk-transcriber --log-level warning -i {temp_file.name} -l ar '
                 f'-t srt -o {output_dir.name / tmp_file_path.with_suffix(".srt")}'
             )
+            await stream_shell_output(
+                event, command, status_message, progress_message, max_length=100
+            )
+        elif transcription_method == 'whisper' and whisper_api_key:
+            model = get_model(getenv('LLM_TRANSCRIPTION_MODEL'))
+            if tmp_file_path.suffix not in (mime.split('/')[1] for mime in model.attachment_types):
+                ffmpeg_command = (
+                    f'ffmpeg -hide_banner -y -i "{temp_file.name}" '
+                    f'-vn -c:a libopus -b:a 32k "{tmp_file_path.with_suffix(".ogg")}"'
+                )
+                await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+                tmp_file_path = tmp_file_path.with_suffix('.ogg')
+            response = model.prompt(attachments=[Attachment(path=tmp_file_path)])
+            response.on_done(lambda _: tmp_file_path.unlink(missing_ok=True))
+            transcription = response.text()
+            await edit_or_send_as_file(
+                event,
+                status_message,
+                transcription,
+                file_name=str(tmp_file_path.with_suffix('.txt')),
+            )
         else:
             command = f'tafrigh "{temp_file.name}" -o "{output_dir.name}" -f txt srt'
             command += (
@@ -1057,7 +1083,9 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 if transcription_method == 'wit'
                 else f' -m {whisper_model_path} --use_faster_whisper'
             )
-        await stream_shell_output(event, command, status_message, progress_message, max_length=100)
+            await stream_shell_output(
+                event, command, status_message, progress_message, max_length=100
+            )
         if transcription_method == 'vosk':
             srt_to_txt(tmp_file_path.with_suffix('.srt'))
         for output_file in output_dir.glob('*.[st][xr]t'):
@@ -1075,7 +1103,8 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 )
             else:
                 await status_message.edit(f'{t("failed_to_transcribe")} {renamed_file.name}')
-    await status_message.edit(t('transcription_completed'))
+    if transcription_method != 'whisper':
+        await status_message.edit(t('transcription_completed'))
     rmtree(output_dir)
     await delete_message_after(progress_message)
     if delete_message_after_process:

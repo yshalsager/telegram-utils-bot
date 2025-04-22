@@ -301,6 +301,7 @@
   "choose_transcription_method": "اختر طريقة التفريغ",
   "please_set_whisper_model_path": "يرجى تعيين متغير بيئة WHISPER_MODEL_PATH.",
   "please_set_wit_client_access_tokens": "يرجى تعيين متغير بيئة WIT_CLIENT_ACCESS_TOKENS.",
+  "please_set_whisper_api_key": "يرجى تعيين متغير بيئة LLM_GROQ_KEY.",
   "starting_transcription": "بدء عملية التفربغ…",
   "failed_to_transcribe": "فشل التفريغ",
   "transcription_completed": "اكتمل التفريغ.",

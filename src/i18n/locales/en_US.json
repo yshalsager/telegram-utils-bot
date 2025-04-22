@@ -301,6 +301,7 @@
   "choose_transcription_method": "Choose the transcription method",
   "please_set_whisper_model_path": "Please set WHISPER_MODEL_PATH environment variable.",
   "please_set_wit_client_access_tokens": "Please set WIT_CLIENT_ACCESS_TOKENS environment variable.",
+  "please_set_whisper_api_key": "Please set LLM_GROQ_KEY environment variable.",
   "starting_transcription": "Starting transcription process…",
   "failed_to_transcribe": "Failed to transcribe",
   "transcription_completed": "Transcription completed.",

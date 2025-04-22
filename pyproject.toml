@@ -27,6 +27,7 @@ dependencies = [
     "plate>=1.0.1",
     "llm>=0.24.2",
     "llm-gemini>=0.18.1",
+    "llm-groq",
 ]
 
 [dependency-groups]
@@ -37,6 +38,9 @@ dev = [
     "ruff>=0.11.6",
     "jurigged>=0.6.0",
 ]
+
+[tool.uv.sources]
+llm-groq = { git = "https://github.com/yshalsager/llm-groq", rev = "e8998f4" }
 
 [tool.mypy]
 files = ["src"]

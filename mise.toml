@@ -32,8 +32,13 @@ WIT_CLIENT_ACCESS_TOKENS = ''
 # Path to the service account credentials JSON file
 SERVICE_ACCOUNT_FILE = ''
 # https://github.com/simonw/llm
+# https://github.com/simonw/llm-gemini
 # Google Gemini AI API key
 LLM_GEMINI_KEY = ''
+# https://github.com/angerman/llm-groq
+# Groq API key
+LLM_GROQ_KEY = ''
+LLM_TRANSCRIPTION_MODEL = 'groq/whisper-large-v3'
 
 [env.mise]
 file = '.env'
