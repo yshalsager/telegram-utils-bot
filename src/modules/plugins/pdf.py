@@ -179,7 +179,7 @@ def parse_page_numbers(input_string: str) -> list[int]:
     for part in re.split(r'[,\s]+', input_string):
         if '-' in part:
             start, end = map(int, part.split('-'))
-            pages.update(range(start, end + 1))
+            pages.update(range(start - 1, end))
         else:
             with suppress(ValueError):
                 pages.add(int(part))
