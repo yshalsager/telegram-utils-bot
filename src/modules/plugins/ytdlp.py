@@ -366,6 +366,9 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                         h=entry.get('height'),
                     )
                 ]
+            file_path = file_path.rename(
+                file_path.with_stem(f'{re.sub("[/:*\"'<>|]", "_", entry["title"])}')
+            )
             await upload_file(
                 event,
                 file_path,
