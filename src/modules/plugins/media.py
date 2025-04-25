@@ -1084,7 +1084,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 event,
                 status_message,
                 transcription,
-                file_name=str(tmp_file_path.with_suffix('.txt')),
+                file_name=tmp_file_path.with_suffix('.txt').name,
             )
         else:
             command = f'tafrigh "{temp_file.name}" -o "{output_dir.name}" -f txt srt'
