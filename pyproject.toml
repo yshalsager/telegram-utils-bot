@@ -40,7 +40,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-llm-groq = { git = "https://github.com/yshalsager/llm-groq", rev = "e8998f4" }
+llm-groq = { git = "https://github.com/yshalsager/llm-groq", rev = "f7335e34db4bce9784bb010ca6e773e4f317b59c" }
 
 [tool.mypy]
 files = ["src"]
