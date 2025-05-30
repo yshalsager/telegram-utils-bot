@@ -26,8 +26,6 @@ from src.utils.telegram import edit_or_send_as_file, get_reply_message
 
 cookies_file = PARENT_DIR / 'cookies.txt'
 netrc_file = PARENT_DIR / '.netrc'
-# https://codeberg.org/ThetaDev/rustypipe-botguard
-rustypipe_botguard = PARENT_DIR / 'bin' / 'rustypipe-botguard'
 
 cookies = {'cookiefile': str(cookies_file.absolute())} if cookies_file.exists() else {}
 params = {
@@ -51,10 +49,8 @@ if netrc_file.exists():
     params['usenetrc'] = True
     params['netrc_location'] = str(netrc_file.absolute())
 
-if rustypipe_botguard.exists():
-    params['extractor_args'] = (
-        f'youtube:rustypipe_bg_pot_cache=1;rustypipe_bg_bin={rustypipe_botguard.absolute()}'
-    )
+# https://github.com/Brainicism/bgutil-ytdlp-pot-provider
+params['extractor_args'] = 'youtube:getpot_bgutil_baseurl=http://127.0.0.1:4416'
 
 
 def download_hook(d: dict[str, Any], message: Message) -> None:

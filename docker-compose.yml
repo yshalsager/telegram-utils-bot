@@ -14,3 +14,9 @@ services:
       - ./:/code/app
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
+  bgutil-provider:
+    container_name: bgutil-provider
+    image: brainicism/bgutil-ytdlp-pot-provider
+    ports:
+      - "127.0.0.1:4416:4416"
+    restart: unless-stopped
