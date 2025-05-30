@@ -762,7 +762,7 @@ wheels = [
 
 [[package]]
 name = "google-api-python-client"
-version = "2.167.0"
+version = "2.170.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-core" },
@@ -771,9 +771,9 @@ dependencies = [
     { name = "httplib2" },
     { name = "uritemplate" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/d1/3a23d5b4b967f08aebbfe76e2651416869a765791fbc42f4b78774f48137/google_api_python_client-2.167.0.tar.gz", hash = "sha256:a458d402572e1c2caf9db090d8e7b270f43ff326bd9349c731a86b19910e3995", size = 12725129, upload-time = "2025-04-14T10:14:55.21Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/86/1bd09aea2664a46bc65713cb7876381ec8949a4b1e71be97dfc359c79781/google_api_python_client-2.170.0.tar.gz", hash = "sha256:75f3a1856f11418ea3723214e0abc59d9b217fd7ed43dcf743aab7f06ab9e2b1", size = 12971933, upload-time = "2025-05-22T20:39:52.802Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/12/4a5322bf1d044114ce59736bb2c260d8d3f843cbedbaa34b553dcad8d9da/google_api_python_client-2.167.0-py2.py3-none-any.whl", hash = "sha256:ce25290cc229505d770ca5c8d03850e0ae87d8e998fc6dd743ecece018baa396", size = 13235609, upload-time = "2025-04-14T10:14:52.083Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/ab/928fb4551ce9c791de96b0681924d46de9a5b50931394fd19850383a08a1/google_api_python_client-2.170.0-py3-none-any.whl", hash = "sha256:7bf518a0527ad23322f070fa69f4f24053170d5c766821dc970ff0571ec22748", size = 13490660, upload-time = "2025-05-22T20:39:49.834Z" },
 ]
 
 [[package]]
@@ -819,15 +819,15 @@ wheels = [
 
 [[package]]
 name = "google-auth-oauthlib"
-version = "1.2.1"
+version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-auth" },
     { name = "requests-oauthlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/0f/1772edb8d75ecf6280f1c7f51cbcebe274e8b17878b382f63738fd96cee5/google_auth_oauthlib-1.2.1.tar.gz", hash = "sha256:afd0cad092a2eaa53cd8e8298557d6de1034c6cb4a740500b5357b648af97263", size = 24970, upload-time = "2024-07-08T23:11:24.377Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/87/e10bf24f7bcffc1421b84d6f9c3377c30ec305d082cd737ddaa6d8f77f7c/google_auth_oauthlib-1.2.2.tar.gz", hash = "sha256:11046fb8d3348b296302dd939ace8af0a724042e8029c1b872d87fabc9f41684", size = 20955, upload-time = "2025-04-22T16:40:29.172Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/8e/22a28dfbd218033e4eeaf3a0533b2b54852b6530da0c0fe934f0cc494b29/google_auth_oauthlib-1.2.1-py2.py3-none-any.whl", hash = "sha256:2d58a27262d55aa1b87678c3ba7142a080098cbc2024f903c62355deb235d91f", size = 24930, upload-time = "2024-07-08T23:11:23.038Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/84/40ee070be95771acd2f4418981edb834979424565c3eec3cd88b6aa09d24/google_auth_oauthlib-1.2.2-py3-none-any.whl", hash = "sha256:fd619506f4b3908b5df17b65f39ca8d66ea56986e5472eb5978fd8f3786f00a2", size = 19072, upload-time = "2025-04-22T16:40:28.174Z" },
 ]
 
 [[package]]
@@ -2668,7 +2668,7 @@ wit = [
 
 [[package]]
 name = "tahweel"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -2680,10 +2680,11 @@ dependencies = [
     { name = "python-docx" },
     { name = "tqdm" },
     { name = "typed-argument-parser" },
+    { name = "types-tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/12/cc/4987f033fde0e510ff3a475923cc95d3d6e1763c0a51187492f5b79a0f54/tahweel-0.1.0.tar.gz", hash = "sha256:b38dc569ac64259de79a018526fd25e12a76788af1ffa50109ed056a7610a28f", size = 15724, upload-time = "2024-10-25T16:21:43.65Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/e3/b76931b02471e8374cfcdce08997b54b57f0a1ee345c0241be81633677e5/tahweel-0.2.0.tar.gz", hash = "sha256:42d33a8ead89de6b662d4ee2729da4e127e7721d7f2f870a15e853446448f576", size = 15377, upload-time = "2025-04-25T21:33:43.108Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/7d/d8f1da6fc3a512f8a336e39eb2ff5c0d3cbe2897df333daae81cd2fc89ad/tahweel-0.1.0-py3-none-any.whl", hash = "sha256:a1f1d6a935268308e06c4111d36ff2cd7e8a830b84287d75a2b6719b48f90500", size = 19902, upload-time = "2024-10-25T16:21:42.189Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/e3/3e9659363d2fed363f068d236bca379bfe45e6218438199a7a3de28ddb36/tahweel-0.2.0-py3-none-any.whl", hash = "sha256:ac4c665406ffe2470d17076c83ee87aeb63bd004933a534071314c906a81ac70", size = 20248, upload-time = "2025-04-25T21:33:41.41Z" },
 ]
 
 [[package]]
@@ -2739,11 +2740,11 @@ requires-dist = [
     { name = "pymupdf", specifier = ">=1.25.5" },
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "tafrigh", extras = ["wit", "whisper"], specifier = ">=1.7.6" },
-    { name = "tahweel", specifier = ">=0.1.0" },
+    { name = "tahweel", specifier = ">=0.2.0" },
     { name = "telethon", specifier = ">=1.40.0" },
     { name = "vosk", specifier = "==0.3.44" },
     { name = "wikipedia", specifier = ">=1.4.0" },
-    { name = "yt-dlp", extras = ["default"], specifier = ">=2025.3.31" },
+    { name = "yt-dlp", extras = ["default"], specifier = ">=2025.5.22" },
 ]
 
 [package.metadata.requires-dev]
@@ -2924,6 +2925,30 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/75/ba/dcf9ca5bfcda1a6c949f6eb6c86231a4f4442fbd079108cd70a334e7a835/types_httplib2-0.22.0.20250401.tar.gz", hash = "sha256:4c7ef56997153a9a2cf1b4970a784c12ca8860dc21ded150370e97d09ef1100b", size = 10198, upload-time = "2025-04-01T03:06:40.433Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/17/3950e88eca35e8065eded9659ba9f28d8f157ee635a6b6cb1de172969fc9/types_httplib2-0.22.0.20250401-py3-none-any.whl", hash = "sha256:613a441cfdd2b43d7100ddd8a3959f1d411dd46197dac44de1852b0f68b6cd56", size = 10487, upload-time = "2025-04-01T03:06:39.605Z" },
+]
+
+[[package]]
+name = "types-requests"
+version = "2.32.0.20250515"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/c1/cdc4f9b8cfd9130fbe6276db574f114541f4231fcc6fb29648289e6e3390/types_requests-2.32.0.20250515.tar.gz", hash = "sha256:09c8b63c11318cb2460813871aaa48b671002e59fda67ca909e9883777787581", size = 23012, upload-time = "2025-05-15T03:04:31.817Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/0f/68a997c73a129287785f418c1ebb6004f81e46b53b3caba88c0e03fcd04a/types_requests-2.32.0.20250515-py3-none-any.whl", hash = "sha256:f8eba93b3a892beee32643ff836993f15a785816acca21ea0ffa006f05ef0fb2", size = 20635, upload-time = "2025-05-15T03:04:30.5Z" },
+]
+
+[[package]]
+name = "types-tqdm"
+version = "4.67.0.20250516"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "types-requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bd/07/eb40de2dc2ff2d1a53180330981b1bdb42313ab4e1b11195d8d64c878b3c/types_tqdm-4.67.0.20250516.tar.gz", hash = "sha256:230ccab8a332d34f193fc007eb132a6ef54b4512452e718bf21ae0a7caeb5a6b", size = 17232, upload-time = "2025-05-16T03:09:52.091Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3b/92/df621429f098fc573a63a8ba348e731c3051b397df0cff278f8887f28d24/types_tqdm-4.67.0.20250516-py3-none-any.whl", hash = "sha256:1dd9b2c65273f2342f37e5179bc6982df86b6669b3376efc12aef0a29e35d36d", size = 24032, upload-time = "2025-05-16T03:09:51.226Z" },
 ]
 
 [[package]]
@@ -3195,11 +3220,11 @@ wheels = [
 
 [[package]]
 name = "yt-dlp"
-version = "2025.3.31"
+version = "2025.5.22"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a2/11/333d16f88b1515d4c601e1dfbf1028e6798f0b2a8ff1dc5aaa7b797aa9e8/yt_dlp-2025.3.31.tar.gz", hash = "sha256:1bfe0e660d1a70a09e27b2d58f92e30b1e2e362cc487829f2f824346ae49fb91", size = 2967466, upload-time = "2025-03-31T22:03:52.176Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/93/695cef32796dc7e76597e68a267a34a1b4e29bef8e12da445fa7c0ad1e55/yt_dlp-2025.5.22.tar.gz", hash = "sha256:ea73854c5dabc124f29a35a8fae9bc5d422ef3231bebeea2bdfa82ac191a9c29", size = 3017654, upload-time = "2025-05-22T09:58:35.694Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/bf/7b0affb8f163376309696cfd1c677818fa0969fbb9d88225087208799afe/yt_dlp-2025.3.31-py3-none-any.whl", hash = "sha256:8ecb3aa218a3bebe431119f513a8972b9b9d992edf67168c00ab92329a03baec", size = 3226021, upload-time = "2025-03-31T22:03:49.185Z" },
+    { url = "https://files.pythonhosted.org/packages/25/68/4f108193ebce3ee7beb5f9a21daa6bc875e261150b510be468626f151959/yt_dlp-2025.5.22-py3-none-any.whl", hash = "sha256:a49c4b76afeaded6254c3e2b759d8d5a13271aa963d5fccb51fe059d1c313151", size = 3264137, upload-time = "2025-05-22T09:58:32.613Z" },
 ]
 
 [package.optional-dependencies]
