@@ -53,13 +53,14 @@ if netrc_file.exists():
 params['extractor_args'] = {'youtube': {'getpot_bgutil_baseurl': 'http://bgutil-provider:4416'}}
 
 
-def download_hook(d: dict[str, Any], message: Message) -> None:
+def download_hook(d: dict[str, Any], message: Message, loop: Any) -> None:
+    # This won't work with external downloader
     if d['status'] == 'downloading':
         total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
         current = d.get('downloaded_bytes', 0)
         run_coroutine_threadsafe(
             progress_callback(current, total, message, t('downloading')),
-            get_running_loop(),
+            loop,
         )
 
 
@@ -114,7 +115,9 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     link = match.group(0)
     ydl_opts = {
         **params,
-        'progress_hooks': [lambda d: download_hook(d, progress_message)],
+        'progress_hooks': [
+            partial(download_hook, message=progress_message, loop=get_running_loop())
+        ],
     }
     try:
         info_dict = await get_running_loop().run_in_executor(
@@ -161,7 +164,9 @@ async def get_subtitles(event: NewMessage.Event) -> None:
         'writesubtitles': True,
         'subtitleslangs': [language, f'{language}-orig'],
         'outtmpl': str(TMP_DIR / '%(title)s.%(ext)s'),
-        'progress_hooks': [lambda d: download_hook(d, progress_message)],
+        'progress_hooks': [
+            partial(download_hook, message=progress_message, loop=get_running_loop())
+        ],
     }
     try:
         info_dict = await get_running_loop().run_in_executor(
@@ -331,7 +336,9 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         **params,
         'format': format_id,
         'outtmpl': str(TMP_DIR / '%(id)s.%(ext)s'),
-        'progress_hooks': [lambda d: download_hook(d, progress_message)],
+        'progress_hooks': [
+            partial(download_hook, message=progress_message, loop=get_running_loop())
+        ],
         'writethumbnail': True,
         'postprocessors': post_processors,
     }
@@ -403,7 +410,9 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
         **params,
         'format': 'wa',
         'outtmpl': str(TMP_DIR / f'%(id)s-{start_seconds}-{end_seconds}.%(ext)s'),
-        'progress_hooks': [lambda d: download_hook(d, progress_message)],
+        'progress_hooks': [
+            partial(download_hook, message=progress_message, loop=get_running_loop())
+        ],
         'postprocessors': [
             {
                 'key': 'FFmpegExtractAudio',
@@ -438,7 +447,7 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
             attributes=attributes,
         )
         file_path.unlink(missing_ok=True)
-        await progress_message.editt(t('audio_segment_download_and_upload_completed'))
+        await progress_message.edit(t('audio_segment_download_and_upload_completed'))
     except Exception as e:  # noqa: BLE001
         await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
 
