@@ -6,6 +6,9 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[manifest]
+overrides = [{ name = "openai-whisper", git = "https://github.com/openai/whisper?rev=dd985ac" }]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
@@ -1782,7 +1785,7 @@ wheels = [
 [[package]]
 name = "openai-whisper"
 version = "20240930"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/openai/whisper?rev=dd985ac#dd985ac4b90cafeef8712f2998d62c59c3e62d22" }
 dependencies = [
     { name = "more-itertools" },
     { name = "numba" },
@@ -1792,7 +1795,6 @@ dependencies = [
     { name = "tqdm" },
     { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'linux2'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/77/952ca71515f81919bd8a6a4a3f89a27b09e73880cebf90957eda8f2f8545/openai-whisper-20240930.tar.gz", hash = "sha256:b7178e9c1615576807a300024f4daa6353f7e1a815dac5e38c33f1ef055dd2d2", size = 800544, upload-time = "2024-09-30T18:21:22.596Z" }
 
 [[package]]
 name = "orjson"

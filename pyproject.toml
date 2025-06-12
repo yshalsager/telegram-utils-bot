@@ -19,7 +19,7 @@ dependencies = [
     "tafrigh[wit,whisper]>=1.7.6",
     "wikipedia>=1.4.0",
     "vosk==0.3.44",
-    "yt-dlp[default]>=2025.05.22",
+    "yt-dlp[default]>=2025.06.09",
     "pymupdf>=1.25.5",
     "tahweel>=0.2.0",
     "ocrmypdf>=16.10.0",
@@ -27,7 +27,7 @@ dependencies = [
     "llm>=0.24.2",
     "llm-gemini>=0.18.1",
     "llm-groq",
-    "bgutil-ytdlp-pot-provider>=0.8.5",
+    "bgutil-ytdlp-pot-provider>=1.1.0",
 ]
 
 [dependency-groups]
@@ -37,6 +37,11 @@ dev = [
     "mypy>=1.15.0",
     "ruff>=0.11.6",
     "jurigged>=0.6.0",
+]
+
+[tool.uv]
+override-dependencies = [
+    "openai-whisper @ git+https://github.com/openai/whisper@dd985ac",
 ]
 
 [tool.uv.sources]
