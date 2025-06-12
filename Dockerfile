@@ -29,14 +29,30 @@ RUN echo 'deb http://deb.debian.org/debian bookworm main non-free contrib' >> /e
     p7zip-rar \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 RUN useradd -m appuser
 USER appuser
 
 WORKDIR /code
-COPY pyproject.toml uv.lock /code/
-RUN uv sync --frozen --no-cache
-ENV PATH="/code/.venv/bin:$PATH"
+ENV PATH="/code/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_CACHE_DIR=/root/.cache/uv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_FROZEN=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_MANAGED_PYTHON=1 \
+    UV_PROJECT_ENVIRONMENT=/code/.venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_REQUIRE_HASHES=1 \
+    UV_VERIFY_HASHES=1 \
+    VIRTUAL_ENV=/code/.venv
+
+RUN --mount=type=cache,target=/code/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=/code/uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=/code/pyproject.toml \
+    uv venv $VIRTUAL_ENV && \
+    uv sync --no-install-project --no-editable
 
 WORKDIR /code/app
 CMD ["python", "-m", "src"]
