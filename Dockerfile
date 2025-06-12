@@ -30,14 +30,18 @@ RUN echo 'deb http://deb.debian.org/debian bookworm main non-free contrib' >> /e
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-RUN useradd -m appuser
+
+RUN useradd -m appuser && \
+    mkdir -p /code && \
+    chown -R appuser:appuser /code
+
 USER appuser
 
 WORKDIR /code
 ENV PATH="/code/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    UV_CACHE_DIR=/root/.cache/uv \
+    UV_CACHE_DIR=/code/.cache/uv \
     UV_COMPILE_BYTECODE=1 \
     UV_FROZEN=1 \
     UV_LINK_MODE=copy \
@@ -48,8 +52,7 @@ ENV PATH="/code/.venv/bin:$PATH" \
     UV_VERIFY_HASHES=1 \
     VIRTUAL_ENV=/code/.venv
 
-RUN --mount=type=cache,target=/code/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=/code/uv.lock \
+RUN --mount=type=bind,source=uv.lock,target=/code/uv.lock \
     --mount=type=bind,source=pyproject.toml,target=/code/pyproject.toml \
     uv venv $VIRTUAL_ENV && \
     uv sync --no-install-project --no-editable
