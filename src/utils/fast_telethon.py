@@ -11,7 +11,7 @@ from logging import Logger, getLogger
 from math import ceil
 from pathlib import Path
 from tempfile import _TemporaryFileWrapper
-from typing import Any, BinaryIO, Optional, Union, cast
+from typing import Any, BinaryIO, Union, cast
 
 from telethon import TelegramClient
 from telethon.crypto import AuthKey
