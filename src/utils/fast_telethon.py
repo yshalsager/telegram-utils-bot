@@ -11,7 +11,7 @@ from logging import Logger, getLogger
 from math import ceil
 from pathlib import Path
 from tempfile import _TemporaryFileWrapper
-from typing import Any, BinaryIO, Optional, Union, cast
+from typing import Any, BinaryIO, Union, cast
 
 from telethon import TelegramClient
 from telethon.crypto import AuthKey
@@ -361,7 +361,7 @@ async def download_file(
     client: TelegramClient,
     location: TypeLocation,
     out: _TemporaryFileWrapper | BinaryIO | BufferedWriter,
-    progress_callback: Optional[Callable] = None,  # noqa: UP007
+    progress_callback: Callable | None = None,
 ) -> BinaryIO:
     size = location.size
     dc_id, location = get_input_location(location)
@@ -380,7 +380,7 @@ async def upload_file(
     client: TelegramClient,
     file: _TemporaryFileWrapper | BinaryIO,
     filename: str,
-    progress_callback: Optional[Callable] = None,  # noqa: UP007
+    progress_callback: Callable | None = None,
 ) -> TypeInputFile:
     return (
         await _internal_transfer_to_telegram(client, file, filename, progress_callback)  # type: ignore[arg-type]
