@@ -1,5 +1,5 @@
 [tools]
-python = '3.13.5'
+python = '3.13.6'
 uv = 'latest'
 
 [tasks.default]
