@@ -19,7 +19,7 @@ dependencies = [
     "regex>=2024.11.6",
     "tafrigh[wit,whisper]>=1.7.6",
     "wikipedia>=1.4.0",
-    "vosk==0.3.44",
+    "vosk==0.3.45",
     "yt-dlp[default]>=2025.06.09",
     "pymupdf>=1.26.1",
     "tahweel>=0.2.0",
