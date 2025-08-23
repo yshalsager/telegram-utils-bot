@@ -8,35 +8,35 @@ authors = [
 license = { file = "LICENSE" }
 requires-python = ">=3.13"
 dependencies = [
-    "Telethon>=1.40.0",
-    "cryptg>=0.5.0.post0",
-    "aiohttp>=3.12.12",
+    "telethon>=1.40.0",
+    "cryptg>=0.5.1",
+    "aiohttp>=3.12.15",
     "hachoir>=3.3.0",
     "humanize>=4.12.3",
-    "orjson>=3.10.18",
+    "orjson>=3.11.2",
     "pydub>=0.25.1",
-    "audioop-lts>=0.2.1", # required for pydub on 3.13
-    "regex>=2024.11.6",
+    "audioop-lts>=0.2.2", # required for pydub on 3.13
+    "regex>=2025.7.34",
     "tafrigh[wit,whisper]>=1.7.6",
     "wikipedia>=1.4.0",
-    "vosk==0.3.45",
-    "yt-dlp[default]>=2025.06.09",
-    "pymupdf>=1.26.1",
+    "vosk==0.3.44",
+    "yt-dlp[default]>=2025.08.22",
+    "pymupdf>=1.26.3",
     "tahweel>=0.2.0",
-    "ocrmypdf>=16.10.2",
+    "ocrmypdf>=16.10.4",
     "plate>=1.0.1",
-    "llm>=0.26",
-    "llm-gemini>=0.22",
-    "llm-groq",
-    "bgutil-ytdlp-pot-provider>=1.1.0",
+    "llm>=0.27.1",
+    "llm-gemini>=0.24",
+    "llm-groq>=0.8",
+    "bgutil-ytdlp-pot-provider>=1.2.2",
 ]
 
 [dependency-groups]
 dev = [
-    "ipython>=9.3.0",
-    "pre-commit>=4.2.0",
-    "mypy>=1.16.0",
-    "ruff>=0.11.13",
+    "ipython>=9.4.0",
+    "pre-commit>=4.3.0",
+    "mypy>=1.17.1",
+    "ruff>=0.12.9",
     "jurigged>=0.6.1",
 ]
 
@@ -44,9 +44,6 @@ dev = [
 override-dependencies = [
     "openai-whisper @ git+https://github.com/openai/whisper@dd985ac",
 ]
-
-[tool.uv.sources]
-llm-groq = { git = "https://github.com/yshalsager/llm-groq", rev = "e8998f4" }
 
 [tool.mypy]
 files = ["src"]
