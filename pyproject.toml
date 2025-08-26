@@ -20,7 +20,7 @@ dependencies = [
     "tafrigh[wit,whisper]>=1.7.6",
     "wikipedia>=1.4.0",
     "vosk==0.3.44",
-    "yt-dlp[default]>=2025.08.22",
+    "yt-dlp[default,curl-cffi]>=2025.08.22",
     "pymupdf>=1.26.3",
     "tahweel>=0.2.0",
     "ocrmypdf>=16.10.4",
@@ -42,7 +42,7 @@ dev = [
 
 [tool.uv]
 override-dependencies = [
-    "openai-whisper @ git+https://github.com/openai/whisper@dd985ac",
+    "openai-whisper @ git+https://github.com/openai/whisper#v20250625",
 ]
 
 [tool.mypy]
