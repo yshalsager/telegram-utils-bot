@@ -24,7 +24,7 @@ ENGINES = [
     'startpage',
     'qwant',
 ]
-API_BASE_URL = 'https://4get.tux.pizza/api/v1/web'
+API_BASE_URL = 'https://4get.bloat.cat/api/v1/web'
 
 
 async def list_all_inline_commands(event: events.InlineQuery.Event) -> None:
