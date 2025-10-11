@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/python:3.13-slim-bookworm
+FROM public.ecr.aws/docker/library/python:3.14-slim-bookworm
 
 RUN echo 'deb http://deb.debian.org/debian bookworm main non-free contrib' >> /etc/apt/sources.list && apt-get update && apt-get install -y --no-install-recommends \
     # building deps
