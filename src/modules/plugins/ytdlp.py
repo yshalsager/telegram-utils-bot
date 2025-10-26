@@ -50,7 +50,10 @@ if netrc_file.exists():
     params['netrc_location'] = str(netrc_file.absolute())
 
 # https://github.com/Brainicism/bgutil-ytdlp-pot-provider
-params['extractor_args'] = {'youtubepot-bgutilhttp': {'base_url': 'http://bgutil-provider:4416'}}
+params['extractor_args'] = {
+    'youtubepot-bgutilhttp': {'base_url': 'http://bgutil-provider:4416'},
+    'youtube': {'player_client': ['default,mweb,web_creator']},
+}
 
 
 def download_hook(d: dict[str, Any], message: Message, loop: Any) -> None:
