@@ -8,22 +8,22 @@ authors = [
 license = { file = "LICENSE" }
 requires-python = ">=3.13"
 dependencies = [
-    "telethon>=1.40.0",
+    "telethon>=1.42.0",
     "cryptg>=0.5.1",
-    "aiohttp>=3.12.15",
+    "aiohttp>=3.13.2",
     "hachoir>=3.3.0",
     "humanize>=4.12.3",
     "orjson>=3.11.2",
     "pydub>=0.25.1",
     "audioop-lts>=0.2.2", # required for pydub on 3.13
-    "regex>=2025.7.34",
+    "regex>=2025.11.3",
     "tafrigh[wit,whisper]>=1.7.6",
     "wikipedia>=1.4.0",
     "vosk==0.3.44",
-    "yt-dlp[default,curl-cffi]>=2025.08.22",
-    "pymupdf>=1.26.3",
+    "yt-dlp[default,curl-cffi]>=2025.11.12",
+    "pymupdf>=1.26.6",
     "tahweel>=0.2.0",
-    "ocrmypdf>=16.10.4",
+    "ocrmypdf>=16.12.0",
     "plate>=1.0.1",
     "llm>=0.27.1",
     "llm-gemini>=0.24",
@@ -33,10 +33,10 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ipython>=9.4.0",
-    "pre-commit>=4.3.0",
+    "ipython>=9.7.0",
+    "pre-commit>=4.4.0",
     "mypy>=1.17.1",
-    "ruff>=0.12.9",
+    "ruff>=0.14.4",
     "jurigged>=0.6.1",
 ]
 
@@ -66,7 +66,7 @@ disallow_untyped_decorators = false
 fix = true
 line-length = 100
 src = ["src"]
-target-version = "py312"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["A", "B", "BLE", "C4", "C90", "DTZ", "E", "ERA", "F", "G", "I", "INP", "ISC", "N", "NPY", "PGH", "PIE", "PLC", "PLE", "PLR", "PLW", "PT", "PTH", "PYI", "RET", "RSE", "RUF", "S", "SIM", "T10", "T20", "TID", "UP", "W", "YTT"]
