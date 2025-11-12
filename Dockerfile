@@ -31,6 +31,9 @@ RUN echo 'deb http://deb.debian.org/debian bookworm main non-free contrib' >> /e
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# deno runtime, for yt-dlp
+COPY --from=denoland/deno:bin-2.5.6 /deno /usr/local/bin/deno
+
 RUN useradd -m appuser && \
     mkdir -p /code && \
     chown -R appuser:appuser /code
