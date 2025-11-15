@@ -17,7 +17,7 @@ ADMIN_TIMEOUT_SECONDS = 60 * 60 * 6  # 6 hours timeout for admin commands
 logger = logging.getLogger(__name__)
 
 
-async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str, None]:
+async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str]:
     if stream is None:
         return
     while True:
@@ -29,7 +29,7 @@ async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str
 
 async def run_subprocess_shell(
     cmd: str, timeout: int = TIMEOUT_SECONDS, **kwargs: Any
-) -> AsyncGenerator[tuple[str, int | None], None]:
+) -> AsyncGenerator[tuple[str, int | None]]:
     process: Process = await asyncio.create_subprocess_shell(  # noqa: S604
         cmd,
         stdout=PIPE,
@@ -45,7 +45,7 @@ async def run_subprocess_shell(
 
 async def run_subprocess_exec(
     cmd: str, timeout: int = TIMEOUT_SECONDS, **kwargs: Any
-) -> AsyncGenerator[tuple[str, int | None], None]:
+) -> AsyncGenerator[tuple[str, int | None]]:
     args = shlex_split(cmd)
     process: Process = await asyncio.create_subprocess_exec(
         *args, stdout=PIPE, stderr=PIPE, preexec_fn=setsid, cwd=kwargs.pop('cwd', TMP_DIR), **kwargs
@@ -56,7 +56,7 @@ async def run_subprocess_exec(
 
 async def _run_subprocess(  # noqa: C901, PLR0912
     process: Process, cmd: str, timeout: int = TIMEOUT_SECONDS
-) -> AsyncGenerator[tuple[str, int | None], None]:
+) -> AsyncGenerator[tuple[str, int | None]]:
     output = ''
     return_code = None
     process_task = asyncio.create_task(process.wait(), name='process')
