@@ -290,7 +290,7 @@ class ParallelTransferrer:
         file_size: int,
         part_size_kb: float | None = None,
         connection_count: int | None = None,
-    ) -> AsyncGenerator[bytes, None]:
+    ) -> AsyncGenerator[bytes]:
         connection_count = connection_count or self._get_connection_count(file_size)
         part_size = (part_size_kb or get_appropriated_part_size(file_size)) * 1024
         part_count = ceil(file_size / part_size)
@@ -311,7 +311,7 @@ class ParallelTransferrer:
 parallel_transfer_locks: defaultdict[int, asyncio.Lock] = defaultdict(lambda: asyncio.Lock())
 
 
-def stream_file(file_to_stream: BinaryIO, chunk_size: int = 1024) -> AsyncGenerator[bytes, None]:  # type: ignore[misc]
+def stream_file(file_to_stream: BinaryIO, chunk_size: int = 1024) -> AsyncGenerator[bytes]:  # type: ignore[misc]
     while True:
         data_read = file_to_stream.read(chunk_size)
         if not data_read:
