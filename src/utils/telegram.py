@@ -1,4 +1,4 @@
-from asyncio import sleep
+from asyncio import Task, create_task, sleep
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -41,9 +41,13 @@ async def edit_or_send_as_file(
         return False
 
 
-async def delete_message_after(message: Message, seconds: int = 10) -> None:
+async def _delete_message_after(message: Message, seconds: int = 10) -> None:
     await sleep(seconds)
     await message.delete()
+
+
+def delete_message_after(message: Message, seconds: int = 10) -> Task[None]:
+    return create_task(_delete_message_after(message, seconds))
 
 
 async def send_progress_message(
