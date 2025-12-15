@@ -331,7 +331,8 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         post_processors.append(
             {
                 'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'm4a',
+                'preferredcodec': 'opus',
+                'preferredquality': '64',
             }
         )
     ydl_opts = {
@@ -352,7 +353,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         entries = info_dict.get('entries', [info_dict])  # Handle both single videos and playlists
         for entry in entries:
             file_path = Path(
-                TMP_DIR / f'{entry["id"]}.{entry["ext"] if _type == "video" else "m4a"}'
+                TMP_DIR / f'{entry["id"]}.{entry["ext"] if _type == "video" else "opus"}'
             )
             await progress_message.edit(t('uploading_file'))
             if entry.get('vcodec') == 'none':  # audio
@@ -374,6 +375,10 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             file_path = file_path.rename(
                 file_path.with_stem(f'{re.sub("[/:*\"'<>|]", "_", entry["title"])}')
             )
+
+            if entry.get('vcodec') == 'none':
+                file_path = file_path.rename(file_path.with_suffix('.ogg'))
+
             await upload_file(
                 event,
                 file_path,
@@ -418,7 +423,8 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
         'postprocessors': [
             {
                 'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'm4a',
+                'preferredcodec': 'opus',
+                'preferredquality': '64',
             }
         ],
         'external_downloader': 'ffmpeg_i',
@@ -429,7 +435,8 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
         info_dict = await get_running_loop().run_in_executor(
             None, partial(YoutubeDL(ydl_opts).extract_info, match.group('url'), download=True)
         )
-        file_path = Path(TMP_DIR / f'{info_dict["id"]}-{start_seconds}-{end_seconds}.m4a')
+        file_path = Path(TMP_DIR / f'{info_dict["id"]}-{start_seconds}-{end_seconds}.opus')
+        file_path = file_path.rename(file_path.with_suffix('.ogg'))
         await progress_message.edit(t('uploading_audio_segment'))
         attributes = [
             DocumentAttributeAudio(
