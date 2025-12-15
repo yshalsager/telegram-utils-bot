@@ -1,7 +1,9 @@
 from asyncio import Task, create_task, sleep
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
+from telethon import Button
 from telethon.errors import MessageTooLongError
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
@@ -46,8 +48,65 @@ async def _delete_message_after(message: Message, seconds: int = 10) -> None:
     await message.delete()
 
 
+async def _delete_event_message_after(event: CallbackQuery.Event, seconds: int = 10) -> None:
+    await _delete_message_after(await event.get_message(), seconds)
+
+
 def delete_message_after(message: Message, seconds: int = 10) -> Task[None]:
     return create_task(_delete_message_after(message, seconds))
+
+
+def delete_event_message_after(event: CallbackQuery.Event, seconds: int = 10) -> Task[None]:
+    return create_task(_delete_event_message_after(event, seconds))
+
+
+def delete_callback_after(event: CallbackQuery.Event, seconds: int = 60 * 5) -> Task[None]:
+    return delete_event_message_after(event, seconds)
+
+
+async def inline_choice(
+    event: CallbackQuery.Event,
+    *,
+    prefix: str,
+    prompt_text: str,
+    buttons: list[list[Button]],
+    cast: Any = str,
+) -> Any | None:
+    data = event.data.decode('utf-8')
+    if data.startswith(prefix):
+        return cast(data.split('|')[-1])
+    await event.edit(prompt_text, buttons=buttons)
+    return None
+
+
+async def inline_choice_grid(
+    event: CallbackQuery.Event,
+    *,
+    prefix: str,
+    prompt_text: str,
+    pairs: list[tuple[str, Any]],
+    cast: Any = str,
+    cols: int = 3,
+) -> Any | None:
+    return await inline_choice(
+        event,
+        prefix=prefix,
+        prompt_text=prompt_text,
+        buttons=inline_buttons_grid(pairs, cols=cols),
+        cast=cast,
+    )
+
+
+def buttons_grid(items: list[Any], cols: int = 3) -> list[list[Any]]:
+    return [items[i : i + cols] for i in range(0, len(items), cols)]
+
+
+def inline_buttons_grid(
+    pairs: list[tuple[str, Any]],
+    *,
+    cols: int = 3,
+) -> list[list[Button]]:
+    return buttons_grid([Button.inline(text, data) for text, data in pairs], cols)
 
 
 async def send_progress_message(

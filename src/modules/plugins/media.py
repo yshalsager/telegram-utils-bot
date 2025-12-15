@@ -1,6 +1,5 @@
 from datetime import datetime
 from functools import partial
-from itertools import zip_longest
 from math import floor
 from os import getenv
 from pathlib import Path
@@ -13,7 +12,7 @@ import regex as re
 from llm import Attachment, get_model
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
-from telethon import Button, TelegramClient
+from telethon import TelegramClient
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeVideo
@@ -35,15 +34,22 @@ from src.utils.json_processing import json_options, process_dict
 from src.utils.run import run_command
 from src.utils.subtitles import srt_to_txt
 from src.utils.telegram import (
+    delete_callback_after,
     delete_message_after,
     edit_or_send_as_file,
     get_reply_message,
+    inline_choice_grid,
     send_progress_message,
 )
 
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
 
 ALLOWED_SPEED_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
+ALLOWED_AUDIO_COMPRESS_BITRATES = [16, 32, 48, 64, 96, 128]
+ALLOWED_AMPLIFY_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
+ALLOWED_VIDEO_COMPRESS_PERCENTAGES = list(range(20, 100, 10))
+ALLOWED_VIDEO_X265_CRF = [20, 22, 24, 25, 27]
+ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'vosk']
 
 
 async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, Any]:
@@ -201,22 +207,20 @@ async def convert_to_voice_note(event: NewMessage.Event | CallbackQuery.Event) -
 async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|audio_compress|'):
-            audio_bitrate = event.data.decode().split('|')[-1]
-            delete_message_after_process = True
-        else:
-            buttons = [
-                [
-                    Button.inline(f'{bitrate}kbps', f'm|audio_compress|{bitrate}')
-                    for bitrate in [16, 32, 48]
-                ],
-                [
-                    Button.inline(f'{bitrate}kbps', f'm|audio_compress|{bitrate}')
-                    for bitrate in [64, 96, 128]
-                ],
-            ]
-            await event.edit(f'{t("choose_bitrate")}:', buttons=buttons)
+        audio_bitrate = await inline_choice_grid(
+            event,
+            prefix='m|audio_compress|',
+            prompt_text=f'{t("choose_bitrate")}:',
+            pairs=[
+                (f'{bitrate}kbps', f'm|audio_compress|{bitrate}')
+                for bitrate in ALLOWED_AUDIO_COMPRESS_BITRATES
+            ],
+            cols=3,
+            cast=str,
+        )
+        if audio_bitrate is None:
             return
+        delete_message_after_process = True
     elif match := re.search(r'(\d+)$', event.message.text):
         audio_bitrate = match.group(1)
     else:
@@ -232,7 +236,7 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
         feedback_text=t('audio_successfully_compressed'),
     )
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -669,22 +673,23 @@ ALLOWED_VIDEO_FORMATS = {'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'mpeg', 'mpg
 async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|media_convert|'):
-            target_format = event.data.decode().split('|')[-1]
-            delete_message_after_process = True
-        else:
-            reply_message = await get_reply_message(event, previous=True)
-            formats = (
-                ALLOWED_AUDIO_FORMATS
-                if (reply_message.audio or reply_message.voice)
-                else ALLOWED_VIDEO_FORMATS
-            )
-            buttons = [
-                [Button.inline(f'{ext}', f'm|media_convert|{ext}') for ext in row if ext]
-                for row in list(zip_longest(*[iter(formats)] * 3, fillvalue=None))
-            ]
-            await event.edit(f'{t("choose_target_format")}:', buttons=buttons)
+        reply_message = await get_reply_message(event, previous=True)
+        formats = (
+            ALLOWED_AUDIO_FORMATS
+            if (reply_message.audio or reply_message.voice)
+            else ALLOWED_VIDEO_FORMATS
+        )
+        target_format = await inline_choice_grid(
+            event,
+            prefix='m|media_convert|',
+            prompt_text=f'{t("choose_target_format")}:',
+            pairs=[(str(ext), f'm|media_convert|{ext}') for ext in formats],
+            cols=3,
+            cast=str,
+        )
+        if target_format is None:
             return
+        delete_message_after_process = True
     else:
         target_format = event.message.text.split('convert ')[1].lower()
         if target_format[0] == '.':
@@ -717,7 +722,7 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         feedback_text=t('media_converted_to_target_format', target_format=target_format),
     )
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 ALLOWED_VIDEO_QUALITIES = {144, 240, 360, 480, 720}
@@ -726,22 +731,25 @@ ALLOWED_VIDEO_QUALITIES = {144, 240, 360, 480, 720}
 async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|video_resize|'):
-            quality = event.data.decode().split('|')[-1]
-            delete_message_after_process = True
-        else:
-            buttons = [
-                [
-                    Button.inline(str(quality), f'm|video_resize|{quality}')
-                    for quality in sorted(ALLOWED_VIDEO_QUALITIES)
-                ]
-            ]
-            await event.edit(f'{t("choose_target_quality")}:', buttons=buttons)
+        quality = await inline_choice_grid(
+            event,
+            prefix='m|video_resize|',
+            prompt_text=f'{t("choose_target_quality")}:',
+            pairs=[
+                (str(quality), f'm|video_resize|{quality}')
+                for quality in sorted(ALLOWED_VIDEO_QUALITIES)
+            ],
+            cols=len(ALLOWED_VIDEO_QUALITIES),
+            cast=int,
+        )
+        if quality is None:
             return
+        delete_message_after_process = True
     else:
         quality = event.message.text.split('resize ')[1]
 
     quality = int(quality)
+
     if quality not in ALLOWED_VIDEO_QUALITIES:
         await event.reply(
             f'{t("invalid_target_quality")}. {t("please_choose_from")} {", ".join(map(str, ALLOWED_VIDEO_QUALITIES))}.'
@@ -759,7 +767,7 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
         event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
     )
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def video_update_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -820,22 +828,19 @@ async def _video_update_process(event: NewMessage.Event, file_ids: list[int]) ->
 async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|media_amplify|'):
-            amplification_factor = float(event.data.decode().split('|')[-1])
-            delete_message_after_process = True
-        else:
-            buttons = [
-                [
-                    Button.inline(f'{factor}x', f'm|media_amplify|{factor}')
-                    for factor in [1.25, 1.5, 1.75, 2]
-                ],
-                [
-                    Button.inline(f'{factor}x', f'm|media_amplify|{factor}')
-                    for factor in [2.25, 2.5, 2.75, 3]
-                ],
-            ]
-            await event.edit(f'{t("choose_amplification_factor")}:', buttons=buttons)
+        amplification_factor = await inline_choice_grid(
+            event,
+            prefix='m|media_amplify|',
+            prompt_text=f'{t("choose_amplification_factor")}:',
+            pairs=[
+                (f'{factor}x', f'm|media_amplify|{factor}') for factor in ALLOWED_AMPLIFY_FACTORS
+            ],
+            cols=4,
+            cast=float,
+        )
+        if amplification_factor is None:
             return
+        delete_message_after_process = True
     else:
         amplification_factor = float(event.message.text.split('amplify ')[1])
 
@@ -868,28 +873,23 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
         ),
     )
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|media_speed|'):
-            speed_factor = float(event.data.decode().split('|')[-1])
-            delete_message_after_process = True
-        else:
-            buttons = [
-                [
-                    Button.inline(f'{factor}x', f'm|media_speed|{factor}')
-                    for factor in ALLOWED_SPEED_FACTORS[:4]
-                ],
-                [
-                    Button.inline(f'{factor}x', f'm|media_speed|{factor}')
-                    for factor in ALLOWED_SPEED_FACTORS[4:]
-                ],
-            ]
-            await event.edit(f'{t("choose_speed_factor")}:', buttons=buttons)
+        speed_factor = await inline_choice_grid(
+            event,
+            prefix='m|media_speed|',
+            prompt_text=f'{t("choose_speed_factor")}:',
+            pairs=[(f'{factor}x', f'm|media_speed|{factor}') for factor in ALLOWED_SPEED_FACTORS],
+            cols=4,
+            cast=float,
+        )
+        if speed_factor is None:
             return
+        delete_message_after_process = True
     else:
         match = Media.commands['media speed'].pattern.match(event.message.text)
         speed_factor = float(match.group(3)) if match else 1.0
@@ -936,7 +936,7 @@ async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         feedback_text=t('media_sped_up', factor=speed_factor),
     )
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -986,22 +986,20 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
 async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|video_compress|'):
-            target_percentage = int(event.data.decode().split('|')[-1])
-            delete_message_after_process = True
-        else:
-            buttons = [
-                [
-                    Button.inline(f'{percentage}%', f'm|video_compress|{percentage}')
-                    for percentage in range(20, 60, 10)
-                ],
-                [
-                    Button.inline(f'{percentage}%', f'm|video_compress|{percentage}')
-                    for percentage in range(60, 100, 10)
-                ],
-            ]
-            await event.edit(f'{t("choose_target_compression_percentage")}:', buttons=buttons)
+        target_percentage = await inline_choice_grid(
+            event,
+            prefix='m|video_compress|',
+            prompt_text=f'{t("choose_target_compression_percentage")}:',
+            pairs=[
+                (f'{percentage}%', f'm|video_compress|{percentage}')
+                for percentage in ALLOWED_VIDEO_COMPRESS_PERCENTAGES
+            ],
+            cols=4,
+            cast=int,
+        )
+        if target_percentage is None:
             return
+        delete_message_after_process = True
     else:
         target_percentage = int(event.message.text.split('compress ')[1])
 
@@ -1039,22 +1037,23 @@ async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     assert isinstance(status_message, Message)
     await status_message.edit(data['status_text'] + feedback_text)
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|video_x265|'):
-            crf = int(event.data.decode().split('|')[-1])
-            delete_message_after_process = True
-        else:
-            buttons = [
-                [Button.inline(f'CRF {crf}', f'm|video_x265|{crf}') for crf in range(20, 25, 2)],
-                [Button.inline(f'CRF {crf}', f'm|video_x265|{crf}') for crf in range(25, 29, 2)],
-            ]
-            await event.edit(f'{t("choose_crf")}:', buttons=buttons)
+        crf = await inline_choice_grid(
+            event,
+            prefix='m|video_x265|',
+            prompt_text=f'{t("choose_crf")}:',
+            pairs=[(f'CRF {crf}', f'm|video_x265|{crf}') for crf in ALLOWED_VIDEO_X265_CRF],
+            cols=len(ALLOWED_VIDEO_X265_CRF),
+            cast=int,
+        )
+        if crf is None:
             return
+        delete_message_after_process = True
     else:
         crf = int(event.message.text.split('x265 ')[1])
 
@@ -1083,7 +1082,7 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
     assert isinstance(status_message, Message)
     await status_message.edit(data['status_text'] + feedback_text)
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def video_create_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -1160,20 +1159,21 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
 async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912, PLR0915
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|transcribe|'):
-            transcription_method = event.data.decode().split('|')[-1]
-            delete_message_after_process = True
-            language = 'ar'
-        else:
-            buttons = [
-                [
-                    Button.inline('Wit', 'm|transcribe|wit'),
-                    Button.inline('Whisper', 'm|transcribe|whisper'),
-                    Button.inline('Vosk', 'm|transcribe|vosk'),
-                ]
-            ]
-            await event.edit(f'{t("choose_transcription_method")}:', buttons=buttons)
+        transcription_method = await inline_choice_grid(
+            event,
+            prefix='m|transcribe|',
+            prompt_text=f'{t("choose_transcription_method")}:',
+            pairs=[
+                (method.capitalize(), f'm|transcribe|{method}')
+                for method in ALLOWED_TRANSCRIBE_METHODS
+            ],
+            cols=len(ALLOWED_TRANSCRIBE_METHODS),
+            cast=str,
+        )
+        if transcription_method is None:
             return
+        delete_message_after_process = True
+        language = 'ar'
     else:
         match = Media.commands['transcribe'].pattern.match(event.message.text)
         transcription_method = match.group(2) if match else 'wit'
@@ -1279,24 +1279,23 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     rmtree(output_dir)
     delete_message_after(progress_message)
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def fix_stereo_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|media_stereo|'):
-            channel = event.data.decode().split('|')[-1]
-            delete_message_after_process = True
-        else:
-            buttons = [
-                [
-                    Button.inline(t(channel), f'm|media_stereo|{channel}')
-                    for channel in ('right', 'left')
-                ]
-            ]
-            await event.edit(f'{t("use_audio_of_which_channel")}:', buttons=buttons)
+        channel = await inline_choice_grid(
+            event,
+            prefix='m|media_stereo|',
+            prompt_text=f'{t("use_audio_of_which_channel")}:',
+            pairs=[(t(channel), f'm|media_stereo|{channel}') for channel in ('right', 'left')],
+            cols=2,
+            cast=str,
+        )
+        if channel is None:
             return
+        delete_message_after_process = True
     else:
         channel = event.message.text.split('stereo ')[1]
     reply_message = await get_reply_message(event, previous=True)
@@ -1310,6 +1309,8 @@ async def fix_stereo_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
     await process_media(
         event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
     )
+    if delete_message_after_process:
+        delete_callback_after(event)
     if delete_message_after_process:
         delete_message_after(await event.get_message(), seconds=60 * 5)
 
