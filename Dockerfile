@@ -56,6 +56,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     mime-support \
     p7zip-full \
     p7zip-rar \
+    unpaper \
     poppler-utils \
     tesseract-ocr \
     tesseract-ocr-ara \
