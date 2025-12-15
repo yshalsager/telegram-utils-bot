@@ -1,4 +1,3 @@
-from collections import defaultdict
 from datetime import datetime
 from functools import partial
 from itertools import zip_longest
@@ -33,7 +32,6 @@ from src.utils.downloads import (
 from src.utils.filters import has_media
 from src.utils.i18n import t
 from src.utils.json_processing import json_options, process_dict
-from src.utils.reply import MergeState, StateT
 from src.utils.run import run_command
 from src.utils.subtitles import srt_to_txt
 from src.utils.telegram import (
@@ -44,9 +42,6 @@ from src.utils.telegram import (
 )
 
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
-merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
-video_create_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
-video_update_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 
 
 async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, Any]:
@@ -481,29 +476,27 @@ async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 
 async def merge_media_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    merge_states[event.sender_id]['state'] = MergeState.COLLECTING
-    merge_states[event.sender_id]['files'] = []
     reply_message = await get_reply_message(event, previous=True)
-    merge_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply(t('send_more_files'))
-
-
-async def merge_media_add(event: NewMessage.Event) -> None:
-    merge_states[event.sender_id]['files'].append(event.id)
-    await event.reply(t('file_added'), buttons=[Button.inline(t('finish'), 'finish_merge')])
+    await event.client.file_collectors.start(
+        event,
+        t('send_more_files'),
+        first_message_id=reply_message.id,
+        accept=lambda e: bool(
+            e.message.audio or e.message.voice or e.message.video or e.message.video_note
+        ),
+        on_finish=_merge_media_process,
+        min_files=2,
+        not_enough_files_text=t('not_enough_files'),
+        added_reply_text=t('file_added'),
+        finish_button_text=t('finish'),
+        allow_non_reply=True,
+        reply_to=reply_message.id,
+    )
     raise StopPropagation
 
 
-async def merge_media_process(event: CallbackQuery.Event) -> None:
-    merge_states[event.sender_id]['state'] = MergeState.MERGING
-    files = merge_states[event.sender_id]['files']
+async def _merge_media_process(event: CallbackQuery.Event, files: list[int]) -> None:
     await event.answer(t('merging'))
-
-    if len(files) < 2:
-        await event.answer(t('not_enough_files'))
-        merge_states[event.sender_id]['state'] = MergeState.IDLE
-        return
-
     status_message = await event.respond(t('starting_merge'))
     progress_message = await event.respond(f'<pre>{t("process_output")}:</pre>')
 
@@ -536,7 +529,6 @@ async def merge_media_process(event: CallbackQuery.Event) -> None:
 
     finally:
         rmtree(output_dir, ignore_errors=True)
-        merge_states.pop(event.sender_id)
 
 
 async def trim_silence(event: NewMessage.Event) -> None:
@@ -769,18 +761,23 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 
 async def video_update_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    video_update_states[event.sender_id]['state'] = MergeState.COLLECTING
-    video_update_states[event.sender_id]['files'] = []
     reply_message = await get_reply_message(event, previous=True)
-    video_update_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply(t('send_media_to_use'), reply_to=reply_message.id)
-
-
-async def video_update_process(event: NewMessage.Event) -> None:
-    video_update_states[event.sender_id]['state'] = MergeState.MERGING
-    video_message = await event.client.get_messages(
-        event.chat_id, ids=video_update_states[event.sender_id]['files'][0]
+    await event.client.file_collectors.start(
+        event,
+        t('send_media_to_use'),
+        first_message_id=reply_message.id,
+        accept=lambda e: bool(e.message.audio or e.message.voice or e.message.video),
+        on_complete=_video_update_process,
+        min_files=2,
+        max_files=2,
+        allow_non_reply=True,
+        reply_to=reply_message.id,
     )
+    raise StopPropagation
+
+
+async def _video_update_process(event: NewMessage.Event, file_ids: list[int]) -> None:
+    video_message = await event.client.get_messages(event.chat_id, ids=file_ids[0])
     audio_message = event.message
     status_message = await send_progress_message(event, t('starting_audio_update'))
     progress_message = await event.respond(f'<pre>{t("process_output")}:</pre>')
@@ -815,7 +812,6 @@ async def video_update_process(event: NewMessage.Event) -> None:
         rmtree(output_dir, ignore_errors=True)
 
     await status_message.edit(t('video_audio_updated'))
-    video_update_states.pop(event.sender_id)
     raise StopPropagation
 
 
@@ -1021,18 +1017,26 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
 
 
 async def video_create_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    video_create_states[event.sender_id]['state'] = MergeState.COLLECTING
-    video_create_states[event.sender_id]['files'] = []
     reply_message = await get_reply_message(event, previous=True)
-    video_create_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply(t('send_subtitle_or_photo'), reply_to=reply_message.id)
-
-
-async def video_create_process(event: NewMessage.Event) -> None:
-    video_create_states[event.sender_id]['state'] = MergeState.MERGING
-    audio_message: Message = await event.client.get_messages(
-        event.chat_id, ids=video_create_states[event.sender_id]['files'][0]
+    await event.client.file_collectors.start(
+        event,
+        t('send_subtitle_or_photo'),
+        first_message_id=reply_message.id,
+        accept=lambda e: bool(
+            (e.message.file and e.message.file.ext and e.message.file.ext.lower() == '.srt')
+            or e.message.photo
+        ),
+        on_complete=_video_create_process,
+        min_files=2,
+        max_files=2,
+        allow_non_reply=True,
+        reply_to=reply_message.id,
     )
+    raise StopPropagation
+
+
+async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) -> None:
+    audio_message: Message = await event.client.get_messages(event.chat_id, ids=file_ids[0])
     input_message: Message = event.message
     status_message: Message = await event.reply(t('starting_video_creation'))
     progress_message: Message = await event.respond(f'<pre>{t("process_output")}:</pre>')
@@ -1080,7 +1084,6 @@ async def video_create_process(event: NewMessage.Event) -> None:
 
     finally:
         rmtree(output_dir, ignore_errors=True)
-    video_create_states.pop(event.sender_id)
     raise StopPropagation
 
 
@@ -1401,39 +1404,4 @@ class Media(ModuleBase):
 
     @staticmethod
     def register_handlers(bot: TelegramClient) -> None:
-        bot.add_event_handler(
-            merge_media_add,
-            NewMessage(
-                func=lambda e: (
-                    (e.message.audio or e.message.voice)
-                    and merge_states[e.sender_id]['state'] == MergeState.COLLECTING
-                )
-            ),
-        )
-        bot.add_event_handler(
-            merge_media_process,
-            CallbackQuery(
-                pattern=b'finish_merge',
-                func=lambda e: merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
-            ),
-        )
-        bot.add_event_handler(
-            video_update_process,
-            NewMessage(
-                func=lambda e: (
-                    e.sender_id in video_update_states
-                    and video_update_states[e.sender_id]['state'] == MergeState.COLLECTING
-                    and (e.audio or e.voice or e.video)
-                )
-            ),
-        )
-        bot.add_event_handler(
-            video_create_process,
-            NewMessage(
-                func=lambda e: (
-                    e.sender_id in video_create_states
-                    and video_create_states[e.sender_id]['state'] == MergeState.COLLECTING
-                    and (e.file.ext.lower() == '.srt' or e.photo)
-                )
-            ),
-        )
+        return

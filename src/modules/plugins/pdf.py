@@ -1,17 +1,16 @@
-from collections import defaultdict
 from contextlib import suppress
 from io import BytesIO
 from os import getenv
 from pathlib import Path
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
-from typing import Any, ClassVar
+from typing import ClassVar
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pymupdf
 import regex as re
-from telethon import Button, TelegramClient
+from telethon import Button
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 
@@ -26,7 +25,6 @@ from src.utils.downloads import (
 )
 from src.utils.filters import has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
-from src.utils.reply import MergeState, StateT
 from src.utils.telegram import delete_message_after, get_reply_message, send_progress_message
 
 PDF_SAVE_KWARGS = {
@@ -36,10 +34,6 @@ PDF_SAVE_KWARGS = {
     'deflate_fonts': False,
     'use_objstms': True,
 }
-
-merge_states: StateT = defaultdict[int, dict[str, Any]](
-    lambda: {'state': MergeState.IDLE, 'files': []}
-)
 
 
 async def extract_pdf_text(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -67,29 +61,25 @@ async def extract_pdf_text(event: NewMessage.Event | CallbackQuery.Event) -> Non
 
 
 async def merge_pdf_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    merge_states[event.sender_id]['state'] = MergeState.COLLECTING
-    merge_states[event.sender_id]['files'] = []
     reply_message = await get_reply_message(event, previous=True)
-    merge_states[event.sender_id]['files'].append(reply_message.id)
-    await event.reply(t('send_more_pdf_files_to_merge'))
-
-
-async def merge_pdf_add(event: NewMessage.Event) -> None:
-    merge_states[event.sender_id]['files'].append(event.id)
-    await event.reply(t('file_added'), buttons=[Button.inline(t('finish'), 'finish_pdf_merge')])
+    await event.client.file_collectors.start(
+        event,
+        t('send_more_pdf_files_to_merge'),
+        first_message_id=reply_message.id,
+        accept=lambda e: has_pdf_file(e, None),
+        on_finish=_merge_pdf_process,
+        min_files=2,
+        not_enough_files_text=t('not_enough_files'),
+        added_reply_text=t('file_added'),
+        finish_button_text=t('finish'),
+        allow_non_reply=True,
+        reply_to=reply_message.id,
+    )
     raise StopPropagation
 
 
-async def merge_pdf_process(event: CallbackQuery.Event) -> None:
-    merge_states[event.sender_id]['state'] = MergeState.MERGING
-    files = merge_states[event.sender_id]['files']
+async def _merge_pdf_process(event: CallbackQuery.Event, files: list[int]) -> None:
     await event.answer(t('merging'))
-
-    if len(files) < 2:
-        await event.answer(t('not_enough_files'))
-        merge_states[event.sender_id]['state'] = MergeState.IDLE
-        return
-
     status_message = await event.respond(t('starting_merge'))
     progress_message = await event.respond(t('merging'))
 
@@ -117,7 +107,6 @@ async def merge_pdf_process(event: CallbackQuery.Event) -> None:
                 await status_message.edit(t('merge_failed'))
 
     await progress_message.delete()
-    merge_states.pop(event.sender_id)
 
 
 async def _split_pdf_process(
@@ -636,22 +625,3 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
     }
-
-    @staticmethod
-    def register_handlers(bot: TelegramClient) -> None:
-        bot.add_event_handler(
-            merge_pdf_add,
-            NewMessage(
-                func=lambda e: (
-                    has_pdf_file(e, None)
-                    and merge_states[e.sender_id]['state'] == MergeState.COLLECTING
-                )
-            ),
-        )
-        bot.add_event_handler(
-            merge_pdf_process,
-            CallbackQuery(
-                pattern=b'finish_pdf_merge',
-                func=lambda e: merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
-            ),
-        )
