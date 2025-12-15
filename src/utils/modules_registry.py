@@ -39,16 +39,10 @@ def load_modules(directory: str) -> list[ModuleBase]:
             (getattr(module, i) for i in dir(module)),
         ):
             loaded_module_classes.append(module_class())
-    logger.info(
-        f'loaded modules: {
-            ", ".join(
-                [
-                    f"{module.name} {list(module.commands.keys())}"
-                    for module in loaded_module_classes
-                ]
-            )
-        }'
+    loaded_modules_summary = ', '.join(
+        [f'{module.name} {list(module.commands.keys())}' for module in loaded_module_classes]
     )
+    logger.info(f'loaded modules: {loaded_modules_summary}')
     return loaded_module_classes
 
 
