@@ -43,6 +43,8 @@ from src.utils.telegram import (
 
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
 
+ALLOWED_SPEED_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
+
 
 async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, Any]:
     output, _ = await run_command(
@@ -869,6 +871,74 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
         delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
+async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    delete_message_after_process = False
+    if isinstance(event, CallbackQuery.Event):
+        if event.data.decode().startswith('m|media_speed|'):
+            speed_factor = float(event.data.decode().split('|')[-1])
+            delete_message_after_process = True
+        else:
+            buttons = [
+                [
+                    Button.inline(f'{factor}x', f'm|media_speed|{factor}')
+                    for factor in ALLOWED_SPEED_FACTORS[:4]
+                ],
+                [
+                    Button.inline(f'{factor}x', f'm|media_speed|{factor}')
+                    for factor in ALLOWED_SPEED_FACTORS[4:]
+                ],
+            ]
+            await event.edit(f'{t("choose_speed_factor")}:', buttons=buttons)
+            return
+    else:
+        match = Media.commands['media speed'].pattern.match(event.message.text)
+        speed_factor = float(match.group(3)) if match else 1.0
+
+    if speed_factor <= 1 or speed_factor > 3:
+        await event.reply(t('speed_factor_must_be_between_1_and_3'))
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+    atempo_filters = []
+    remaining = float(speed_factor)
+    while remaining > 2:
+        atempo_filters.append('atempo=2')
+        remaining /= 2
+    atempo_filters.append(f'atempo={remaining:.5f}'.rstrip('0').rstrip('.'))
+    atempo = ','.join(atempo_filters)
+
+    if bool(reply_message.video or reply_message.video_note):
+        ffmpeg_command = (
+            'ffmpeg -hide_banner -y -i "{input}" '
+            f'-filter_complex "[0:v]setpts=PTS/{speed_factor}[v];[0:a]{atempo}[a]" '
+            '-map "[v]" -map "[a]" '
+            '-c:v libx264 -preset ultrafast -c:a aac -b:a 128k -movflags +faststart '
+            '"{output}"'
+        )
+        output_suffix = '.mp4'
+        is_voice = False
+    else:
+        is_voice = bool(reply_message.voice)
+        ffmpeg_command = (
+            'ffmpeg -hide_banner -y -i "{input}" '
+            f'-filter:a "{atempo}" '
+            + ('-vn -c:a libopus -b:a 48k ' if is_voice else '-vn -c:a libmp3lame -q:a 2 ')
+            + '"{output}"'
+        )
+        output_suffix = '.ogg' if is_voice else '.mp3'
+
+    await process_media(
+        event,
+        ffmpeg_command,
+        output_suffix,
+        reply_message=reply_message,
+        is_voice=is_voice,
+        feedback_text=t('media_sped_up', factor=speed_factor),
+    )
+    if delete_message_after_process:
+        delete_message_after(await event.get_message(), seconds=60 * 5)
+
+
 async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await send_progress_message(event, t('starting_thumbnail_generation'))
@@ -1280,6 +1350,13 @@ class Media(ModuleBase):
             handler=amplify_sound,
             description=t('_media_amplify_description'),
             pattern=re.compile(r'^/(media)\s+(amplify)\s+(\d+(\.\d+)?)$'),
+            condition=partial(has_media, any=True),
+            is_applicable_for_reply=True,
+        ),
+        'media speed': Command(
+            handler=speed_media,
+            description=t('_media_speed_description'),
+            pattern=re.compile(r'^/(media)\s+(speed)\s+(\d+(\.\d+)?)$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
