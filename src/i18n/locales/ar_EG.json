@@ -197,6 +197,7 @@
   "merge_failed": "فشل الدمج.",
   "pdf_split_pages_number": "أدخل عدد صفحات لتقسيم PDF إليها",
   "invalid_pdf_split_pages_number": "إدخال غير صالح. أدخل عدد صفحات لتقسيم PDF إليها.",
+  "invalid_pdf_extract_pages": "إدخال غير صالح. اكتب أرقام الصفحات لاستخراجها (مثال: 1،3-5،7).",
   "splitting_pdf": "تقسيم PDF…",
   "pdf_split_completed": "اكتمل تقسيم PDF.",
   "pdf_extract_pages": "اكتب أرقام الصفحات لاستخراجها (على سبيل المثال ، 1،3-5،7)",

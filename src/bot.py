@@ -20,6 +20,7 @@ from src.modules.base import InlineModuleBase, ModuleBase, matches_command
 from src.utils.i18n import t
 from src.utils.modules_registry import ModuleRegistry
 from src.utils.permission_manager import PermissionManager
+from src.utils.reply import ReplyPromptManager
 from src.utils.telegram import delete_message_after, get_reply_message
 
 
@@ -28,6 +29,7 @@ class BotState:
         self.bot: TelegramClient | None = None
         self.permission_manager: PermissionManager | None = None
         self.modules_registry: ModuleRegistry | None = None
+        self.reply_prompts = ReplyPromptManager()
 
 
 state = BotState()
@@ -160,6 +162,11 @@ async def handle_messages(event: NewMessage.Event) -> None:
     raise StopPropagation
 
 
+async def handle_reply_prompts(event: NewMessage.Event) -> None:
+    if await event.client.reply_prompts.handle(event):
+        raise StopPropagation
+
+
 async def handle_callback(event: CallbackQuery.Event) -> None:
     command = event.data.decode('utf-8')
     if command.startswith('m|'):
@@ -217,6 +224,7 @@ async def run_bot() -> None:
     bot.modules_registry = get_modules_registry()
     bot.permission_manager = get_permission_manager()
     bot.commands_with_modifiers = commands_with_modifiers
+    bot.reply_prompts = state.reply_prompts
 
     # Get bot info
     me = await bot.get_me()
@@ -235,6 +243,7 @@ async def run_bot() -> None:
             module.register_handlers(bot)
 
     # Register general handlers
+    bot.add_event_handler(handle_reply_prompts)
     bot.add_event_handler(
         handle_commands,
         NewMessage(

@@ -197,6 +197,7 @@
   "merge_failed": "Merging failed.",
   "pdf_split_pages_number": "Please enter number of pages to split PDF into",
   "invalid_pdf_split_pages_number": "Invalid input. Please provide a number of pages to split the PDF into.",
+  "invalid_pdf_extract_pages": "Invalid input. Please provide page numbers to extract (e.g., 1,3-5,7).",
   "splitting_pdf": "Splitting PDF…",
   "pdf_split_completed": "PDF split complete.",
   "pdf_extract_pages": "Please enter page numbers to extract (e.g., 1,3-5,7)",

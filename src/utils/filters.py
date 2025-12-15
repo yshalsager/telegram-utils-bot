@@ -12,7 +12,6 @@ from telethon.tl.types import (
 
 from src import BOT_ADMINS
 from src.utils.patterns import HTTP_URL_PATTERN
-from src.utils.reply import ReplyState, StateT
 
 
 def is_admin_in_private(event: NewMessage.Event, _: Message) -> bool:
@@ -97,15 +96,6 @@ def has_media(event: NewMessage.Event, reply_message: Message | None, **media_ty
             checks.append(check_media(media_type) == should_have)
 
     return all(checks)
-
-
-def is_valid_reply_state(event: NewMessage.Event, reply_states: StateT) -> bool:
-    return (
-        event.is_reply
-        and event.sender_id in reply_states
-        and reply_states[event.sender_id]['state'] == ReplyState.WAITING
-        and event.message.reply_to_msg_id == reply_states[event.sender_id]['reply_message_id']
-    )
 
 
 def is_file(event: NewMessage.Event, reply_message: Message | None) -> bool:

@@ -5,7 +5,7 @@ from os import getenv
 from pathlib import Path
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
-from typing import ClassVar
+from typing import Any, ClassVar
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -13,6 +13,7 @@ import pymupdf
 import regex as re
 from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
+from telethon.tl.custom import Message
 
 from src import TMP_DIR
 from src.modules.base import ModuleBase
@@ -23,14 +24,9 @@ from src.utils.downloads import (
     get_download_name,
     upload_file_and_cleanup,
 )
-from src.utils.filters import has_pdf_file, has_photo_or_photo_file, is_valid_reply_state
+from src.utils.filters import has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
-from src.utils.reply import (
-    MergeState,
-    ReplyState,
-    StateT,
-    handle_callback_query_for_reply_state,
-)
+from src.utils.reply import MergeState, StateT
 from src.utils.telegram import delete_message_after, get_reply_message, send_progress_message
 
 PDF_SAVE_KWARGS = {
@@ -41,10 +37,9 @@ PDF_SAVE_KWARGS = {
     'use_objstms': True,
 }
 
-reply_states: StateT = defaultdict(
-    lambda: {'state': ReplyState.WAITING, 'media_message_id': None, 'reply_message_id': None}
+merge_states: StateT = defaultdict[int, dict[str, Any]](
+    lambda: {'state': MergeState.IDLE, 'files': []}
 )
-merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': []})
 
 
 async def extract_pdf_text(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -125,26 +120,13 @@ async def merge_pdf_process(event: CallbackQuery.Event) -> None:
     merge_states.pop(event.sender_id)
 
 
-async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    if isinstance(event, CallbackQuery.Event):
-        return await handle_callback_query_for_reply_state(
-            event,
-            reply_states,
-            f'{t("pdf_split_pages_number")}:',
-        )
-
-    if event.sender_id in reply_states:
-        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
-        reply_message = await event.client.get_messages(
-            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
-        )
-    else:
-        reply_message = await get_reply_message(event, previous=True)
-    if match := re.search(r'(\d+)', event.message.text):
-        pages_count = int(match.group(1))
-    else:
-        await event.reply(t('invalid_pdf_split_pages_number'))
-        raise StopPropagation
+async def _split_pdf_process(
+    event: NewMessage.Event,
+    reply_message: Message | None,
+    match: re.Match,
+) -> None:
+    assert reply_message is not None
+    pages_count = int(match.group(1))
     progress_message = await send_progress_message(event, t('splitting_pdf'))
 
     async with download_to_temp_file(
@@ -172,8 +154,26 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
         await progress_message.edit(t('pdf_split_completed'))
 
-    if event.sender_id in reply_states:
-        reply_states.pop(event.sender_id)
+    raise StopPropagation
+
+
+async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        await event.client.reply_prompts.ask(
+            event,
+            f'{t("pdf_split_pages_number")}:',
+            pattern=re.compile(r'^(\d+)$'),
+            handler=_split_pdf_process,
+            invalid_reply_text=t('invalid_pdf_split_pages_number'),
+        )
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+    if match := re.search(r'(\d+)', event.message.text):
+        await _split_pdf_process(event, reply_message, match)
+        return
+
+    await event.reply(t('invalid_pdf_split_pages_number'))
     raise StopPropagation
 
 
@@ -181,34 +181,27 @@ def parse_page_numbers(input_string: str) -> list[int]:
     pages: set[int] = set()
     for part in re.split(r'[,\s]+', input_string):
         if '-' in part:
-            start, end = map(int, part.split('-'))
-            pages.update(range(start - 1, end))
+            with suppress(ValueError):
+                start, end = map(int, part.split('-'))
+                pages.update(range(start - 1, end))
         else:
             with suppress(ValueError):
                 pages.add(int(part))
     return sorted(pages)
 
 
-async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    if isinstance(event, CallbackQuery.Event):
-        return await handle_callback_query_for_reply_state(
-            event, reply_states, f'{t("pdf_extract_pages")}:'
-        )
-
-    if event.sender_id in reply_states:
-        reply_states[event.sender_id]['state'] = ReplyState.PROCESSING
-        reply_message = await event.client.get_messages(
-            event.chat_id, ids=reply_states[event.sender_id]['media_message_id']
-        )
-    else:
-        reply_message = await get_reply_message(event, previous=True)
-
-    pages_input = (
-        event.message.text.split(' ', 2)[-1]
-        if isinstance(event, NewMessage.Event)
-        else event.message.text
-    )
+async def _extract_pdf_pages_process(
+    event: NewMessage.Event,
+    reply_message: Message | None,
+    match: re.Match,
+) -> None:
+    assert reply_message is not None
+    pages_input = match.group(1)
     pages_to_extract = parse_page_numbers(pages_input)
+    if not pages_to_extract:
+        await event.reply(t('invalid_pdf_extract_pages'))
+        return
+
     progress_message = await send_progress_message(event, t('extracting_pdf_pages'))
 
     async with download_to_temp_file(
@@ -226,10 +219,29 @@ async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> No
             await upload_file_and_cleanup(event, output_file, progress_message)
 
     await progress_message.edit(t('pdf_extraction_completed'))
-
-    if event.sender_id in reply_states:
-        reply_states.pop(event.sender_id)
     raise StopPropagation
+
+
+async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        await event.client.reply_prompts.ask(
+            event,
+            f'{t("pdf_extract_pages")}:',
+            pattern=re.compile(r'^(?=.*\d)([\d,\-\s]+)$'),
+            handler=_extract_pdf_pages_process,
+            invalid_reply_text=t('invalid_pdf_extract_pages'),
+        )
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+    pages_input = event.message.text.split(' ', 2)[-1]
+    match = re.match(r'^(?=.*\d)([\d,\-\s]+)$', pages_input)
+    if not match:
+        await event.reply(t('invalid_pdf_extract_pages'))
+        raise StopPropagation
+
+    await _extract_pdf_pages_process(event, reply_message, match)
+    return
 
 
 async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -641,22 +653,5 @@ class PDF(ModuleBase):
             CallbackQuery(
                 pattern=b'finish_pdf_merge',
                 func=lambda e: merge_states[e.sender_id]['state'] == MergeState.COLLECTING,
-            ),
-        )
-        bot.add_event_handler(
-            split_pdf,
-            NewMessage(
-                func=lambda e: (
-                    is_valid_reply_state(e, reply_states) and re.match(r'^(\d+)$', e.message.text)
-                )
-            ),
-        )
-        bot.add_event_handler(
-            extract_pdf_pages,
-            NewMessage(
-                func=lambda e: (
-                    is_valid_reply_state(e, reply_states)
-                    and re.match(r'^[\d,\-\s]+$', e.message.text)
-                )
             ),
         )
