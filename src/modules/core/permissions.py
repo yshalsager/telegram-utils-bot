@@ -4,7 +4,6 @@ import regex as re
 from telethon import TelegramClient
 from telethon.events import NewMessage
 
-from src.bot import permission_manager
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_admin_in_private
@@ -12,6 +11,7 @@ from src.utils.i18n import t
 
 
 async def manage_permissions(event: NewMessage.Event) -> None:
+    permission_manager = event.client.permission_manager
     match = re.match(r'^/permissions\s+(add|remove)\s+([\w, ]+)\s+(-?\d+)$', event.message.text)
     if not match:
         await event.reply(t('permissions_invalid_command'))
@@ -36,6 +36,7 @@ async def manage_permissions(event: NewMessage.Event) -> None:
 
 
 async def list_permissions(event: NewMessage.Event) -> None:
+    permission_manager = event.client.permission_manager
     if not permission_manager.module_permissions:
         await event.reply(t('no_permissions_found'))
         return
@@ -47,6 +48,7 @@ async def list_permissions(event: NewMessage.Event) -> None:
 
 
 async def user_permissions(event: NewMessage.Event) -> None:
+    permission_manager = event.client.permission_manager
     try:
         user_id = int(event.pattern_match.group(1))
     except (ValueError, TypeError):
@@ -69,6 +71,7 @@ async def user_permissions(event: NewMessage.Event) -> None:
 
 
 async def list_all_users(event: NewMessage.Event) -> None:
+    permission_manager = event.client.permission_manager
     user_to_modules: dict[int, list[str]] = {}
     for module, users in permission_manager.module_permissions.items():
         for user_id in users:

@@ -13,7 +13,6 @@ from telethon.errors import FloodWaitError
 from telethon.events import NewMessage
 
 from src import PARENT_DIR
-from src.bot import permission_manager
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_admin_in_private, is_reply_in_private
@@ -55,6 +54,7 @@ async def update(event: NewMessage.Event) -> None:
 
 async def broadcast(event: NewMessage.Event) -> None:
     """Broadcast a message to all bot users."""
+    permission_manager = event.client.permission_manager
     users = list({i for _ in permission_manager.module_permissions.values() for i in _})
     if not users:
         return

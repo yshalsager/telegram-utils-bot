@@ -11,7 +11,7 @@ from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
-from orjson import orjson
+import orjson
 from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, InlineQuery, NewMessage, StopPropagation
 
@@ -24,21 +24,16 @@ from src.utils.telegram import delete_message_after, get_reply_message
 
 
 class BotState:
-    bot: TelegramClient | None = None
+    def __init__(self) -> None:
+        self.bot: TelegramClient | None = None
+        self.permission_manager: PermissionManager | None = None
+        self.modules_registry: ModuleRegistry | None = None
+        self.commands_with_modifiers: set[str] = set()
 
 
 state = BotState()
 bot_info = {}
-permission_manager = PermissionManager(set(BOT_ADMINS), STATE_DIR / 'permissions.json')
-modules_registry = ModuleRegistry(__package__, permission_manager)
 logger = logging.getLogger(__name__)
-
-commands_with_modifiers = {
-    command.split(' ', 1)[0]
-    for module in modules_registry.modules
-    for command in module.commands
-    if ' ' in command
-}
 
 
 async def create_bot() -> TelegramClient:
@@ -51,6 +46,16 @@ async def create_bot() -> TelegramClient:
 def get_bot() -> TelegramClient:
     assert state.bot is not None
     return state.bot
+
+
+def get_modules_registry() -> ModuleRegistry:
+    assert state.modules_registry is not None
+    return state.modules_registry
+
+
+def get_permission_manager() -> PermissionManager:
+    assert state.permission_manager is not None
+    return state.permission_manager
 
 
 def main() -> None:
@@ -116,13 +121,15 @@ async def handle_commands(event: NewMessage.Event) -> None:
     match = event.pattern_match
     command = match.group(1)
     modifier = match.group(2)
-    if modifier and command in commands_with_modifiers:
+    if modifier and command in state.commands_with_modifiers:
         command = f'{command} {modifier}'
 
-    module = modules_registry.get_module_by_command(
+    module_registry = get_modules_registry()
+    perms = get_permission_manager()
+    module = module_registry.get_module_by_command(
         command
-    ) or modules_registry.get_module_by_command(match.group(1))
-    if not module or not permission_manager.has_permission(module.name, event.chat_id):
+    ) or module_registry.get_module_by_command(match.group(1))
+    if not module or not perms.has_permission(module.name, event.chat_id):
         raise StopPropagation
 
     reply_message = (
@@ -137,7 +144,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
 
 
 async def handle_messages(event: NewMessage.Event) -> None:
-    if applicable_commands := await modules_registry.get_applicable_commands(event):
+    if applicable_commands := await get_modules_registry().get_applicable_commands(event):
         keyboard = [
             [
                 Button.inline(
@@ -159,8 +166,9 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
     if command.startswith('m|'):
         command = command[2:]
     command = command.replace('_', ' ')
-    module = modules_registry.get_module_by_command(command.split('|')[0])
-    if not module or not permission_manager.has_permission(module.name, event.chat_id):
+    perms = get_permission_manager()
+    module = get_modules_registry().get_module_by_command(command.split('|')[0])
+    if not module or not perms.has_permission(module.name, event.chat_id):
         return
 
     async def response_func(message: str) -> None:
@@ -171,7 +179,7 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
 
 
 async def handle_inline_query(event: InlineQuery.Event) -> None:
-    for module in modules_registry.modules:
+    for module in get_modules_registry().modules:
         if isinstance(module, InlineModuleBase) and await module.is_applicable(event):
             await module.handle(event)
             break
@@ -196,10 +204,19 @@ async def cancel_command(event: NewMessage.Event) -> None:
 
 async def run_bot() -> None:
     """Run the bot."""
+    state.permission_manager = PermissionManager(set(BOT_ADMINS), STATE_DIR / 'permissions.json')
+    state.modules_registry = ModuleRegistry(__package__, state.permission_manager)
+    state.commands_with_modifiers = {
+        command.split(' ', 1)[0]
+        for module in state.modules_registry.modules
+        for command in module.commands
+        if ' ' in command
+    }
+
     state.bot = await create_bot()
     bot = get_bot()
-    bot.modules_registry = modules_registry
-    bot.permission_manager = permission_manager
+    bot.modules_registry = get_modules_registry()
+    bot.permission_manager = get_permission_manager()
 
     # Get bot info
     me = await bot.get_me()
@@ -213,7 +230,7 @@ async def run_bot() -> None:
     )
 
     # Register module-specific handlers
-    for module in modules_registry.modules:
+    for module in get_modules_registry().modules:
         if hasattr(module, 'register_handlers'):
             module.register_handlers(bot)
 

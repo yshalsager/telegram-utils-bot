@@ -6,7 +6,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import cast
 
-from orjson import orjson
+import orjson
 from telethon.events import NewMessage
 
 from src import STATE_DIR
