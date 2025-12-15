@@ -64,6 +64,9 @@ class ModuleRegistry:
         self.permission_manager = permission_manager
         self.modules_file = STATE_DIR / 'modules.json'
         self.modules_status: dict[str, bool] = self._load_modules_status()
+        self.command_to_module: dict[str, ModuleBase] = {
+            command: module for module in self.modules for command in module.commands
+        }
 
     def _load_modules_status(self) -> dict[str, bool]:
         if self.modules_file.exists():
@@ -96,9 +99,9 @@ class ModuleRegistry:
         ]
 
     def get_module_by_command(self, command: str) -> ModuleBase | None:
-        for module in self.modules:
-            if self.is_module_enabled(module.name) and command in module.commands:
-                return module
+        module = self.command_to_module.get(command)
+        if module and self.is_module_enabled(module.name):
+            return module
         return None
 
     def get_all_commands(self, event: NewMessage.Event) -> dict[str, ModuleBase.CommandsT]:

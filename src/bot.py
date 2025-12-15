@@ -4,27 +4,30 @@ Telegram Bot
 
 import logging
 import traceback
-from asyncio import CancelledError, Task, create_task, get_event_loop, sleep
+from asyncio import CancelledError, Task, create_task, get_event_loop
 from collections.abc import Callable, Coroutine
 from contextlib import suppress
 from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
-import regex as re
 from orjson import orjson
 from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, InlineQuery, NewMessage, StopPropagation
 
 from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN, STATE_DIR
-from src.modules.base import InlineModuleBase, ModuleBase
+from src.modules.base import InlineModuleBase, ModuleBase, matches_command
 from src.utils.i18n import t
 from src.utils.modules_registry import ModuleRegistry
 from src.utils.permission_manager import PermissionManager
-from src.utils.telegram import get_reply_message
+from src.utils.telegram import delete_message_after, get_reply_message
 
-bot = TelegramClient(str(STATE_DIR / 'utils-bot'), API_ID, API_HASH).start(bot_token=BOT_TOKEN)
-bot.parse_mode = 'html'
+
+class BotState:
+    bot: TelegramClient | None = None
+
+
+state = BotState()
 bot_info = {}
 permission_manager = PermissionManager(set(BOT_ADMINS), STATE_DIR / 'permissions.json')
 modules_registry = ModuleRegistry(__package__, permission_manager)
@@ -36,6 +39,18 @@ commands_with_modifiers = {
     for command in module.commands
     if ' ' in command
 }
+
+
+async def create_bot() -> TelegramClient:
+    client = TelegramClient(str(STATE_DIR / 'utils-bot'), API_ID, API_HASH)
+    await client.start(bot_token=BOT_TOKEN)
+    client.parse_mode = 'html'
+    return client
+
+
+def get_bot() -> TelegramClient:
+    assert state.bot is not None
+    return state.bot
 
 
 def main() -> None:
@@ -50,7 +65,7 @@ async def handle_restart() -> None:
         return
 
     restart_message = orjson.loads(restart_path.read_text())
-    await bot.edit_message(
+    await get_bot().edit_message(
         restart_message['chat'],
         restart_message['message'],
         t('restarted_successfully'),
@@ -64,7 +79,12 @@ async def handle_module_execution(
     handler_args: tuple[Any, ...],
     response_func: Callable[[str], Coroutine[Any, Any, None]],
 ) -> None:
-    message = await get_reply_message(event) or event.message
+    reply_message = None
+    if (isinstance(event, NewMessage.Event) and event.message.is_reply) or isinstance(
+        event, CallbackQuery.Event
+    ):
+        reply_message = await get_reply_message(event)
+    message = reply_message or event.message
     task_id = f'{message.chat_id}_{message.id}'
     task: Task[bool] = create_task(module.handle(*handler_args))
 
@@ -93,17 +113,15 @@ async def handle_module_execution(
 
 
 async def handle_commands(event: NewMessage.Event) -> None:
-    command_with_args = re.search(r'^/(\w+)(?:\s+(\w+))?(?:\s+(.+))?$', event.message.text, re.M)
-    assert command_with_args is not None
-    command = command_with_args.group(1)
-    modifier = command_with_args.group(2)
-    # args = command_with_args.group(3)
+    match = event.pattern_match
+    command = match.group(1)
+    modifier = match.group(2)
     if modifier and command in commands_with_modifiers:
         command = f'{command} {modifier}'
 
     module = modules_registry.get_module_by_command(
         command
-    ) or modules_registry.get_module_by_command(command_with_args.group(1))
+    ) or modules_registry.get_module_by_command(match.group(1))
     if not module or not permission_manager.has_permission(module.name, event.chat_id):
         raise StopPropagation
 
@@ -111,11 +129,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
         await get_reply_message(event, previous=True) if event.message.is_reply else None
     )
     cmd = module.commands.get(command) or module.commands.get(command.split(' ', 1)[0])
-    if (
-        not cmd
-        or not cmd.condition(event, reply_message)
-        or not cmd.pattern.match(event.message.raw_text)
-    ):
+    if not cmd or not matches_command(event, reply_message, cmd):
         raise StopPropagation
 
     await handle_module_execution(event, module, (event, command), event.reply)
@@ -153,8 +167,7 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
         await event.answer(message, alert=True)
 
     await handle_module_execution(event, module, (event, command), response_func)
-    await sleep(60 * 5)
-    await event.delete()
+    event.client.loop.create_task(delete_message_after(await event.get_message(), seconds=60 * 5))
 
 
 async def handle_inline_query(event: InlineQuery.Event) -> None:
@@ -183,6 +196,11 @@ async def cancel_command(event: NewMessage.Event) -> None:
 
 async def run_bot() -> None:
     """Run the bot."""
+    state.bot = await create_bot()
+    bot = get_bot()
+    bot.modules_registry = modules_registry
+    bot.permission_manager = permission_manager
+
     # Get bot info
     me = await bot.get_me()
     bot_info.update({'name': me.first_name, 'username': me.username, 'id': me.id})
@@ -203,10 +221,8 @@ async def run_bot() -> None:
     bot.add_event_handler(
         handle_commands,
         NewMessage(
-            pattern=rf'^/(\w+)(?:@{bot_info["username"]})?\s?(.+)?',
-            func=lambda x: not any(
-                x.message.text.startswith(c) for c in ('/start', '/help', '/cancel')
-            ),
+            pattern=rf'^/(\w+)(?:@{bot_info["username"]})?(?:\s+(\w+))?(?:\s+(.+))?$',
+            func=lambda x: not any(x.message.text.startswith(c) for c in ('/start', '/cancel')),
         ),
     )
     bot.add_event_handler(

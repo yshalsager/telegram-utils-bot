@@ -5,7 +5,6 @@ from telethon.events import NewMessage
 from telethon.tl.functions.bots import SetBotCommandsRequest
 from telethon.tl.types import BotCommand, BotCommandScopePeer
 
-from src import bot
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_admin_in_private
@@ -13,11 +12,12 @@ from src.utils.i18n import t
 
 
 async def list_plugins(event: NewMessage.Event) -> None:
+    modules_registry = event.client.modules_registry
     enabled_modules = []
     disabled_modules = []
 
-    for module in bot.modules_registry.modules:
-        enabled_modules.append(module.name) if bot.modules_registry.modules_status.get(
+    for module in modules_registry.modules:
+        enabled_modules.append(module.name) if modules_registry.modules_status.get(
             module.name, True
         ) else disabled_modules.append(module.name)
 
@@ -30,7 +30,8 @@ async def list_plugins(event: NewMessage.Event) -> None:
 
 
 async def list_commands(event: NewMessage.Event) -> None:
-    all_commands: dict[str, ModuleBase.CommandsT] = bot.modules_registry.get_all_commands(event)
+    modules_registry = event.client.modules_registry
+    all_commands: dict[str, ModuleBase.CommandsT] = modules_registry.get_all_commands(event)
     help_text = f'<b>{t("available_commands")}</b>:\n\n'
     for module, commands in all_commands.items():
         if not commands:
@@ -56,12 +57,13 @@ async def list_commands(event: NewMessage.Event) -> None:
 
 
 async def manage_plugins(event: NewMessage.Event) -> None:
+    modules_registry = event.client.modules_registry
     action, module_name = event.message.text.split('plugins ')[1].split(' ')
     if action == 'enable':
-        bot.modules_registry.enable_module(module_name)
+        modules_registry.enable_module(module_name)
         await event.reply(t('module_enabled', module_name=module_name))
     if action == 'disable':
-        bot.modules_registry.disable_module(module_name)
+        modules_registry.disable_module(module_name)
         await event.reply(t('module_disabled', module_name=module_name))
 
 
@@ -78,7 +80,13 @@ class PluginManager(ModuleBase):
         'commands': Command(
             handler=list_commands,
             description=t('_commands_description'),
-            pattern=re.compile(r'^/commands$'),
+            pattern=re.compile(r'^/(commands|help)$'),
+            condition=is_admin_in_private,
+        ),
+        'help': Command(
+            handler=list_commands,
+            description=t('_commands_description'),
+            pattern=re.compile(r'^/(commands|help)$'),
             condition=is_admin_in_private,
         ),
         'plugins enable': Command(
@@ -94,9 +102,3 @@ class PluginManager(ModuleBase):
             condition=is_admin_in_private,
         ),
     }
-
-
-bot.bot.add_event_handler(
-    list_commands,
-    NewMessage(func=lambda x: x.message.text in ('/commands', '/help')),
-)
