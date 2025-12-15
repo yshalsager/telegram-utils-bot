@@ -78,7 +78,7 @@ async def upload_from_url_command(event: NewMessage.Event) -> None:
         return
     if custom := (message.raw_text or '').split('|', 1):
         custom_name = custom[1].strip() if len(custom) > 1 else ''
-    progress_message = await event.reply(t('starting_file_download'))
+    progress_message = await event.client.send_message(event.chat_id, t('starting_file_download'))
 
     with NamedTemporaryFile(dir=DOWNLOADS_DIR, delete=False) as temp_file:
         download_to = await download_from_url(
