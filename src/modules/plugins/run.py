@@ -91,7 +91,7 @@ async def stream_shell_output(  # noqa: C901
     )
     await status_message.edit(status)
     if owns_progress_message:
-        event.client.loop.create_task(delete_message_after(progress_message))
+        delete_message_after(progress_message)
 
     if bool(buffer.strip()) and event.sender_id in BOT_ADMINS:
         with NamedTemporaryFile(

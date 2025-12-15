@@ -235,7 +235,7 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
         feedback_text=t('audio_successfully_compressed'),
     )
     if delete_message_after_process:
-        await delete_message_after(await event.get_message())
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -667,7 +667,7 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         feedback_text=t('media_converted_to_target_format', target_format=target_format),
     )
     if delete_message_after_process:
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 ALLOWED_VIDEO_QUALITIES = {144, 240, 360, 480, 720}
@@ -709,7 +709,7 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
         event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
     )
     if delete_message_after_process:
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def video_update_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -804,7 +804,7 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
         ),
     )
     if delete_message_after_process:
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -898,7 +898,7 @@ async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
     assert isinstance(status_message, Message)
     await status_message.edit(data['status_text'] + feedback_text)
     if delete_message_after_process:
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -942,7 +942,7 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
     assert isinstance(status_message, Message)
     await status_message.edit(data['status_text'] + feedback_text)
     if delete_message_after_process:
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def video_create_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -1120,9 +1120,9 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     if transcription_method != 'whisper':
         await status_message.edit(t('transcription_completed'))
     rmtree(output_dir)
-    await delete_message_after(progress_message)
+    delete_message_after(progress_message)
     if delete_message_after_process:
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def fix_stereo_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -1154,7 +1154,7 @@ async def fix_stereo_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
         event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
     )
     if delete_message_after_process:
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 class Media(ModuleBase):

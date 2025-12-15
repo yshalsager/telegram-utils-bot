@@ -273,9 +273,7 @@ async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> No
 
     await progress_message.edit(t('pdf_to_images_conversion_completed'))
     if delete_message_after_process:
-        event.client.loop.create_task(
-            delete_message_after(await event.get_message(), seconds=60 * 5)
-        )
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def image_to_pdf(event: NewMessage.Event) -> None:
@@ -432,9 +430,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     if delete_message_after_process:
         await status_message.delete()
-        event.client.loop.create_task(
-            delete_message_after(await event.get_message(), seconds=60 * 5)
-        )
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def pdf_bw(event: NewMessage.Event | CallbackQuery.Event) -> None:

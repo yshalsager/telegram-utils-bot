@@ -84,9 +84,7 @@ async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
         output_file.unlink(missing_ok=True)
 
     if delete_message_after_process:
-        event.client.loop.create_task(
-            delete_message_after(await event.get_message(), seconds=60 * 5)
-        )
+        delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def trim_image(event: NewMessage.Event) -> None:
