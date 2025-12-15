@@ -37,7 +37,12 @@ from src.utils.reply import (
 )
 from src.utils.run import run_command
 from src.utils.subtitles import srt_to_txt
-from src.utils.telegram import delete_message_after, edit_or_send_as_file, get_reply_message
+from src.utils.telegram import (
+    delete_message_after,
+    edit_or_send_as_file,
+    get_reply_message,
+    send_progress_message,
+)
 
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
 reply_states: StateT = defaultdict(
@@ -110,7 +115,7 @@ async def get_media_bitrate(file_path: str) -> tuple[int, int]:
 
 
 async def process_media(
-    event: NewMessage.Event,
+    event: NewMessage.Event | CallbackQuery.Event,
     ffmpeg_command: str,
     output_suffix: str,
     reply_message: Message | None = None,
@@ -122,8 +127,8 @@ async def process_media(
     data: dict[str, Any] = {}
     if not reply_message:
         reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply(t('starting_process'))
-    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
 
     with NamedTemporaryFile(dir=TMP_DIR) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -280,8 +285,8 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.reply(t('invalid_time_format'))
         return None
 
-    status_message = await event.reply(t('starting_cut'))
-    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
+    status_message = await send_progress_message(event, t('starting_cut'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
     with NamedTemporaryFile(suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         input_file = get_download_name(reply_message)
@@ -339,9 +344,8 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         segment_duration = duration * 60
     else:
         segment_duration = duration
-    status_message = await event.reply(t('starting_process'))
-
-    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
     with NamedTemporaryFile() as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         input_file = get_download_name(reply_message)
@@ -377,7 +381,7 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply(t('starting_process'))
+    progress_message = await send_progress_message(event, t('starting_process'))
     with NamedTemporaryFile() as temp_file:
         await download_file(event, temp_file, reply_message, progress_message)
         output, code = await run_command(ffprobe_command.format(input=temp_file.name))
@@ -486,8 +490,8 @@ async def merge_media_process(event: CallbackQuery.Event) -> None:
 
 async def trim_silence(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply(t('starting_silence_trimming'))
-    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
+    status_message = await send_progress_message(event, t('starting_silence_trimming'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
     extension = reply_message.file.ext
 
     with (
@@ -550,8 +554,8 @@ async def mute_video(event: NewMessage.Event) -> None:
 
 async def extract_subtitle(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply(t('starting_subtitle_extraction'))
-    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
+    status_message = await send_progress_message(event, t('starting_subtitle_extraction'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
 
     with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
         await download_file(event, input_file, reply_message, progress_message)
@@ -722,7 +726,7 @@ async def video_update_process(event: NewMessage.Event) -> None:
         event.chat_id, ids=video_update_states[event.sender_id]['files'][0]
     )
     audio_message = event.message
-    status_message = await event.reply(t('starting_audio_update'))
+    status_message = await send_progress_message(event, t('starting_audio_update'))
     progress_message = await event.respond(f'<pre>{t("process_output")}:</pre>')
 
     with (
@@ -805,8 +809,8 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply(t('starting_thumbnail_generation'))
-    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
+    status_message = await send_progress_message(event, t('starting_thumbnail_generation'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
 
     with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
         await download_file(event, input_file, reply_message, progress_message)
@@ -1043,8 +1047,8 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             return
 
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply(t('starting_transcription'))
-    progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
+    status_message = await send_progress_message(event, t('starting_transcription'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1075,7 +1079,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     return
                 tmp_file_path = tmp_file_path.with_suffix('.ogg')
             response = model.prompt(
-                attachments=[Attachment(path=tmp_file_path)],
+                attachments=[Attachment(path=str(tmp_file_path))],
                 language=language,
             )
             response.on_done(lambda _: tmp_file_path.unlink(missing_ok=True))

@@ -6,7 +6,7 @@ from typing import Any
 from urllib import parse
 from uuid import uuid4
 
-from telethon.events import NewMessage
+from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 from telethon.tl.types import DocumentAttributeFilename
 
@@ -53,7 +53,7 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
 
 
 async def download_file(
-    event: NewMessage.Event,
+    event: NewMessage.Event | CallbackQuery.Event,
     temp_file: _TemporaryFileWrapper | BufferedRandom | BufferedWriter,
     reply_message: Message,
     progress_message: Message,
@@ -78,7 +78,7 @@ async def download_file(
 
 
 async def upload_file(
-    event: NewMessage.Event,
+    event: NewMessage.Event | CallbackQuery.Event,
     output_file: Path,
     progress_message: Message,
     is_voice: bool = False,
@@ -101,7 +101,7 @@ async def upload_file(
         force_document=force_document,
         caption=caption if caption else None,
         voice_note=is_voice,
-        reply_to=event.message.id if hasattr(event, 'message') else None,
+        reply_to=event.message.id if isinstance(event, NewMessage.Event) else None,
         **kwargs,
     )
 

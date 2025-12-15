@@ -19,7 +19,7 @@ from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.filters import has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
-from src.utils.telegram import get_reply_message
+from src.utils.telegram import get_reply_message, send_progress_message
 
 OCR_MODEL = 'gemini-2.5-flash'
 OCR_MODEL_RPM = 10
@@ -75,8 +75,8 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return
 
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply(t('starting_process'))
-    progress_message = await event.reply(t('performing_ocr'))
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('performing_ocr'))
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(dir=output_dir, suffix=reply_message.file.ext) as temp_file:

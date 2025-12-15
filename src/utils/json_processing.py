@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
@@ -7,7 +8,7 @@ from humanize import naturalsize, precisedelta
 json_options = (
     orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS | orjson.OPT_NAIVE_UTC | orjson.OPT_OMIT_MICROSECONDS
 )
-processors = {
+processors: dict[str, Callable[[Any], Any]] = {
     'size': naturalsize,
     'duration': lambda x: precisedelta(timedelta(seconds=float(x))),
 }

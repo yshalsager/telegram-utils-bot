@@ -16,7 +16,12 @@ from src.utils.filters import has_photo_or_photo_file
 from src.utils.i18n import t
 from src.utils.images import crop_image_white_borders
 from src.utils.run import run_command
-from src.utils.telegram import delete_message_after, edit_or_send_as_file, get_reply_message
+from src.utils.telegram import (
+    delete_message_after,
+    edit_or_send_as_file,
+    get_reply_message,
+    send_progress_message,
+)
 
 ALLOWED_INPUT_FORMATS = {
     'jpg',
@@ -66,8 +71,8 @@ async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.reply(t('file_already_in_target_format', target_format=target_format))
         return
 
-    progress_message = await event.reply(
-        t('converting_image_to_target_format', target_format=target_format)
+    progress_message = await send_progress_message(
+        event, t('converting_image_to_target_format', target_format=target_format)
     )
     with NamedTemporaryFile(dir=TMP_DIR, suffix=target_format) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -79,12 +84,14 @@ async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
         output_file.unlink(missing_ok=True)
 
     if delete_message_after_process:
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        event.client.loop.create_task(
+            delete_message_after(await event.get_message(), seconds=60 * 5)
+        )
 
 
 async def trim_image(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply(f'{t("trimming_image")}…')
+    progress_message = await send_progress_message(event, f'{t("trimming_image")}…')
     with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
         try:
@@ -101,8 +108,8 @@ async def trim_image(event: NewMessage.Event) -> None:
 
 async def ocr_image(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    status_message = await event.reply(t('starting_process'))
-    progress_message = await event.reply(t('performing_ocr_on_image'))
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('performing_ocr_on_image'))
     lang = 'ara'
     if match := re.search(r'^/image\s+ocr\s+([\w+]{3,})$', event.message.raw_text):
         lang = match.group(1)

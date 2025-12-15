@@ -1,7 +1,9 @@
 import asyncio
 import time
+from contextlib import suppress
 
 from humanize import naturalsize, precisedelta
+from telethon.errors import RPCError
 from telethon.tl.custom import Message
 
 
@@ -36,6 +38,7 @@ async def progress_callback(current: float, total: float, event: Message, action
         bar = '█' * filled_length + '░' * (bar_length - filled_length)
         text += f'[{bar}] {percentage:.1f}%'
 
-        await event.edit(text)
+        with suppress(RPCError):
+            await event.edit(text)
 
     await asyncio.sleep(0)  # to yield control and prevent blocking

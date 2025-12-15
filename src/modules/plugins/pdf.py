@@ -27,7 +27,15 @@ from src.utils.reply import (
     StateT,
     handle_callback_query_for_reply_state,
 )
-from src.utils.telegram import delete_message_after, get_reply_message
+from src.utils.telegram import delete_message_after, get_reply_message, send_progress_message
+
+PDF_SAVE_KWARGS = {
+    'garbage': 4,
+    'deflate': True,
+    'deflate_images': True,
+    'deflate_fonts': False,
+    'use_objstms': True,
+}
 
 reply_states: StateT = defaultdict(
     lambda: {'state': ReplyState.WAITING, 'media_message_id': None, 'reply_message_id': None}
@@ -37,9 +45,7 @@ merge_states: StateT = defaultdict(lambda: {'state': MergeState.IDLE, 'files': [
 
 async def extract_pdf_text(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    if isinstance(event, CallbackQuery.Event):
-        await event.answer()
-    progress_message = await event.client.send_message(event.chat_id, t('extracting_text_from_pdf'))
+    progress_message = await send_progress_message(event, t('extracting_text_from_pdf'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -93,14 +99,7 @@ async def merge_pdf_process(event: CallbackQuery.Event) -> None:
                 with pymupdf.open(temp_file_path) as pdf_doc:
                     merged_pdf.insert_pdf(pdf_doc)
         with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as out_file:
-            merged_pdf.save(
-                out_file.name,
-                garbage=4,
-                deflate=True,
-                deflate_images=True,
-                deflate_fonts=False,
-                use_objstms=True,
-            )
+            merged_pdf.save(out_file.name, **PDF_SAVE_KWARGS)
             output_file_path = Path(out_file.name)
             if output_file_path.exists() and output_file_path.stat().st_size:
                 output_file_path = output_file_path.rename(
@@ -139,9 +138,7 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     else:
         await event.reply(t('invalid_pdf_split_pages_number'))
         raise StopPropagation
-    if isinstance(event, CallbackQuery.Event):
-        await event.answer()
-    progress_message = await event.client.send_message(event.chat_id, t('splitting_pdf'))
+    progress_message = await send_progress_message(event, t('splitting_pdf'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -159,14 +156,7 @@ async def split_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     output_file = temp_file_path.with_name(
                         f'{Path(reply_message.file.name).stem}_{i + 1}.pdf'
                     )
-                    new_doc.save(
-                        output_file,
-                        garbage=4,
-                        deflate=True,
-                        deflate_images=True,
-                        deflate_fonts=False,
-                        use_objstms=True,
-                    )
+                    new_doc.save(output_file, **PDF_SAVE_KWARGS)
                     await upload_file(event, output_file, progress_message)
                     output_file.unlink(missing_ok=True)
 
@@ -209,9 +199,7 @@ async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> No
         else event.message.text
     )
     pages_to_extract = parse_page_numbers(pages_input)
-    if isinstance(event, CallbackQuery.Event):
-        await event.answer()
-    progress_message = await event.client.send_message(event.chat_id, t('extracting_pdf_pages'))
+    progress_message = await send_progress_message(event, t('extracting_pdf_pages'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -220,14 +208,7 @@ async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> No
             output_file = temp_file_path.with_name(
                 f'{Path(reply_message.file.name).stem}_extracted.pdf'
             )
-            doc.save(
-                output_file,
-                garbage=4,
-                deflate=True,
-                deflate_images=True,
-                deflate_fonts=False,
-                use_objstms=True,
-            )
+            doc.save(output_file, **PDF_SAVE_KWARGS)
             await upload_file(event, output_file, progress_message)
             output_file.unlink(missing_ok=True)
 
@@ -255,7 +236,7 @@ async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> No
         output_format = 'ZIP' if len(args) == 1 else args[-1]
 
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.client.send_message(event.chat_id, t('converting_pdf_to_images'))
+    progress_message = await send_progress_message(event, t('converting_pdf_to_images'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -292,12 +273,14 @@ async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> No
 
     await progress_message.edit(t('pdf_to_images_conversion_completed'))
     if delete_message_after_process:
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        event.client.loop.create_task(
+            delete_message_after(await event.get_message(), seconds=60 * 5)
+        )
 
 
 async def image_to_pdf(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply(t('converting_image_to_pdf'))
+    progress_message = await send_progress_message(event, t('converting_image_to_pdf'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -322,10 +305,8 @@ async def image_to_pdf(event: NewMessage.Event) -> None:
 
 async def ocrmypdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    if isinstance(event, CallbackQuery.Event):
-        await event.answer()
-    status_message = await event.client.send_message(event.chat_id, t('starting_process'))
-    progress_message = await event.client.send_message(event.chat_id, t('performing_ocr'))
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('performing_ocr'))
     lang = 'ara'
     if isinstance(event, NewMessage.Event) and (
         match := re.search(r'^/pdf\s+ocr\s+([\w+]{3,})$', event.message.raw_text)
@@ -360,10 +341,8 @@ async def ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return
 
     reply_message = await get_reply_message(event, previous=True)
-    if isinstance(event, CallbackQuery.Event):
-        await event.answer()
-    status_message = await event.client.send_message(event.chat_id, t('starting_process'))
-    progress_message = await event.client.send_message(event.chat_id, t('performing_ocr_tahweel'))
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('performing_ocr_tahweel'))
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -417,15 +396,8 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         option = ''
 
     reply_message = await get_reply_message(event, previous=True)
-    if isinstance(event, CallbackQuery.Event):
-        await event.answer()
-    reply_to = event.message.id if isinstance(event, NewMessage.Event) else None
-    status_message = await event.client.send_message(
-        event.chat_id, t('starting_process'), reply_to=reply_to
-    )
-    progress_message = await event.client.send_message(
-        event.chat_id, t('compressing_pdf'), reply_to=reply_to
-    )
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('compressing_pdf'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -441,14 +413,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
             await stream_shell_output(event, command, status_message, progress_message)
         elif method == 'pymupdf':
             with pymupdf.open(temp_file_path) as doc:
-                doc.save(
-                    output_file,
-                    garbage=4,
-                    deflate=True,
-                    deflate_images=True,
-                    deflate_fonts=False,
-                    use_objstms=True,
-                )
+                doc.save(output_file, **PDF_SAVE_KWARGS)
         else:  # ocrmypdf
             command = f'ocrmypdf --clean --tesseract-timeout 0 "{temp_file_path.name}" "{output_file.name}"'
             await stream_shell_output(event, command, status_message, progress_message)
@@ -467,15 +432,15 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     if delete_message_after_process:
         await status_message.delete()
-        event.client.loop.create_task(delete_message_after(await event.get_message()))
+        event.client.loop.create_task(
+            delete_message_after(await event.get_message(), seconds=60 * 5)
+        )
 
 
 async def pdf_bw(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    if isinstance(event, CallbackQuery.Event):
-        await event.answer()
-    status_message = await event.client.send_message(event.chat_id, t('starting_process'))
-    progress_message = await event.client.send_message(event.chat_id, t('converting_pdf_to_bw'))
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('converting_pdf_to_bw'))
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
     work_dir = output_dir.absolute()
@@ -512,14 +477,7 @@ async def pdf_bw(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     pymupdf.Rect(0, 0, pix.width, pix.height),
                     stream=pix.tobytes('png'),
                 )
-            doc.save(
-                output_file,
-                garbage=4,
-                deflate=True,
-                deflate_images=True,
-                deflate_fonts=False,
-                use_objstms=True,
-            )
+            doc.save(output_file, **PDF_SAVE_KWARGS)
 
         await upload_file(event, output_file, progress_message)
 
@@ -529,7 +487,7 @@ async def pdf_bw(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def crop_pdf_whitespace(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply(t('_pdf_crop_description'))
+    progress_message = await send_progress_message(event, t('_pdf_crop_description'))
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix='.pdf') as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -550,14 +508,7 @@ async def crop_pdf_whitespace(event: NewMessage.Event) -> None:
             output_file = temp_file_path.with_name(
                 f'{Path(reply_message.file.name or "document").stem}_cropped.pdf'
             )
-            pdf_doc.save(
-                output_file,
-                garbage=4,
-                deflate=True,
-                deflate_images=True,
-                deflate_fonts=False,
-                use_objstms=True,
-            )
+            pdf_doc.save(output_file, **PDF_SAVE_KWARGS)
 
         await upload_file(event, output_file, progress_message)
         output_file.unlink(missing_ok=True)

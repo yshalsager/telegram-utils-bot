@@ -22,7 +22,7 @@ from src.utils.json_processing import json_options, process_dict
 from src.utils.patterns import HTTP_URL_PATTERN, YOUTUBE_URL_PATTERN
 from src.utils.progress import progress_callback
 from src.utils.subtitles import convert_subtitles
-from src.utils.telegram import edit_or_send_as_file, get_reply_message
+from src.utils.telegram import edit_or_send_as_file, get_reply_message, send_progress_message
 
 cookies_file = STATE_DIR / 'cookies.txt'
 netrc_file = STATE_DIR / '.netrc'
@@ -105,7 +105,7 @@ def calculate_common_formats_and_sizes(
 
 
 async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    progress_message = await event.reply(t('fetching_information'))
+    progress_message = await send_progress_message(event, t('fetching_information'))
     message = (
         await get_reply_message(event, previous=True)
         if isinstance(event, CallbackQuery.Event)
@@ -145,7 +145,7 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 
 async def get_subtitles(event: NewMessage.Event) -> None:
-    progress_message = await event.reply(t('downloading_subtitles'))
+    progress_message = await send_progress_message(event, t('downloading_subtitles'))
     message = (
         await get_reply_message(event, previous=True)
         if isinstance(event, CallbackQuery.Event)
@@ -208,7 +208,7 @@ async def get_subtitles(event: NewMessage.Event) -> None:
 
 
 async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    progress_message = await event.reply(t('fetching_available_formats'))
+    progress_message = await send_progress_message(event, t('fetching_available_formats'))
     message = (
         await get_reply_message(event, previous=True)
         if isinstance(event, CallbackQuery.Event)
@@ -269,11 +269,10 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         buttons = [
             [Button.inline(t('audio'), 'ytdown|audio|'), Button.inline(t('video'), 'ytdown|video|')]
         ]
-        progress_message = (
+        if is_command_event:
             await event.reply(text, buttons=buttons)
-            if is_command_event
-            else await event.edit(text, buttons=buttons)
-        )
+        else:
+            await event.edit(text, buttons=buttons)
         return
 
     reply_message = await get_reply_message(event, previous=True)
@@ -283,7 +282,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.edit(t('no_valid_url_found'))
         return
     _, _type, _format = event.data.decode().split('|')
-    progress_message = await event.reply(t('starting_process'))
+    progress_message = await send_progress_message(event, t('starting_process'))
 
     if _type in ('audio', 'video') and not _format:
         await progress_message.edit(t('fetching_available_formats'))
@@ -395,7 +394,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 
 async def download_audio_segment(event: NewMessage.Event) -> None:
-    progress_message = await event.reply(t('starting_audio_download'))
+    progress_message = await send_progress_message(event, t('starting_audio_download'))
     message = event.message
     match = re.search(
         rf'^/ytaudio\s+(?P<url>{HTTP_URL_PATTERN})\s+(?P<start>\d{{2}}:\d{{2}}:\d{{2}})\s+(?P<end>\d{{2}}:\d{{2}}:\d{{2}})$',

@@ -20,7 +20,7 @@ async def get_reply_message(
 
 
 async def edit_or_send_as_file(
-    event: NewMessage.Event,
+    event: NewMessage.Event | CallbackQuery.Event,
     message: Message,
     text: str,
     file_name: str = 'output.txt',
@@ -30,7 +30,7 @@ async def edit_or_send_as_file(
         await message.edit(text)
         return True
     except MessageTooLongError:
-        progress_message = await event.reply(t('sending_file'))
+        progress_message = await send_progress_message(event, t('sending_file'))
         with NamedTemporaryFile(mode='w+', suffix='.txt') as temp_file:
             temp_file.write(text)
             temp_file.flush()
@@ -44,3 +44,17 @@ async def edit_or_send_as_file(
 async def delete_message_after(message: Message, seconds: int = 10) -> None:
     await sleep(seconds)
     await message.delete()
+
+
+async def send_progress_message(
+    event: NewMessage.Event | CallbackQuery.Event,
+    text: str,
+    *,
+    reply: bool = True,
+) -> Message:
+    if isinstance(event, CallbackQuery.Event):
+        await event.answer()
+        reply_to = None
+    else:
+        reply_to = event.message.id if reply else None
+    return await event.client.send_message(event.chat_id, text, reply_to=reply_to)

@@ -15,7 +15,7 @@ from src.utils.filters import has_file, is_valid_reply_state
 from src.utils.i18n import t
 from src.utils.progress import progress_callback
 from src.utils.reply import ReplyState, StateT, handle_callback_query_for_reply_state
-from src.utils.telegram import get_reply_message
+from src.utils.telegram import get_reply_message, send_progress_message
 
 reply_states: StateT = defaultdict(
     lambda: {'state': ReplyState.WAITING, 'media_message_id': None, 'reply_message_id': None}
@@ -43,7 +43,7 @@ async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.reply(t('the_new_filename_is_the_same'))
         return None
 
-    progress_message = await event.reply(t('starting_file_rename'))
+    progress_message = await send_progress_message(event, t('starting_file_rename'))
 
     with NamedTemporaryFile(delete=False) as temp_file:
         await download_file(

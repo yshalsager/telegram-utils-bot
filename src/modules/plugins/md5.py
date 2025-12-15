@@ -10,12 +10,12 @@ from src.utils.command import Command
 from src.utils.downloads import download_file
 from src.utils.filters import has_file
 from src.utils.i18n import t
-from src.utils.telegram import get_reply_message
+from src.utils.telegram import get_reply_message, send_progress_message
 
 
 async def calculate_md5(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply(t('md5_hashing_started'))
+    progress_message = await send_progress_message(event, t('md5_hashing_started'))
 
     with NamedTemporaryFile() as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)

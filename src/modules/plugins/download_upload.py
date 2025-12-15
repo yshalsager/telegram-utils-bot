@@ -20,7 +20,7 @@ from src.utils.filters import (
 )
 from src.utils.i18n import t
 from src.utils.patterns import HTTP_URL_PATTERN
-from src.utils.telegram import get_reply_message
+from src.utils.telegram import get_reply_message, send_progress_message
 
 
 async def download_from_url(
@@ -37,7 +37,7 @@ async def download_from_url(
 
 
 async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    progress_message = await event.reply(t('starting_file_download'))
+    progress_message = await send_progress_message(event, t('starting_file_download'))
     reply_message = await get_reply_message(event, previous=True)
     if url_match := re.search(HTTP_URL_PATTERN, reply_message.raw_text):
         url = url_match.group(0)
@@ -78,7 +78,7 @@ async def upload_from_url_command(event: NewMessage.Event) -> None:
         return
     if custom := (message.raw_text or '').split('|', 1):
         custom_name = custom[1].strip() if len(custom) > 1 else ''
-    progress_message = await event.client.send_message(event.chat_id, t('starting_file_download'))
+    progress_message = await send_progress_message(event, t('starting_file_download'))
 
     with NamedTemporaryFile(dir=DOWNLOADS_DIR, delete=False) as temp_file:
         download_to = await download_from_url(
@@ -101,13 +101,12 @@ async def upload_from_url_command(event: NewMessage.Event) -> None:
 
 async def upload_as_file_or_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
-        await event.answer()
         force_document = event.data.decode().split('_')[-1] == 'file'
     else:
         force_document = event.message.text.split(maxsplit=1)[-1].strip() == 'file'
 
     reply_message = await get_reply_message(event, previous=True)
-    progress_message = await event.reply(t('starting_file_download'))
+    progress_message = await send_progress_message(event, t('starting_file_download'))
     _type = 'file' if force_document else 'media'
     output_file_name = f'{reply_message.file.name or _type}{reply_message.file.ext}'
     with NamedTemporaryFile() as temp_file:

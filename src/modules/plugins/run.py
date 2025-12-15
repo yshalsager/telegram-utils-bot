@@ -6,7 +6,7 @@ from typing import ClassVar, cast
 
 import regex as re
 from telethon.errors import FloodWaitError, MessageNotModifiedError
-from telethon.events import NewMessage
+from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
 from src import BOT_ADMINS
@@ -21,23 +21,24 @@ from src.utils.run import (
     run_subprocess_exec,
     run_subprocess_shell,
 )
-from src.utils.telegram import delete_message_after
+from src.utils.telegram import delete_message_after, send_progress_message
 
 SECONDS_TO_WAIT = 5
 
 
-async def stream_shell_output(
-    event: NewMessage.Event,
+async def stream_shell_output(  # noqa: C901
+    event: NewMessage.Event | CallbackQuery.Event,
     cmd: str,
     status_message: Message | None = None,
     progress_message: Message | None = None,
     shell: bool = True,
     max_length: int = MAX_MESSAGE_LENGTH,
 ) -> str:
+    owns_progress_message = progress_message is None
     if not status_message:
-        status_message = await event.reply(t('starting_process'))
+        status_message = await send_progress_message(event, t('starting_process'))
     if not progress_message:
-        progress_message = await event.reply(f'<pre>{t("process_output")}:</pre>')
+        progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
     runner = run_subprocess_shell if shell else run_subprocess_exec
     timeout = ADMIN_TIMEOUT_SECONDS if event.sender_id in BOT_ADMINS else TIMEOUT_SECONDS
     buffer = ''
@@ -89,7 +90,8 @@ async def stream_shell_output(
         f'{t("elapsed_time")}: {elapsed_time}'
     )
     await status_message.edit(status)
-    event.client.loop.create_task(delete_message_after(progress_message))
+    if owns_progress_message:
+        event.client.loop.create_task(delete_message_after(progress_message))
 
     if bool(buffer.strip()) and event.sender_id in BOT_ADMINS:
         with NamedTemporaryFile(
