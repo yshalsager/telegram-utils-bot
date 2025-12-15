@@ -30,19 +30,12 @@ permission_manager = PermissionManager(set(BOT_ADMINS), STATE_DIR / 'permissions
 modules_registry = ModuleRegistry(__package__, permission_manager)
 logger = logging.getLogger(__name__)
 
-commands_with_modifiers = (
-    'audio',
-    'media',
-    'video',
-    'tasks',
-    'permissions',
-    'pdf',
-    'plugins',
-    'upload',
-    'transcribe',
-    'image',
-    'ocr',
-)
+commands_with_modifiers = {
+    command.split(' ', 1)[0]
+    for module in modules_registry.modules
+    for command in module.commands
+    if ' ' in command
+}
 
 
 def main() -> None:
@@ -107,13 +100,21 @@ async def handle_commands(event: NewMessage.Event) -> None:
     # args = command_with_args.group(3)
     if modifier and command in commands_with_modifiers:
         command = f'{command} {modifier}'
+
     module = modules_registry.get_module_by_command(
         command
     ) or modules_registry.get_module_by_command(command_with_args.group(1))
+    if not module or not permission_manager.has_permission(module.name, event.chat_id):
+        raise StopPropagation
+
+    reply_message = (
+        await get_reply_message(event, previous=True) if event.message.is_reply else None
+    )
+    cmd = module.commands.get(command) or module.commands.get(command.split(' ', 1)[0])
     if (
-        not module
-        or not permission_manager.has_permission(module.name, event.chat_id)
-        or not await module.is_applicable(event)
+        not cmd
+        or not cmd.condition(event, reply_message)
+        or not cmd.pattern.match(event.message.raw_text)
     ):
         raise StopPropagation
 

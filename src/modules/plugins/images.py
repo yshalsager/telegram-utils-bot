@@ -1,4 +1,3 @@
-from functools import partial
 from itertools import zip_longest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -10,7 +9,7 @@ from telethon import Button
 from telethon.events import CallbackQuery, NewMessage
 
 from src import TMP_DIR
-from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
+from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import download_file, upload_file
 from src.utils.filters import has_photo_or_photo_file
@@ -105,8 +104,8 @@ async def ocr_image(event: NewMessage.Event) -> None:
     status_message = await event.reply(t('starting_process'))
     progress_message = await event.reply(t('performing_ocr_on_image'))
     lang = 'ara'
-    if matches := Images.commands['image ocr'].pattern.search(reply_message.raw_text):
-        lang = matches[-1] if len(matches.groups()) > 2 else lang
+    if match := re.search(r'^/image\s+ocr\s+([\w+]{3,})$', event.message.raw_text):
+        lang = match.group(1)
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -123,22 +122,13 @@ async def ocr_image(event: NewMessage.Event) -> None:
     await progress_message.edit(t('image_ocr_complete'))
 
 
-handlers: CommandHandlerDict = {
-    'image convert': convert_image,
-    'image ocr': ocr_image,
-    'image trim': trim_image,
-}
-
-handler = partial(dynamic_handler, handlers)
-
-
 class Images(ModuleBase):
     name = 'Images'
     description = t('_images_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'image convert': Command(
             name='image convert',
-            handler=handler,
+            handler=convert_image,
             description=t('_image_convert_description'),
             pattern=re.compile(r'^/(image)\s+(convert)\s+([\d\w]{3,4})$'),
             condition=has_photo_or_photo_file,
@@ -146,7 +136,7 @@ class Images(ModuleBase):
         ),
         'image ocr': Command(
             name='image ocr',
-            handler=handler,
+            handler=ocr_image,
             description=t('_image_ocr_description'),
             pattern=re.compile(r'^/(image)\s+(ocr)\s+?([\w+]{3,})?$'),
             condition=has_photo_or_photo_file,
@@ -154,7 +144,7 @@ class Images(ModuleBase):
         ),
         'image trim': Command(
             name='image trim',
-            handler=handler,
+            handler=trim_image,
             description=t('_image_trim_description'),
             pattern=re.compile(r'^/(image)\s+(trim)$'),
             condition=has_photo_or_photo_file,

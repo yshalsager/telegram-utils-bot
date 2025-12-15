@@ -1,18 +1,15 @@
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Callable, Coroutine
 from typing import Any, ClassVar
 
 import regex as re
 from telethon import TelegramClient
-from telethon.events import CallbackQuery, InlineQuery, NewMessage
+from telethon.events import InlineQuery, NewMessage
 from telethon.tl.custom import Message
 
 from src.utils.command import Command, InlineCommand
-from src.utils.i18n import t
 from src.utils.patterns import HTTP_URL_PATTERN
 from src.utils.telegram import get_reply_message
-
-CommandHandlerDict = dict[str, Callable[[NewMessage.Event | CallbackQuery.Event], Awaitable[None]]]
 
 
 def matches_command(
@@ -28,26 +25,6 @@ def matches_command(
     if text and not has_file and not is_url_message:
         return bool(command.pattern.match(text))
     return bool(is_url_message or has_file)
-
-
-async def dynamic_handler(
-    handlers: CommandHandlerDict, event: NewMessage.Event | CallbackQuery.Event
-) -> None:
-    if isinstance(event, CallbackQuery.Event):
-        command = event.data.decode('utf-8')
-        if command.startswith('m|'):
-            command = command[2:]
-        command = command.replace('_', ' ')
-        if '|' in command:
-            command, _ = command.split('|', 1)
-    else:
-        command = ' '.join(' '.join(i for i in event.pattern_match.groups() if i).split(' ')[:2])
-    handler = handlers.get(command) or handlers.get(command.split(' ', 1)[0])
-    if not handler:
-        await event.reply(t('command_not_found'))
-        return
-
-    await handler(event)
 
 
 class ModuleBase(ABC):

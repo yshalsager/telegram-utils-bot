@@ -1,6 +1,5 @@
 from collections import defaultdict
 from contextlib import suppress
-from functools import partial
 from io import BytesIO
 from os import getenv
 from pathlib import Path
@@ -16,7 +15,7 @@ from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 
 from src import TMP_DIR
-from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
+from src.modules.base import ModuleBase
 from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
@@ -315,13 +314,15 @@ async def image_to_pdf(event: NewMessage.Event) -> None:
     await progress_message.edit(t('image_to_pdf_conversion_completed'))
 
 
-async def ocrmypdf(event: NewMessage.Event) -> None:
+async def ocrmypdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await event.reply(t('starting_process'))
     progress_message = await event.reply(t('performing_ocr'))
     lang = 'ara'
-    if matches := PDF.commands['pdf ocr'].pattern.search(reply_message.raw_text):
-        lang = matches[-1] if len(matches.groups()) > 2 else lang
+    if isinstance(event, NewMessage.Event) and (
+        match := re.search(r'^/pdf\s+ocr\s+([\w+]{3,})$', event.message.raw_text)
+    ):
+        lang = match.group(1)
 
     with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
@@ -343,7 +344,7 @@ async def ocrmypdf(event: NewMessage.Event) -> None:
     await progress_message.edit(t('pdf_ocr_process_completed'))
 
 
-async def ocr_pdf(event: NewMessage.Event) -> None:
+async def ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     """OCR PDF using tahweel."""
     service_account = getenv('SERVICE_ACCOUNT_FILE')
     if not service_account:
@@ -480,29 +481,13 @@ async def crop_pdf_whitespace(event: NewMessage.Event) -> None:
     await progress_message.edit(t('pdf_whitespace_cropping_completed'))
 
 
-handlers: CommandHandlerDict = {
-    'pdf': image_to_pdf,
-    'pdf compress': compress_pdf,
-    'pdf crop': crop_pdf_whitespace,
-    'pdf extract': extract_pdf_pages,
-    'pdf images': convert_to_images,
-    'pdf merge': merge_pdf_initial,
-    'pdf ocr': ocrmypdf,
-    'pdf text': extract_pdf_text,
-    'pdf split': split_pdf,
-    'ocr': ocr_pdf,
-}
-
-handler = partial(dynamic_handler, handlers)
-
-
 class PDF(ModuleBase):
     name = 'PDF'
     description = t('_pdf_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'pdf': Command(
             name='pdf',
-            handler=handler,
+            handler=image_to_pdf,
             description=t('_pdf_description'),
             pattern=re.compile(r'^/(pdf)$'),
             condition=has_photo_or_photo_file,
@@ -510,7 +495,7 @@ class PDF(ModuleBase):
         ),
         'pdf compress': Command(
             name='pdf compress',
-            handler=handler,
+            handler=compress_pdf,
             description=t('_pdf_compress_description'),
             pattern=re.compile(r'^/(pdf)\s+(compress)$'),
             condition=has_pdf_file,
@@ -518,7 +503,7 @@ class PDF(ModuleBase):
         ),
         'pdf crop': Command(
             name='pdf crop',
-            handler=handler,
+            handler=crop_pdf_whitespace,
             description=t('_pdf_crop_description'),
             pattern=re.compile(r'^/pdf\s+crop$'),
             condition=has_pdf_file,
@@ -526,7 +511,7 @@ class PDF(ModuleBase):
         ),
         'pdf extract': Command(
             name='pdf extract',
-            handler=handler,
+            handler=extract_pdf_pages,
             description=t('_pdf_extract_description'),
             pattern=re.compile(r'^/(pdf)\s+(extract)\s+([\d,\-\s]+)$'),
             condition=has_pdf_file,
@@ -534,7 +519,7 @@ class PDF(ModuleBase):
         ),
         'pdf images': Command(
             name='pdf images',
-            handler=handler,
+            handler=convert_to_images,
             description=t('_pdf_images_description'),
             pattern=re.compile(r'^/(pdf)\s+(images)\s+?(ZIP|PDF)?$'),
             condition=has_pdf_file,
@@ -542,7 +527,7 @@ class PDF(ModuleBase):
         ),
         'pdf merge': Command(
             name='pdf merge',
-            handler=handler,
+            handler=merge_pdf_initial,
             description=t('_pdf_merge_description'),
             pattern=re.compile(r'^/(pdf)\s+(merge)$'),
             condition=has_pdf_file,
@@ -550,7 +535,7 @@ class PDF(ModuleBase):
         ),
         'pdf ocr': Command(
             name='pdf ocr',
-            handler=handler,
+            handler=ocrmypdf,
             description=t('_pdf_ocr_description'),
             pattern=re.compile(r'^/(pdf)\s+(ocr)\s+?([\w+]{3,})?$'),
             condition=has_pdf_file,
@@ -558,7 +543,7 @@ class PDF(ModuleBase):
         ),
         'pdf split': Command(
             name='pdf split',
-            handler=handler,
+            handler=split_pdf,
             description=t('_pdf_split_description'),
             pattern=re.compile(r'^/(pdf)\s+(split)\s+(\d+)$'),
             condition=has_pdf_file,
@@ -566,7 +551,7 @@ class PDF(ModuleBase):
         ),
         'pdf text': Command(
             name='pdf text',
-            handler=handler,
+            handler=extract_pdf_text,
             description=t('_pdf_text_description'),
             pattern=re.compile(r'^/(pdf)\s+(text)$'),
             condition=has_pdf_file,
@@ -574,9 +559,9 @@ class PDF(ModuleBase):
         ),
         'ocr': Command(
             name='ocr',
-            handler=handler,
+            handler=ocr_pdf,
             description=t('_ocr_description'),
-            pattern=re.compile(r'^/(pdf)\s+(ocr)\s+?([\w+]{3,})?$'),
+            pattern=re.compile(r'^/(ocr)\s+?([\w+]{3,})?$'),
             condition=lambda e, m: has_pdf_file(e, m) or has_photo_or_photo_file(e, m),
             is_applicable_for_reply=True,
         ),

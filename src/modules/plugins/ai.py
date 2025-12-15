@@ -1,6 +1,5 @@
 import logging
 from asyncio import sleep
-from functools import partial
 from os import getenv
 from pathlib import Path
 from shutil import rmtree
@@ -15,7 +14,7 @@ import regex as re
 from telethon.events import CallbackQuery, NewMessage
 
 from src import TMP_DIR
-from src.modules.base import CommandHandlerDict, ModuleBase, dynamic_handler
+from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import download_file, get_download_name, upload_file
 from src.utils.filters import has_pdf_file, has_photo_or_photo_file
@@ -124,20 +123,13 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     rmtree(output_dir, ignore_errors=True)
 
 
-handlers: CommandHandlerDict = {
-    'gemini ocr': gemini_ocr_pdf,
-}
-
-handler = partial(dynamic_handler, handlers)
-
-
 class AI(ModuleBase):
     name = 'AI'
     description = t('_ai_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'gemini ocr': Command(
             name='ocr',
-            handler=handler,
+            handler=gemini_ocr_pdf,
             description=t('_gemini_ocr_description'),
             pattern=re.compile(r'^/(gemini)\s+(ocr)$'),
             condition=lambda e, m: (has_pdf_file(e, m) or has_photo_or_photo_file(e, m)),
