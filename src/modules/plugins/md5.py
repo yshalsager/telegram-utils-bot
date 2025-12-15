@@ -29,7 +29,6 @@ class MD5Hash(ModuleBase):
     description = t('_md5_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'md5': Command(
-            name='md5',
             handler=calculate_md5,
             description=t('_md5_description'),
             pattern=re.compile(r'^/md5$'),

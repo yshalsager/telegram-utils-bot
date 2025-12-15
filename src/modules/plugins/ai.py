@@ -133,7 +133,6 @@ class AI(ModuleBase):
     description = t('_ai_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'gemini ocr': Command(
-            name='ocr',
             handler=gemini_ocr_pdf,
             description=t('_gemini_ocr_description'),
             pattern=re.compile(r'^/(gemini)\s+(ocr)$'),

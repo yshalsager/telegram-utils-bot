@@ -22,7 +22,6 @@ class Debug(ModuleBase):
     description = t('_debug_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'json': Command(
-            name='json',
             handler=to_json,
             description=t('_json_description'),
             pattern=re.compile(r'^/json$'),

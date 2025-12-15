@@ -459,7 +459,6 @@ class YTDLP(ModuleBase):
     description = t('_ytdlp_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'ytaudio': Command(
-            name='ytaudio',
             handler=download_audio_segment,
             description=t('_ytaudio_description'),
             pattern=re.compile(
@@ -483,7 +482,6 @@ class YTDLP(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'ytinfo': Command(
-            name='ytinfo',
             handler=get_info,
             description=t('_ytinfo_description'),
             pattern=re.compile(rf'^/ytinfo\s+{HTTP_URL_PATTERN}$'),
@@ -491,7 +489,6 @@ class YTDLP(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'ytsub': Command(
-            name='ytsub',
             handler=get_subtitles,
             description=t('_ytsub_description'),
             pattern=re.compile(rf'^/ytsub\s+([a-z]{{2}})\s+{YOUTUBE_URL_PATTERN}$'),

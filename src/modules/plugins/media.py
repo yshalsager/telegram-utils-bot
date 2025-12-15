@@ -1213,7 +1213,6 @@ class Media(ModuleBase):
     description = t('_media_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'audio compress': Command(
-            name='audio compress',
             handler=compress_audio,
             description=t('_audio_compress_description'),
             pattern=re.compile(r'^/(audio)\s+(compress)\s+(\d+)$'),
@@ -1221,7 +1220,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'audio convert': Command(
-            name='audio convert',
             handler=convert_to_audio,
             description=t('_audio_convert_description'),
             pattern=re.compile(r'^/(audio)\s+(convert)$'),
@@ -1229,7 +1227,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'audio metadata': Command(
-            name='audio metadata',
             handler=set_metadata,
             description=t('_audio_metadata_description'),
             pattern=re.compile(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$'),
@@ -1237,7 +1234,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'audio trim': Command(
-            name='audio trim',
             handler=trim_silence,
             description=t('_audio_trim_description'),
             pattern=re.compile(r'^/(audio)\s+(trim)$'),
@@ -1245,7 +1241,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'media amplify': Command(
-            name='audio amplify',
             handler=amplify_sound,
             description=t('_media_amplify_description'),
             pattern=re.compile(r'^/(media)\s+(amplify)\s+(\d+(\.\d+)?)$'),
@@ -1253,7 +1248,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'media convert': Command(
-            name='media convert',
             handler=convert_media,
             description=t('_media_convert_description'),
             pattern=re.compile(r'^/(media)\s+(convert)\s+(\w+)$'),
@@ -1261,7 +1255,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'media cut': Command(
-            name='media cut',
             handler=cut_media,
             description=t('_media_cut_description'),
             pattern=re.compile(
@@ -1272,7 +1265,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'media split': Command(
-            name='media split',
             handler=split_media,
             description=t('_media_split_description'),
             pattern=re.compile(r'^/(media)\s+(split)\s+(\d+[hms])$'),
@@ -1280,7 +1272,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'media merge': Command(
-            name='media merge',
             handler=merge_media_initial,
             description=t('_media_merge_description'),
             pattern=re.compile(r'^/(media)\s+(merge)$'),
@@ -1288,7 +1279,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'media info': Command(
-            name='media info',
             handler=media_info,
             description=t('_media_info_description'),
             pattern=re.compile(r'^/(media)\s+(info)$'),
@@ -1296,7 +1286,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'media stereo': Command(
-            name='media stereo',
             handler=fix_stereo_audio,
             description=t('_media_stereo_description'),
             pattern=re.compile(r'^/(media)\s+(stereo)\s+(right|left)$'),
@@ -1304,7 +1293,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'transcribe': Command(
-            name='transcribe',
             handler=transcribe_media,
             description=t('_transcribe_description'),
             pattern=re.compile(r'^/(transcribe)(?:\s+(wit|whisper|vosk))?(?:\s+(\w{2,3}))?$'),
@@ -1312,7 +1300,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'video create': Command(
-            name='video create',
             handler=video_create_initial,
             description=t('_video_create_description'),
             pattern=re.compile(r'^/(video)\s+(create)$'),
@@ -1320,7 +1307,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'video compress': Command(
-            name='video compress',
             handler=compress_video,
             description=t('_video_compress_description'),
             pattern=re.compile(r'^/(video)\s+(compress)\s+(\d{1,2})$'),
@@ -1328,7 +1314,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'video mute': Command(
-            name='video mute',
             handler=mute_video,
             description=t('_video_mute_description'),
             pattern=re.compile(r'^/(video)\s+(mute)$'),
@@ -1336,7 +1321,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'video resize': Command(
-            name='video resize',
             handler=resize_video,
             description=t('_video_resize_description'),
             pattern=re.compile(
@@ -1346,7 +1330,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'video subtitle': Command(
-            name='video subtitle',
             handler=extract_subtitle,
             description=t('_video_subtitle_description'),
             pattern=re.compile(r'^/(video)\s+(subtitle)$'),
@@ -1354,7 +1337,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'video thumbnails': Command(
-            name='video thumbnails',
             handler=video_thumbnails,
             description=t('_video_thumbnails_description'),
             pattern=re.compile(r'^/(video)\s+(thumbnails)$'),
@@ -1362,7 +1344,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'video update': Command(
-            name='video update',
             handler=video_update_initial,
             description=t('_video_update_description'),
             pattern=re.compile(r'^/(video)\s+(update)$'),
@@ -1370,7 +1351,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'video x265': Command(
-            name='video x265',
             handler=video_encode_x265,
             description=t('_video_x265_description'),
             pattern=re.compile(r'^/(video)\s+(x265)\s+(\d{2})$'),
@@ -1378,7 +1358,6 @@ class Media(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'voice': Command(
-            name='voice',
             handler=convert_to_voice_note,
             description=t('_voice_description'),
             pattern=re.compile(r'^/(voice)$'),

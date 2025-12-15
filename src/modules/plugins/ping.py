@@ -20,7 +20,6 @@ class Ping(ModuleBase):
     description = t('_ping_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'ping': Command(
-            name='ping',
             handler=pong,
             description=t('_ping_description'),
             pattern=re.compile(r'^/ping$'),

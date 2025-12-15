@@ -58,6 +58,12 @@ class ModuleRegistry:
         self.permission_manager = permission_manager
         self.modules_file = STATE_DIR / 'modules.json'
         self.modules_status: dict[str, bool] = self._load_modules_status()
+
+        for module in self.modules:
+            for command, cmd in module.commands.items():
+                if cmd.name is None:
+                    cmd.name = command
+
         self.command_to_module: dict[str, ModuleBase] = {
             command: module for module in self.modules for command in module.commands
         }

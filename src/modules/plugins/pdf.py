@@ -547,7 +547,6 @@ class PDF(ModuleBase):
     description = t('_pdf_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'pdf': Command(
-            name='pdf',
             handler=image_to_pdf,
             description=t('_pdf_description'),
             pattern=re.compile(r'^/(pdf)$'),
@@ -555,7 +554,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'pdf compress': Command(
-            name='pdf compress',
             handler=compress_pdf,
             description=t('_pdf_compress_description'),
             pattern=re.compile(r'^/(pdf)\s+(compress)$'),
@@ -563,7 +561,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'pdf bw': Command(
-            name='pdf bw',
             handler=pdf_bw,
             description=t('_pdf_bw_description'),
             pattern=re.compile(r'^/(pdf)\s+(bw)$'),
@@ -571,7 +568,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'pdf crop': Command(
-            name='pdf crop',
             handler=crop_pdf_whitespace,
             description=t('_pdf_crop_description'),
             pattern=re.compile(r'^/pdf\s+crop$'),
@@ -579,7 +575,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'pdf extract': Command(
-            name='pdf extract',
             handler=extract_pdf_pages,
             description=t('_pdf_extract_description'),
             pattern=re.compile(r'^/(pdf)\s+(extract)\s+([\d,\-\s]+)$'),
@@ -587,7 +582,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'pdf images': Command(
-            name='pdf images',
             handler=convert_to_images,
             description=t('_pdf_images_description'),
             pattern=re.compile(r'^/(pdf)\s+(images)\s+?(ZIP|PDF)?$'),
@@ -595,7 +589,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'pdf merge': Command(
-            name='pdf merge',
             handler=merge_pdf_initial,
             description=t('_pdf_merge_description'),
             pattern=re.compile(r'^/(pdf)\s+(merge)$'),
@@ -603,7 +596,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'pdf ocr': Command(
-            name='pdf ocr',
             handler=ocrmypdf,
             description=t('_pdf_ocr_description'),
             pattern=re.compile(r'^/(pdf)\s+(ocr)\s+?([\w+]{3,})?$'),
@@ -611,7 +603,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'pdf split': Command(
-            name='pdf split',
             handler=split_pdf,
             description=t('_pdf_split_description'),
             pattern=re.compile(r'^/(pdf)\s+(split)\s+(\d+)$'),
@@ -619,7 +610,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'pdf text': Command(
-            name='pdf text',
             handler=extract_pdf_text,
             description=t('_pdf_text_description'),
             pattern=re.compile(r'^/(pdf)\s+(text)$'),
@@ -627,7 +617,6 @@ class PDF(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'ocr': Command(
-            name='ocr',
             handler=ocr_pdf,
             description=t('_ocr_description'),
             pattern=re.compile(r'^/(ocr)\s+?([\w+]{3,})?$'),

@@ -130,7 +130,6 @@ class Images(ModuleBase):
     description = t('_images_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
         'image convert': Command(
-            name='image convert',
             handler=convert_image,
             description=t('_image_convert_description'),
             pattern=re.compile(r'^/(image)\s+(convert)\s+([\d\w]{3,4})$'),
@@ -138,7 +137,6 @@ class Images(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'image ocr': Command(
-            name='image ocr',
             handler=ocr_image,
             description=t('_image_ocr_description'),
             pattern=re.compile(r'^/(image)\s+(ocr)\s+?([\w+]{3,})?$'),
@@ -146,7 +144,6 @@ class Images(ModuleBase):
             is_applicable_for_reply=True,
         ),
         'image trim': Command(
-            name='image trim',
             handler=trim_image,
             description=t('_image_trim_description'),
             pattern=re.compile(r'^/(image)\s+(trim)$'),
