@@ -4,15 +4,23 @@ services:
     build:
       context: ./
       dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     environment:
-      - PUID=1000
-      - PGID=1000
       - TZ=Africa/Cairo
     env_file:
       - .env
     volumes:
-      - ./:/code/app
+      - ./src:/code/app/src
+      - ./pyproject.toml:/code/app/pyproject.toml:ro
+      - ./uv.lock:/code/app/uv.lock:ro
+      - ./downloads:/code/app/downloads
+      - ./tmp:/code/app/tmp
+      - ./state:/code/app/state
       - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - bgutil-provider
     restart: unless-stopped
   bgutil-provider:
     container_name: bgutil-provider
