@@ -9,6 +9,7 @@ from typing import cast
 from orjson import orjson
 from telethon.events import NewMessage
 
+from src import STATE_DIR
 from src.modules.base import ModuleBase
 from src.utils.permission_manager import PermissionManager
 
@@ -61,7 +62,7 @@ class ModuleRegistry:
     def __init__(self, directory: str, permission_manager: PermissionManager) -> None:
         self.modules: list[ModuleBase] = load_modules(directory)
         self.permission_manager = permission_manager
-        self.modules_file = Path(directory).parent / 'modules.json'
+        self.modules_file = STATE_DIR / 'modules.json'
         self.modules_status: dict[str, bool] = self._load_modules_status()
 
     def _load_modules_status(self) -> dict[str, bool]:

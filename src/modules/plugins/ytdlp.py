@@ -12,7 +12,7 @@ from telethon.tl.custom import Message
 from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeVideo
 from yt_dlp import YoutubeDL
 
-from src import PARENT_DIR, TMP_DIR
+from src import STATE_DIR, TMP_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import upload_file
@@ -24,8 +24,8 @@ from src.utils.progress import progress_callback
 from src.utils.subtitles import convert_subtitles
 from src.utils.telegram import edit_or_send_as_file, get_reply_message
 
-cookies_file = PARENT_DIR / 'cookies.txt'
-netrc_file = PARENT_DIR / '.netrc'
+cookies_file = STATE_DIR / 'cookies.txt'
+netrc_file = STATE_DIR / '.netrc'
 
 cookies = {'cookiefile': str(cookies_file.absolute())} if cookies_file.exists() else {}
 params = {

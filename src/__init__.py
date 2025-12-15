@@ -8,6 +8,10 @@ from shutil import rmtree
 # paths
 WORK_DIR = Path(__package__)
 PARENT_DIR = WORK_DIR.parent
+
+STATE_DIR = PARENT_DIR / 'state'
+STATE_DIR.mkdir(exist_ok=True)
+
 DOWNLOADS_DIR = PARENT_DIR / 'downloads'
 DOWNLOADS_DIR.mkdir(exist_ok=True)
 TMP_DIR = PARENT_DIR / 'tmp'
