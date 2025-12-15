@@ -1,4 +1,3 @@
-import contextlib
 from collections import defaultdict
 from datetime import datetime
 from functools import partial
@@ -7,7 +6,6 @@ from math import floor
 from os import getenv
 from pathlib import Path
 from shutil import rmtree
-from tempfile import NamedTemporaryFile
 from typing import Any, ClassVar, cast
 from uuid import uuid4
 
@@ -25,7 +23,13 @@ from src import TMP_DIR
 from src.modules.base import ModuleBase
 from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
-from src.utils.downloads import download_file, get_download_name, upload_file
+from src.utils.downloads import (
+    download_file,
+    download_to_temp_file,
+    get_download_name,
+    upload_file,
+    upload_file_and_cleanup,
+)
 from src.utils.filters import has_media, is_valid_reply_state
 from src.utils.i18n import t
 from src.utils.json_processing import json_options, process_dict
@@ -130,8 +134,9 @@ async def process_media(
     status_message = await send_progress_message(event, t('starting_process'))
     progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
 
-    with NamedTemporaryFile(dir=TMP_DIR) as temp_file:
-        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+    async with download_to_temp_file(
+        event, reply_message, progress_message, temp_dir=TMP_DIR
+    ) as temp_file_path:
         if get_file_name:
             input_file = get_download_name(reply_message)
             output_file = (temp_file_path.parent / input_file).with_suffix(output_suffix)
@@ -140,16 +145,17 @@ async def process_media(
         else:
             output_file = temp_file_path.with_suffix(output_suffix)
 
+        input_path = str(temp_file_path)
         if get_bitrate:
-            video_bitrate, audio_bitrate = await get_media_bitrate(temp_file.name)
+            video_bitrate, audio_bitrate = await get_media_bitrate(input_path)
             ffmpeg_command = ffmpeg_command.format(
-                input=temp_file.name,
+                input=input_path,
                 output=output_file,
                 video_bitrate=video_bitrate,
                 audio_bitrate=audio_bitrate,
             )
         else:
-            ffmpeg_command = ffmpeg_command.format(input=temp_file.name, output=output_file)
+            ffmpeg_command = ffmpeg_command.format(input=input_path, output=output_file)
 
         status = await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         data['status_text'] = status
@@ -184,6 +190,8 @@ async def process_media(
             attributes=attributes,
         )
         data['output_size'] = output_file.stat().st_size
+
+        output_file.unlink(missing_ok=True)
 
     await status_message.edit(feedback_text)
     data['status_message'] = status_message
@@ -287,8 +295,13 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     status_message = await send_progress_message(event, t('starting_cut'))
     progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
-    with NamedTemporaryFile(suffix=reply_message.file.ext) as temp_file:
-        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+    ) as temp_file_path:
         input_file = get_download_name(reply_message)
         output_file_base = (temp_file_path.parent / input_file).with_suffix('')
 
@@ -297,13 +310,13 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 f'{output_file_base.stem}_cut_{idx}{reply_message.file.ext}'
             )
             ffmpeg_command = (
-                f'ffmpeg -hide_banner -y -i "{temp_file.name}" '
+                f'ffmpeg -hide_banner -y -i "{temp_file_path}" '
                 f'-ss {start_time} -to {end_time} '
                 f'-c copy -map 0 "{output_file}"'
             )
             await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
             if output_file.exists() and output_file.stat().st_size:
-                await upload_file(
+                await upload_file_and_cleanup(
                     event,
                     output_file,
                     progress_message,
@@ -312,7 +325,6 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 )
             else:
                 await status_message.edit(t('cut_failed_for_item', item=idx))
-            output_file.unlink(missing_ok=True)
 
     await status_message.edit(t('cut_completed'))
     if event.sender_id in reply_states:
@@ -346,14 +358,19 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         segment_duration = duration
     status_message = await send_progress_message(event, t('starting_process'))
     progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
-    with NamedTemporaryFile() as temp_file:
-        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+    ) as temp_file_path:
         input_file = get_download_name(reply_message)
         output_file_base = (temp_file_path.parent / input_file).with_suffix('')
 
         output_pattern = f'{output_file_base.stem}_segment_%03d{input_file.suffix}'
         ffmpeg_command = (
-            f'ffmpeg -hide_banner -y -i "{temp_file.name}" -f segment -segment_time {segment_duration} '
+            f'ffmpeg -hide_banner -y -i "{temp_file_path}" -f segment -segment_time {segment_duration} '
             f'-c copy "{output_file_base.parent / output_pattern}"'
         )
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
@@ -362,7 +379,7 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             output_file_base.parent.glob(f'{output_file_base.stem}_segment_*{input_file.suffix}')
         ):
             if output_file.exists() and output_file.stat().st_size:
-                await upload_file(
+                await upload_file_and_cleanup(
                     event,
                     output_file,
                     progress_message,
@@ -371,7 +388,6 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 )
             else:
                 await status_message.edit(t('process_failed_for_file', file_name=output_file.name))
-            output_file.unlink(missing_ok=True)
 
     await progress_message.edit(t('file_split_and_uploaded'))
     if event.sender_id in reply_states:
@@ -382,9 +398,14 @@ async def split_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     progress_message = await send_progress_message(event, t('starting_process'))
-    with NamedTemporaryFile() as temp_file:
-        await download_file(event, temp_file, reply_message, progress_message)
-        output, code = await run_command(ffprobe_command.format(input=temp_file.name))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+    ) as temp_file_path:
+        output, code = await run_command(ffprobe_command.format(input=temp_file_path))
         if code:
             message = f'{t("failed_to_get_info")}\n<pre>{output}</pre>'
         else:
@@ -453,38 +474,35 @@ async def merge_media_process(event: CallbackQuery.Event) -> None:
     status_message = await event.respond(t('starting_merge'))
     progress_message = await event.respond(f'<pre>{t("process_output")}:</pre>')
 
-    temp_files: list[str] = []
+    output_dir = Path(TMP_DIR / str(uuid4()))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    file_list_path = output_dir / 'files.txt'
+    message: Message
     try:
-        with NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as file_list:
-            for file_id in files:
+        with file_list_path.open('w') as file_list:
+            for idx, file_id in enumerate(files, start=1):
                 message = await event.client.get_messages(event.chat_id, ids=file_id)
-                with NamedTemporaryFile(suffix=message.file.ext, delete=False) as temp_file:
-                    temp_files.append(temp_file.name)
+                input_path = output_dir / f'input_{idx:03d}{message.file.ext}'
+                with input_path.open('wb') as temp_file:
                     await download_file(event, temp_file, message, progress_message)
-                    file_list.write(f"file '{temp_file.name}'\n")
+                file_list.write(f"file '{input_path.absolute()}'\n")
 
-        with NamedTemporaryFile(suffix=message.file.ext, delete=False) as output_file:
-            ffmpeg_command = f'ffmpeg -hide_banner -y -f concat -safe 0 -i "{file_list.name}" -c copy "{output_file.name}"'
-            await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
-            output_file_path = Path(output_file.name)
-            if output_file_path.exists() and output_file_path.stat().st_size:
-                await upload_file(
-                    event,
-                    output_file_path,
-                    progress_message,
-                    is_voice=message.voice is not None,
-                )
-                await status_message.edit(t('merge_completed'))
-            else:
-                await status_message.edit(t('merge_failed'))
+        output_file_path = output_dir / f'merged{message.file.ext}'
+        ffmpeg_command = f'ffmpeg -hide_banner -y -f concat -safe 0 -i "{file_list_path}" -c copy "{output_file_path}"'
+        await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+        if output_file_path.exists() and output_file_path.stat().st_size:
+            await upload_file_and_cleanup(
+                event,
+                output_file_path,
+                progress_message,
+                is_voice=message.voice is not None,
+            )
+            await status_message.edit(t('merge_completed'))
+        else:
+            await status_message.edit(t('merge_failed'))
 
     finally:
-        # Clean up temporary files
-        with contextlib.suppress(OSError):
-            for path in temp_files:
-                Path(path).unlink(missing_ok=True)
-            Path(file_list.name).unlink(missing_ok=True)
-            Path(output_file.name).unlink(missing_ok=True)
+        rmtree(output_dir, ignore_errors=True)
         merge_states.pop(event.sender_id)
 
 
@@ -494,18 +512,20 @@ async def trim_silence(event: NewMessage.Event) -> None:
     progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
     extension = reply_message.file.ext
 
-    with (
-        NamedTemporaryFile(suffix=extension) as input_file,
-        NamedTemporaryFile(suffix='.mp3') as output_file,
-    ):
-        output_file_path = Path(output_file.name).parent / output_file.name
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=extension,
+    ) as input_file_path:
+        output_file_path = input_file_path.with_suffix('.mp3')
         if reply_message.file.name:
             output_file_path = output_file_path.with_name(
                 f'trimmed_{reply_message.file.name}'
             ).with_suffix('.mp3')
-        await download_file(event, input_file, reply_message, progress_message)
+
         await progress_message.edit(t('loading_file'))
-        sound = AudioSegment.from_file(Path(input_file.name))
+        sound = AudioSegment.from_file(input_file_path)
         await progress_message.edit(t('splitting'))
         chunks = split_on_silence(sound, min_silence_len=500, silence_thresh=-40)
         await progress_message.edit(t('combining'))
@@ -531,7 +551,7 @@ async def trim_silence(event: NewMessage.Event) -> None:
             await status_message.edit(t('silence_trimming_failed'))
             return
 
-        await upload_file(
+        await upload_file_and_cleanup(
             event,
             output_file_path,
             progress_message,
@@ -557,11 +577,14 @@ async def extract_subtitle(event: NewMessage.Event) -> None:
     status_message = await send_progress_message(event, t('starting_subtitle_extraction'))
     progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
 
-    with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
-        await download_file(event, input_file, reply_message, progress_message)
-
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+    ) as input_file_path:
         output, code = await run_command(
-            f'ffprobe -v quiet -print_format json -show_streams "{input_file.name}"'
+            f'ffprobe -v quiet -print_format json -show_streams "{input_file_path}"'
         )
         if code:
             await status_message.edit(t('failed_to_get_stream_info'))
@@ -576,10 +599,10 @@ async def extract_subtitle(event: NewMessage.Event) -> None:
 
         for i, stream in enumerate(subtitle_streams):
             ext = 'srt' if stream['codec_name'] == 'mov_text' else stream['codec_name']
-            output_file = Path(input_file.name).with_suffix(f'.{ext}')
+            output_file = input_file_path.with_suffix(f'.{ext}')
 
             ffmpeg_command = (
-                f'ffmpeg -hide_banner -y -i "{input_file.name}" '
+                f'ffmpeg -hide_banner -y -i "{input_file_path}" '
                 f'-map 0:{stream["index"]} "{output_file}"'
             )
             await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
@@ -729,24 +752,34 @@ async def video_update_process(event: NewMessage.Event) -> None:
     status_message = await send_progress_message(event, t('starting_audio_update'))
     progress_message = await event.respond(f'<pre>{t("process_output")}:</pre>')
 
-    with (
-        NamedTemporaryFile(suffix=video_message.file.ext) as video_file,
-        NamedTemporaryFile(suffix=audio_message.file.ext) as audio_file,
-        NamedTemporaryFile(suffix=video_message.file.ext) as output_file,
-    ):
-        await download_file(event, video_file, video_message, progress_message)
-        await download_file(event, audio_file, audio_message, progress_message)
+    output_dir = Path(TMP_DIR / str(uuid4()))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        video_name = video_message.file.name or get_download_name(video_message).name
+        audio_name = audio_message.file.name or get_download_name(audio_message).name
+
+        with (output_dir / video_name).open('wb') as f:
+            await download_file(event, f, video_message, progress_message)
+        with (output_dir / audio_name).open('wb') as f:
+            await download_file(event, f, audio_message, progress_message)
+
+        video_file = output_dir / video_name
+        audio_file = output_dir / audio_name
+        output_file = output_dir / f'{Path(video_name).stem}_updated{Path(video_name).suffix}'
 
         ffmpeg_command = (
-            f'ffmpeg -hide_banner -y -i "{video_file.name}" -i "{audio_file.name}" '
-            f'-map "0:v" -map "1:a" -c:v copy -c:a copy "{output_file.name}"'
+            f'ffmpeg -hide_banner -y -i "{video_file}" -i "{audio_file}" '
+            f'-map "0:v" -map "1:a" -c:v copy -c:a copy "{output_file}"'
         )
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
-        if not Path(output_file.name).exists() or not Path(output_file.name).stat().st_size:
+        if not output_file.exists() or not output_file.stat().st_size:
             await status_message.edit(t('audio_update_failed'))
             return
 
-        await upload_file(event, Path(output_file.name), progress_message)
+        await upload_file_and_cleanup(event, output_file, progress_message)
+
+    finally:
+        rmtree(output_dir, ignore_errors=True)
 
     await status_message.edit(t('video_audio_updated'))
     video_update_states.pop(event.sender_id)
@@ -812,11 +845,15 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
     status_message = await send_progress_message(event, t('starting_thumbnail_generation'))
     progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
 
-    with NamedTemporaryFile(suffix=reply_message.file.ext) as input_file:
-        await download_file(event, input_file, reply_message, progress_message)
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+    ) as input_file_path:
         duration_output, _ = await run_command(
             f'ffprobe -v error -show_entries format=duration -of '
-            f'default=noprint_wrappers=1:nokey=1 "{input_file.name}"'
+            f'default=noprint_wrappers=1:nokey=1 "{input_file_path}"'
         )
         duration = float(duration_output.strip())
 
@@ -824,10 +861,10 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
         interval = duration / 16
         timestamps = [i * interval for i in range(16)]
         # Generate thumbnail grid
-        output_file = Path(input_file.name).with_suffix('.jpg')
+        output_file = input_file_path.with_suffix('.jpg')
         select_frames = '+'.join([f'eq(n,{int(i * 25)})' for i in timestamps])  # Assuming 25 fps
         ffmpeg_command = (
-            f'ffmpeg -hide_banner -y -i "{input_file.name}" '
+            f'ffmpeg -hide_banner -y -i "{input_file_path}" '
             f'-vf "select=\'{select_frames}\',scale=480:-1,tile=4x4" '
             f'-frames:v 1 "{output_file}"'
         )
@@ -836,8 +873,13 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
         if not output_file.exists() or not output_file.stat().st_size:
             await status_message.edit(t('thumbnail_generation_failed'))
             return
-        await upload_file(event, output_file, progress_message)
-        await upload_file(event, output_file, progress_message, force_document=True)
+        await upload_file_and_cleanup(event, output_file, progress_message, unlink=False)
+        await upload_file_and_cleanup(
+            event,
+            output_file,
+            progress_message,
+            force_document=True,
+        )
 
     await status_message.edit(t('video_thumbnails_generated'))
 
@@ -962,48 +1004,49 @@ async def video_create_process(event: NewMessage.Event) -> None:
     status_message: Message = await event.reply(t('starting_video_creation'))
     progress_message: Message = await event.respond(f'<pre>{t("process_output")}:</pre>')
 
-    audio_file = Path(TMP_DIR / audio_message.file.name)
-    input_file = Path(
-        TMP_DIR / (input_message.file.name or f'{get_download_name(input_message).name}')
-    )
-    output_file = audio_file.with_suffix('.mp4')
-    with audio_file.open('wb+') as f:
-        await download_file(event, f, audio_message, progress_message)
-    with input_file.open('wb+') as f:
-        await download_file(event, f, input_message, progress_message)
+    output_dir = Path(TMP_DIR / str(uuid4()))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with (output_dir / audio_message.file.name).open('wb') as f:
+            await download_file(event, f, audio_message, progress_message)
+        audio_file = output_dir / audio_message.file.name
+        input_name = input_message.file.name or get_download_name(input_message).name
+        with (output_dir / input_name).open('wb') as f:
+            await download_file(event, f, input_message, progress_message)
+        input_file = output_dir / input_name
+        output_file = output_dir / f'{audio_file.stem}.mp4'
 
-    if input_message.file.ext == '.srt':
-        ffmpeg_command = (
-            f'ffmpeg -hide_banner -y -f lavfi -i color=c=black:s=854x480:d={audio_message.file.duration} '
-            f'-i "{audio_file.name}" -i "{input_file.name}" '
-            f"-filter_complex \"[0:v]subtitles=f='{input_file.name}':force_style='FontSize=28,Alignment=10,MarginV=190'[v]\" "
-            f'-map "[v]" -map 1:a -map 2 '
-            f'-c:v libx264 -preset ultrafast -c:a aac -b:a 48k '
-            f'-c:s mov_text '
-            f'-shortest "{output_file.name}"'
-        )
-    elif input_message.photo:
-        ffmpeg_command = (
-            f'ffmpeg -hide_banner -y -loop 1 -i "{input_file.name}" '
-            f'-i "{audio_file.name}" '
-            f'-c:v libx264 -preset ultrafast -tune stillimage '
-            f'-c:a aac -b:a 48k -shortest '
-            f'-pix_fmt yuv420p "{output_file.name}"'
-        )
-    else:
-        await status_message.edit(t('unsupported_input_file_format'))
-        raise StopPropagation
+        if input_message.file.ext == '.srt':
+            ffmpeg_command = (
+                f'ffmpeg -hide_banner -y -f lavfi -i color=c=black:s=854x480:d={audio_message.file.duration} '
+                f'-i "{audio_file}" -i "{input_file}" '
+                f"-filter_complex \"[0:v]subtitles=f='{input_file}':force_style='FontSize=28,Alignment=10,MarginV=190'[v]\" "
+                f'-map "[v]" -map 1:a -map 2 '
+                f'-c:v libx264 -preset ultrafast -c:a aac -b:a 48k '
+                f'-c:s mov_text '
+                f'-shortest "{output_file}"'
+            )
+        elif input_message.photo:
+            ffmpeg_command = (
+                f'ffmpeg -hide_banner -y -loop 1 -i "{input_file}" '
+                f'-i "{audio_file}" '
+                f'-c:v libx264 -preset ultrafast -tune stillimage '
+                f'-c:a aac -b:a 48k -shortest '
+                f'-pix_fmt yuv420p "{output_file}"'
+            )
+        else:
+            await status_message.edit(t('unsupported_input_file_format'))
+            raise StopPropagation
 
-    await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
-    if not output_file.exists() or not output_file.stat().st_size:
-        await status_message.edit(t('video_creation_failed'))
-    else:
-        await upload_file(event, output_file, progress_message)
-        await status_message.edit(t('video_created'))
-        output_file.unlink(missing_ok=True)
+        await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+        if not output_file.exists() or not output_file.stat().st_size:
+            await status_message.edit(t('video_creation_failed'))
+        else:
+            await upload_file_and_cleanup(event, output_file, progress_message)
+            await status_message.edit(t('video_created'))
 
-    audio_file.unlink(missing_ok=True)
-    input_file.unlink(missing_ok=True)
+    finally:
+        rmtree(output_dir, ignore_errors=True)
     video_create_states.pop(event.sender_id)
     raise StopPropagation
 
@@ -1052,46 +1095,53 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    with NamedTemporaryFile(suffix=reply_message.file.ext, dir=output_dir) as temp_file:
-        await download_file(event, temp_file, reply_message, progress_message)
-        tmp_file_path = Path(temp_file.name)
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+        temp_dir=output_dir,
+    ) as input_file_path:
         if transcription_method == 'vosk':
             command = (
-                f'vosk-transcriber --log-level warning -i {temp_file.name} -l ar '
-                f'-t srt -o {output_dir.name / tmp_file_path.with_suffix(".srt")}'
+                f'vosk-transcriber --log-level warning -i {input_file_path} -l ar '
+                f'-t srt -o {output_dir.name / input_file_path.with_suffix(".srt")}'
             )
             await stream_shell_output(
                 event, command, status_message, progress_message, max_length=100
             )
         elif transcription_method == 'whisper' and whisper_api_key:
             model = get_model(getenv('LLM_TRANSCRIPTION_MODEL'))
-            if tmp_file_path.suffix not in (mime.split('/')[1] for mime in model.attachment_types):
+            audio_file_path = input_file_path
+            if audio_file_path.suffix not in (
+                f'.{mime.split("/")[1]}' for mime in model.attachment_types
+            ):
                 ffmpeg_command = (
-                    f'ffmpeg -hide_banner -y -i "{temp_file.name}" '
-                    f'-vn -c:a libopus -b:a 32k "{tmp_file_path.with_suffix(".ogg")}"'
+                    f'ffmpeg -hide_banner -y -i "{audio_file_path}" '
+                    f'-vn -c:a libopus -b:a 32k "{audio_file_path.with_suffix(".ogg")}"'
                 )
                 output, status_code = await run_command(ffmpeg_command)
                 if status_code != 0:
-                    tmp_file_path.unlink(missing_ok=True)
+                    audio_file_path.unlink(missing_ok=True)
                     await status_message.edit(
                         t('an_error_occurred', error=f'\n<pre>{output}</pre>')
                     )
                     return
-                tmp_file_path = tmp_file_path.with_suffix('.ogg')
+                audio_file_path = audio_file_path.with_suffix('.ogg')
             response = model.prompt(
-                attachments=[Attachment(path=str(tmp_file_path))],
+                attachments=[Attachment(path=str(audio_file_path))],
                 language=language,
             )
-            response.on_done(lambda _: tmp_file_path.unlink(missing_ok=True))
+            response.on_done(lambda _: audio_file_path.unlink(missing_ok=True))
             transcription = response.text()
             await edit_or_send_as_file(
                 event,
                 status_message,
                 transcription,
-                file_name=tmp_file_path.with_suffix('.txt').name,
+                file_name=audio_file_path.with_suffix('.txt').name,
             )
         else:
-            command = f'tafrigh "{temp_file.name}" -o "{output_dir.name}" -f txt srt'
+            command = f'tafrigh "{input_file_path}" -o "{output_dir.name}" -f txt srt'
             command += (
                 f' -w {wit_access_tokens}'
                 if transcription_method == 'wit'
@@ -1101,15 +1151,16 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 event, command, status_message, progress_message, max_length=100
             )
         if transcription_method == 'vosk':
-            srt_to_txt(tmp_file_path.with_suffix('.srt'))
+            srt_to_txt(input_file_path.with_suffix('.srt'))
         for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
                 if reply_message.file.name:
-                    renamed_file = output_file.with_stem(Path(reply_message.file.name).stem)
-                    output_file.rename(renamed_file)
+                    renamed_file = output_file.rename(
+                        output_file.with_stem(Path(reply_message.file.name).stem)
+                    )
                 else:
                     renamed_file = output_file
-                await upload_file(
+                await upload_file_and_cleanup(
                     event,
                     renamed_file,
                     progress_message,

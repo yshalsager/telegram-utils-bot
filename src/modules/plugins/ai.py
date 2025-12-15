@@ -3,7 +3,6 @@ from asyncio import sleep
 from os import getenv
 from pathlib import Path
 from shutil import rmtree
-from tempfile import NamedTemporaryFile
 from time import time
 from typing import ClassVar
 from uuid import uuid4
@@ -16,7 +15,7 @@ from telethon.events import CallbackQuery, NewMessage
 from src import TMP_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command
-from src.utils.downloads import download_file, get_download_name, upload_file
+from src.utils.downloads import download_to_temp_file, get_download_name, upload_file_and_cleanup
 from src.utils.filters import has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
 from src.utils.telegram import get_reply_message, send_progress_message
@@ -79,8 +78,14 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     progress_message = await send_progress_message(event, t('performing_ocr'))
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(dir=output_dir, suffix=reply_message.file.ext) as temp_file:
-        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+        temp_dir=output_dir,
+    ) as temp_file_path:
         with pymupdf.open(temp_file_path) as doc:
             total_pages = doc.page_count
             await progress_message.edit(t('converting_pdf_to_images'))
@@ -117,7 +122,7 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         output_file = output_file.rename(
             output_file.with_stem(get_download_name(reply_message).stem)
         )
-        await upload_file(event, output_file, progress_message)
+        await upload_file_and_cleanup(event, output_file, progress_message)
 
     await status_message.edit(t('pdf_ocr_process_completed'))
     rmtree(output_dir, ignore_errors=True)

@@ -10,7 +10,14 @@ from src import DOWNLOADS_DIR, PARENT_DIR
 from src.modules.base import ModuleBase
 from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
-from src.utils.downloads import download_file, get_download_name, get_filename_from_url, upload_file
+from src.utils.downloads import (
+    download_file,
+    download_to_temp_file,
+    get_download_name,
+    get_filename_from_url,
+    upload_file,
+    upload_file_and_cleanup,
+)
 from src.utils.filters import (
     has_file,
     has_no_file,
@@ -94,7 +101,7 @@ async def upload_from_url_command(event: NewMessage.Event) -> None:
             download_to = new_download_to
 
         await progress_message.edit(t('download_complete_starting_upload'))
-        await upload_file(event, download_to, progress_message)
+        await upload_file_and_cleanup(event, download_to, progress_message, unlink=False)
         await progress_message.edit(f'{t("file_uploaded")}: <code>{download_to.name}</code>')
         Path(temp_file.name).unlink(missing_ok=True)
 
@@ -109,11 +116,15 @@ async def upload_as_file_or_media(event: NewMessage.Event | CallbackQuery.Event)
     progress_message = await send_progress_message(event, t('starting_file_download'))
     _type = 'file' if force_document else 'media'
     output_file_name = f'{reply_message.file.name or _type}{reply_message.file.ext}'
-    with NamedTemporaryFile() as temp_file:
-        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+    async with download_to_temp_file(event, reply_message, progress_message) as temp_file_path:
         await progress_message.edit(t('download_complete_starting_upload'))
-        temp_file_path = temp_file_path.rename(temp_file_path.with_name(output_file_name))
-        await upload_file(event, temp_file_path, progress_message, force_document=force_document)
+        output_file = temp_file_path.rename(temp_file_path.with_name(output_file_name))
+        await upload_file_and_cleanup(
+            event,
+            output_file,
+            progress_message,
+            force_document=force_document,
+        )
 
     await progress_message.edit(f'{t("file_uploaded_as")} {_type}: <code>{output_file_name}</code>')
 

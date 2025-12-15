@@ -1,6 +1,5 @@
 from itertools import zip_longest
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import ClassVar
 
 import pymupdf
@@ -8,10 +7,9 @@ import regex as re
 from telethon import Button
 from telethon.events import CallbackQuery, NewMessage
 
-from src import TMP_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command
-from src.utils.downloads import download_file, upload_file
+from src.utils.downloads import download_to_temp_file, upload_file_and_cleanup
 from src.utils.filters import has_photo_or_photo_file
 from src.utils.i18n import t
 from src.utils.images import crop_image_white_borders
@@ -74,14 +72,17 @@ async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
     progress_message = await send_progress_message(
         event, t('converting_image_to_target_format', target_format=target_format)
     )
-    with NamedTemporaryFile(dir=TMP_DIR, suffix=target_format) as temp_file:
-        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+    ) as temp_file_path:
         output_file = temp_file_path.with_name(
             f'{Path(reply_message.file.name or "image").stem}.{target_format}'
         )
         pymupdf.Pixmap(temp_file_path).save(output_file)
-        await upload_file(event, output_file, progress_message)
-        output_file.unlink(missing_ok=True)
+        await upload_file_and_cleanup(event, output_file, progress_message)
 
     if delete_message_after_process:
         delete_message_after(await event.get_message(), seconds=60 * 5)
@@ -90,8 +91,7 @@ async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def trim_image(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     progress_message = await send_progress_message(event, f'{t("trimming_image")}…')
-    with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
-        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+    async with download_to_temp_file(event, reply_message, progress_message) as temp_file_path:
         try:
             trimmed_image = crop_image_white_borders(temp_file_path)
         except Exception as e:  # noqa: BLE001
@@ -100,8 +100,7 @@ async def trim_image(event: NewMessage.Event) -> None:
             f'{Path(reply_message.file.name or "image").stem}_trimmed.jpg'
         )
         output_file.write_bytes(trimmed_image)
-        await upload_file(event, output_file, progress_message)
-        output_file.unlink(missing_ok=True)
+        await upload_file_and_cleanup(event, output_file, progress_message)
 
 
 async def ocr_image(event: NewMessage.Event) -> None:
@@ -112,8 +111,7 @@ async def ocr_image(event: NewMessage.Event) -> None:
     if match := re.search(r'^/image\s+ocr\s+([\w+]{3,})$', event.message.raw_text):
         lang = match.group(1)
 
-    with NamedTemporaryFile(dir=TMP_DIR, suffix=reply_message.file.ext) as temp_file:
-        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+    async with download_to_temp_file(event, reply_message, progress_message) as temp_file_path:
         command = f'tesseract "{temp_file_path.name}" "{temp_file_path.stem}" -l {lang}'
         output_file = temp_file_path.with_suffix('.txt')
         _, code = await run_command(command)

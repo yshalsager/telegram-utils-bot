@@ -1,6 +1,4 @@
 from collections import defaultdict
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import ClassVar
 
 import regex as re
@@ -9,11 +7,9 @@ from telethon.events import CallbackQuery, NewMessage, StopPropagation
 
 from src.modules.base import ModuleBase
 from src.utils.command import Command
-from src.utils.downloads import get_download_name, upload_file
-from src.utils.fast_telethon import download_file
+from src.utils.downloads import download_to_temp_file, get_download_name, upload_file_and_cleanup
 from src.utils.filters import has_file, is_valid_reply_state
 from src.utils.i18n import t
-from src.utils.progress import progress_callback
 from src.utils.reply import ReplyState, StateT, handle_callback_query_for_reply_state
 from src.utils.telegram import get_reply_message, send_progress_message
 
@@ -45,21 +41,9 @@ async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     progress_message = await send_progress_message(event, t('starting_file_rename'))
 
-    with NamedTemporaryFile(delete=False) as temp_file:
-        await download_file(
-            event.client,
-            reply_message.document,
-            temp_file,
-            progress_callback=lambda current, total: progress_callback(
-                current, total, progress_message, t('downloading')
-            ),
-        )
-        temp_file_path = Path(temp_file.name)
-        new_file_path = temp_file_path.with_name(str(new_filename_with_ext))
-        temp_file_path.rename(new_file_path)
-
-    await upload_file(event, new_file_path, progress_message)
-    new_file_path.unlink(missing_ok=True)
+    async with download_to_temp_file(event, reply_message, progress_message) as temp_file_path:
+        new_file_path = temp_file_path.rename(temp_file_path.with_name(str(new_filename_with_ext)))
+        await upload_file_and_cleanup(event, new_file_path, progress_message)
 
     await progress_message.edit(f'{t("file_renamed")}: {new_filename_with_ext}')
     if event.sender_id in reply_states:

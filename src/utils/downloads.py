@@ -1,7 +1,9 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from io import BufferedRandom, BufferedWriter
 from pathlib import Path
-from tempfile import _TemporaryFileWrapper
+from tempfile import NamedTemporaryFile, _TemporaryFileWrapper
 from typing import Any
 from urllib import parse
 from uuid import uuid4
@@ -10,6 +12,7 @@ from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 from telethon.tl.types import DocumentAttributeFilename
 
+from src import TMP_DIR
 from src.utils.fast_telethon import download_file as fast_download_file
 from src.utils.fast_telethon import upload_file as fast_upload_file
 from src.utils.i18n import t
@@ -77,6 +80,22 @@ async def download_file(
     return Path(temp_file.name)
 
 
+@asynccontextmanager
+async def download_to_temp_file(
+    event: NewMessage.Event | CallbackQuery.Event,
+    reply_message: Message,
+    progress_message: Message,
+    *,
+    suffix: str | None = None,
+    temp_dir: Path = TMP_DIR,
+) -> AsyncIterator[Path]:
+    if suffix is None:
+        suffix = reply_message.file.ext if reply_message.file else ''
+    with NamedTemporaryFile(dir=temp_dir, suffix=suffix) as temp_file:
+        temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        yield temp_file_path
+
+
 async def upload_file(
     event: NewMessage.Event | CallbackQuery.Event,
     output_file: Path,
@@ -104,6 +123,19 @@ async def upload_file(
         reply_to=event.message.id if isinstance(event, NewMessage.Event) else None,
         **kwargs,
     )
+
+
+async def upload_file_and_cleanup(
+    event: NewMessage.Event | CallbackQuery.Event,
+    output_file: Path,
+    progress_message: Message,
+    *,
+    unlink: bool = True,
+    **kwargs: Any,
+) -> None:
+    await upload_file(event, output_file, progress_message, **kwargs)
+    if unlink:
+        output_file.unlink(missing_ok=True)
 
 
 def get_filename_from_url(url: str) -> str:

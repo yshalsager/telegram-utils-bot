@@ -10,9 +10,9 @@ def crop_image_white_borders(image_path: Path) -> bytes:
     except UnidentifiedImageError:
         return b''
     # Invert image (so that white is 0)
-    invert_image: Image = ImageOps.invert(image)
+    invert_image = ImageOps.invert(image)
     image_box = invert_image.getbbox()
-    cropped: Image = image.crop(image_box)
+    cropped = image.crop(image_box)
     image.close()
     cropped_image_bytes = BytesIO()
     cropped.save(cropped_image_bytes, format='JPEG')
