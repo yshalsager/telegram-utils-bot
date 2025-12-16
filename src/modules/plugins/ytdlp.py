@@ -110,11 +110,119 @@ def calculate_common_formats_and_sizes(
     return common_formats, total_sizes, worst_audio_size, len(entries)
 
 
+def hms_to_seconds(time_str: str) -> int:
+    h, m, s = time_str.split(':')
+    return int(h) * 3600 + int(m) * 60 + int(s)
+
+
 def pick_thumb(dir_path: Path, pattern: str) -> tuple[Path | None, set[Path]]:
     candidates = [p for p in dir_path.glob(pattern) if p.suffix.lower() in {'.jpg', '.jpeg'}]
     candidates.sort(key=lambda p: p.name)
     thumb_path = candidates[0] if candidates else None
     return thumb_path, {thumb_path} if thumb_path else set()
+
+
+async def download_video_segment(event: NewMessage.Event) -> None:
+    progress_message = await send_progress_message(event, t('starting_download'))
+    message = event.message
+    match = re.search(
+        rf'^/ytclip\s+(?P<url>{HTTP_URL_PATTERN})\s+(?P<start>\d{{2}}:\d{{2}}:\d{{2}})\s+(?P<end>\d{{2}}:\d{{2}}:\d{{2}})$',
+        message.raw_text,
+    )
+    if not match:
+        await progress_message.edit(t('invalid_ytclip_command'))
+        return
+
+    start_time = match.group('start')
+    end_time = match.group('end')
+    start_seconds = hms_to_seconds(start_time)
+    end_seconds = hms_to_seconds(end_time)
+    if start_seconds >= end_seconds:
+        await progress_message.edit(t('invalid_ytclip_command'))
+        return
+
+    def download_ranges(*_: Any) -> list[dict[str, float]]:
+        return [{'start_time': float(start_seconds), 'end_time': float(end_seconds)}]
+
+    ydl_opts = {
+        **params,
+        'noplaylist': True,
+        'format': 'bv*[height<=480]+ba/b[height<=480]',
+        'outtmpl': str(TMP_DIR / f'%(id)s-{start_seconds}-{end_seconds}.%(ext)s'),
+        'progress_hooks': [
+            partial(download_hook, message=progress_message, loop=get_running_loop())
+        ],
+        'postprocessors': [
+            {
+                'key': 'FFmpegMetadata',
+                'add_metadata': True,
+                'add_chapters': True,
+            },
+            {
+                'key': 'FFmpegThumbnailsConvertor',
+                'format': 'jpg',
+                'when': 'before_dl',
+            },
+        ],
+        'writethumbnail': True,
+        'download_ranges': download_ranges,
+    }
+
+    try:
+        info_dict = await get_running_loop().run_in_executor(
+            None, partial(YoutubeDL(ydl_opts).extract_info, match.group('url'), download=True)
+        )
+        file_candidates = [
+            p
+            for p in TMP_DIR.glob(f'{info_dict["id"]}-{start_seconds}-{end_seconds}.*')
+            if p.suffix.lower() not in {'.jpg', '.jpeg'}
+        ]
+        file_candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
+        if not file_candidates:
+            await progress_message.edit(t('an_error_occurred', error=t('no_file_found')))
+            return
+        file_path = file_candidates[0]
+
+        thumb_path, thumb_cleanup_paths = pick_thumb(
+            TMP_DIR, f'{info_dict["id"]}-{start_seconds}-{end_seconds}.*'
+        )
+        await progress_message.edit(t('uploading_file'))
+
+        safe_title = re.sub(r'[/\\:*?\"<>|]', '_', info_dict['title'])
+        start_slug = start_time.replace(':', '-')
+        end_slug = end_time.replace(':', '-')
+        file_path = file_path.rename(
+            file_path.with_name(f'{safe_title}-{start_slug}-{end_slug}{file_path.suffix}')
+        )
+
+        attributes = [
+            DocumentAttributeVideo(
+                duration=int(info_dict.get('duration') or (end_seconds - start_seconds)),
+                w=info_dict.get('width') or 0,
+                h=info_dict.get('height') or 0,
+                supports_streaming=True,
+            )
+        ]
+        await upload_file(
+            event,
+            file_path,
+            progress_message,
+            caption=f'<b>{info_dict["title"]}</b>\n\n'
+            f'👤 {info_dict.get("uploader", "")}\n'
+            f'⏱ {start_time} - {end_time}\n'
+            f'💾 {naturalsize(file_path.stat().st_size, binary=True)}\n\n'
+            f'{info_dict["webpage_url"]}',
+            attributes=attributes,
+            supports_streaming=True,
+            mime_type='video/mp4' if file_path.suffix.lower() == '.mp4' else None,
+            thumb=str(thumb_path) if thumb_path else None,
+        )
+        file_path.unlink(missing_ok=True)
+        for p in thumb_cleanup_paths:
+            p.unlink(missing_ok=True)
+        await progress_message.edit(t('download_and_upload_completed'))
+    except Exception as e:  # noqa: BLE001
+        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
 
 
 async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -467,8 +575,8 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
 
     start_time = match.group('start')
     end_time = match.group('end')
-    start_seconds = sum(int(x) * 60**i for i, x in enumerate(reversed(start_time.split(':'))))
-    end_seconds = sum(int(x) * 60**i for i, x in enumerate(reversed(end_time.split(':'))))
+    start_seconds = hms_to_seconds(start_time)
+    end_seconds = hms_to_seconds(end_time)
     ydl_opts = {
         **params,
         'format': 'wa',
@@ -535,6 +643,15 @@ class YTDLP(ModuleBase):
     name = 'YTDLP'
     description = t('_ytdlp_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
+        'ytclip': Command(
+            handler=download_video_segment,
+            description=t('_ytclip_description'),
+            pattern=re.compile(
+                rf'^/ytclip\s+{HTTP_URL_PATTERN}\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}$'
+            ),
+            condition=has_valid_url,
+            is_applicable_for_reply=False,
+        ),
         'ytaudio': Command(
             handler=download_audio_segment,
             description=t('_ytaudio_description'),
