@@ -11,14 +11,21 @@ import llm
 import pymupdf
 import regex as re
 from telethon.events import CallbackQuery, NewMessage
+from telethon.tl.custom import Message
 
 from src import TMP_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import download_to_temp_file, get_download_name, upload_file_and_cleanup
-from src.utils.filters import has_pdf_file, has_photo_or_photo_file
+from src.utils.filters import has_media, has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
-from src.utils.telegram import get_reply_message, send_progress_message
+from src.utils.run import run_command
+from src.utils.telegram import (
+    delete_message_after,
+    edit_or_send_as_file,
+    get_reply_message,
+    send_progress_message,
+)
 
 OCR_MODEL = 'gemini-2.5-flash'
 OCR_MODEL_RPM = 10
@@ -28,6 +35,9 @@ OCR_PROMPT = (
     'Add \n\n between each paragraph. '
     'Correct spelling and punctuations if there are any problems with them.'
 )
+
+GEMINI_OCR_PATTERN = re.compile(r'^/(gemini)\s+(ocr)$')
+GEMINI_TRANSCRIBE_PATTERN = re.compile(r'^/(gemini)\s+(transcribe)(?:\s+([a-zA-Z-]+))?$')
 
 
 logger = logging.getLogger(__name__)
@@ -62,18 +72,31 @@ rate_limiter = RateLimiter(max_requests_per_minute=OCR_MODEL_RPM)
 max_retries = 3
 
 
-async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    api_key = getenv('LLM_GEMINI_KEY')
-    if not api_key:
+async def get_message_for_processing(event: NewMessage.Event | CallbackQuery.Event) -> Message:
+    if isinstance(event, CallbackQuery.Event):
+        return await get_reply_message(event, previous=True)
+    return (
+        await get_reply_message(event, previous=True) if event.message.is_reply else event.message
+    )
+
+
+async def get_gemini_model(event: NewMessage.Event | CallbackQuery.Event) -> llm.AsyncModel | None:
+    if not getenv('LLM_GEMINI_KEY'):
         await event.reply(f'{t("missing_api_key")}: <code>LLM_GEMINI_KEY</code>')
-        return
+        return None
     try:
-        model = llm.get_async_model(OCR_MODEL)
+        return llm.get_async_model(OCR_MODEL)
     except llm.UnknownModelError:
         await event.reply(f'{t("invalid_model")}: <code>{OCR_MODEL}</code>')
+        return None
+
+
+async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    model = await get_gemini_model(event)
+    if not model:
         return
 
-    reply_message = await get_reply_message(event, previous=True)
+    reply_message = await get_message_for_processing(event)
     status_message = await send_progress_message(event, t('starting_process'))
     progress_message = await send_progress_message(event, t('performing_ocr'))
     output_dir = Path(TMP_DIR / str(uuid4()))
@@ -128,6 +151,62 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     rmtree(output_dir, ignore_errors=True)
 
 
+async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    model = await get_gemini_model(event)
+    if not model:
+        return
+
+    input_message = await get_message_for_processing(event)
+    language = 'ar'
+    if isinstance(event, NewMessage.Event) and event.message.text:
+        match = GEMINI_TRANSCRIBE_PATTERN.match(event.message.text)
+        language = (match.group(3) if match else 'ar') or 'ar'
+
+    status_message = await send_progress_message(event, t('starting_transcription'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
+    output_dir = Path(TMP_DIR / str(uuid4()))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        async with download_to_temp_file(
+            event, input_message, progress_message, temp_dir=output_dir
+        ) as input_file_path:
+            audio_file_path = input_file_path
+            if (
+                input_message.video
+                or input_message.video_note
+                or input_file_path.suffix.lower()
+                not in ('.ogg', '.oga', '.opus', '.mp3', '.wav', '.aac', '.flac')
+            ):
+                audio_file_path = input_file_path.with_suffix('.ogg')
+                await progress_message.edit(t('converting_media'))
+                output, status_code = await run_command(
+                    f'ffmpeg -hide_banner -y -i "{input_file_path}" -vn -ac 1 -c:a libopus -b:a 32k "{audio_file_path}"'
+                )
+                if status_code != 0:
+                    await status_message.edit(
+                        t('an_error_occurred', error=f'\n<pre>{output}</pre>')
+                    )
+                    return
+
+            await progress_message.edit(t('starting_transcription'))
+            response = await model.prompt(
+                f'Transcribe this audio into {language}. Output only the transcription.',
+                attachments=[llm.Attachment(path=str(audio_file_path))],
+            )
+            transcription = await response.text()
+            edited = await edit_or_send_as_file(
+                event,
+                status_message,
+                transcription,
+                file_name=f'{get_download_name(input_message).stem}.txt',
+            )
+            if not edited:
+                await status_message.edit(t('transcription_completed'))
+    finally:
+        delete_message_after(progress_message)
+        rmtree(output_dir, ignore_errors=True)
+
+
 class AI(ModuleBase):
     name = 'AI'
     description = t('_ai_module_description')
@@ -135,8 +214,15 @@ class AI(ModuleBase):
         'gemini ocr': Command(
             handler=gemini_ocr_pdf,
             description=t('_gemini_ocr_description'),
-            pattern=re.compile(r'^/(gemini)\s+(ocr)$'),
+            pattern=GEMINI_OCR_PATTERN,
             condition=lambda e, m: (has_pdf_file(e, m) or has_photo_or_photo_file(e, m)),
+            is_applicable_for_reply=True,
+        ),
+        'gemini transcribe': Command(
+            handler=gemini_transcribe_media,
+            description=t('_gemini_transcribe_description'),
+            pattern=GEMINI_TRANSCRIBE_PATTERN,
+            condition=lambda e, m: has_media(e, m, any=True),
             is_applicable_for_reply=True,
         ),
     }
