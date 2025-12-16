@@ -255,8 +255,8 @@ async def run_bot() -> None:
             module.register_handlers(bot)
 
     # Register general handlers
-    bot.add_event_handler(handle_reply_prompts)
-    bot.add_event_handler(handle_file_collectors)
+    bot.add_event_handler(handle_reply_prompts, NewMessage())
+    bot.add_event_handler(handle_file_collectors, NewMessage())
     bot.add_event_handler(
         handle_commands,
         NewMessage(
