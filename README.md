@@ -26,6 +26,8 @@ A versatile multilingual modular Telegram bot with multiple features.
 - Download / upload Telegram files
 - Upload files as documents or media
 - Rename Telegram files
+- Create and extract zip archives
+- List archive contents
 
 ### Audio Processing
 
@@ -56,13 +58,14 @@ A versatile multilingual modular Telegram bot with multiple features.
 - Search and retrieve Quran ayahs and Sunnah Hadiths
 - Search web using DuckDuckGo
 - Search Wikipedia in multiple languages
-- YouTube (and all sites supported by ytdlp) interactions (download audio/video, playlists, subtitles)
+- YouTube (and all sites supported by ytdlp) interactions (download full/segment from audio/video, playlists, subtitles)
 
 ### Text, Document, and Audio Processing
 
-- OCR (Optical Character Recognition) using Tesseract and Google
+- OCR (Optical Character Recognition) using Tesseract and Gemini
 - PDF processing: text extraction, compression, page extraction, cropping, splitting, and merging
-- Transcription
+- Transcription (Wit/Whisper/Vosk + Gemini)
+- Custom Gemini prompt on a replied file
 
 ### Utility Functions
 
@@ -71,6 +74,7 @@ A versatile multilingual modular Telegram bot with multiple features.
 - Generate MD5 hashes of Telegram files
 - Create direct download links (planned)
 - Instant Preview of web articles
+- Readability extraction for web pages
 
 ## Usage
 
@@ -84,13 +88,19 @@ A versatile multilingual modular Telegram bot with multiple features.
 
 Before setting up the bot:
 
-1. Create a `.env` and fill in the required information as defined in [mise.toml] env section:
+1. Create a `.env` and fill in the required information as defined in `mise.toml`:
 
 ```dotenv
    API_ID="1234567"
    API_HASH="0123456789abcdef0123456789abcdef"
    BOT_TOKEN="1234567890:abcdefghijklmnopqrstuvwxyz0123456789"
    BOT_ADMINS='123456,123456,123456'
+   # Optional (AI/Gemini)
+   LLM_GEMINI_KEY="..."
+   # Optional (Whisper via Groq)
+   GROQ_API_KEY="..."
+   # Optional (tafrigh wit)
+   WIT_CLIENT_ACCESS_TOKENS="..."
 ```
 
 ### Using Docker (Recommended)
@@ -105,19 +115,18 @@ docker compose up --build -d
 
 ### Without Docker
 
-1. Ensure you have Python 3.12+ and pip v19+ or poetry installed.
-2. Clone the repository.
-3. Install dependencies:
-    - Using poetry: `poetry install`
-    - Using pip: `pip install .`
-4. Install system dependencies:
+1. Install system dependencies:
     - FFmpeg
     - aria2
     - Any other system-level dependencies (refer to the Dockerfile for a complete list)
-5. Run the bot:
+2. Install tools + Python (recommended, Python 3.13+):
+    - `mise install`
+3. Install Python dependencies:
+    - `uv sync --dev`
+4. Run the bot:
 
 ```bash
-python3 -m src
+uv run -m src
 ```
 
 ## Acknowledgements
