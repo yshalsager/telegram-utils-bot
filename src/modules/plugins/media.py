@@ -1119,16 +1119,21 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
     try:
-        with (output_dir / audio_message.file.name).open('wb') as f:
+        audio_name = audio_message.file.name or get_download_name(audio_message).name
+        with (output_dir / audio_name).open('wb') as f:
             await download_file(event, f, audio_message, progress_message)
-        audio_file = output_dir / audio_message.file.name
+        audio_file = output_dir / audio_name
         input_name = input_message.file.name or get_download_name(input_message).name
         with (output_dir / input_name).open('wb') as f:
             await download_file(event, f, input_message, progress_message)
         input_file = output_dir / input_name
         output_file = output_dir / f'{audio_file.stem}.mp4'
 
-        if input_message.file.ext == '.srt':
+        if (
+            input_message.file
+            and input_message.file.ext
+            and input_message.file.ext.lower() == '.srt'
+        ):
             ffmpeg_command = (
                 f'ffmpeg -hide_banner -y -f lavfi -i color=c=black:s=854x480:d={audio_message.file.duration} '
                 f'-i "{audio_file}" -i "{input_file}" '
@@ -1142,9 +1147,10 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
             ffmpeg_command = (
                 f'ffmpeg -hide_banner -y -loop 1 -i "{input_file}" '
                 f'-i "{audio_file}" '
+                f'-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" '
                 f'-c:v libx264 -preset ultrafast -tune stillimage '
                 f'-c:a aac -b:a 48k -shortest '
-                f'-pix_fmt yuv420p "{output_file}"'
+                f'-pix_fmt yuv420p -movflags +faststart "{output_file}"'
             )
         else:
             await status_message.edit(t('unsupported_input_file_format'))
