@@ -16,7 +16,7 @@ DOWNLOADS_DIR = PARENT_DIR / 'downloads'
 DOWNLOADS_DIR.mkdir(exist_ok=True)
 TMP_DIR = PARENT_DIR / 'tmp'
 rmtree(TMP_DIR, ignore_errors=True)
-TMP_DIR.mkdir()
+TMP_DIR.mkdir(exist_ok=True)
 
 # bot config
 IS_DEBUG: bool = getenv('DEBUG', '').lower() in ('true', '1')
