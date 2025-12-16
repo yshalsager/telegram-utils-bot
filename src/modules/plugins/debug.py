@@ -19,7 +19,7 @@ async def to_json(event: NewMessage.Event) -> None:
     reply_message = await event.get_reply_message()
     json_str = orjson.dumps(process_dict(reply_message.to_dict()), option=json_options).decode()
     json_html = html_escape(json_str)
-    if len(json_html) > 3500:
+    if len(json_html) > 4050:
         progress_message = await event.reply(t('sending_file'))
         with NamedTemporaryFile(mode='w+', suffix='.json') as temp_file:
             temp_file.write(json_str)
