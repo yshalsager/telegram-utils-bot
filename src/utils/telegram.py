@@ -27,14 +27,18 @@ async def edit_or_send_as_file(
     text: str,
     file_name: str = 'output.txt',
     caption: str = '',
+    *,
+    parse_mode: str | None = None,
+    file_text: str | None = None,
 ) -> bool:
     try:
-        await message.edit(text)
+        await message.edit(text, parse_mode=parse_mode)
         return True
     except MessageTooLongError:
         progress_message = await send_progress_message(event, t('sending_file'))
-        with NamedTemporaryFile(mode='w+', suffix='.txt') as temp_file:
-            temp_file.write(text)
+        suffix = Path(file_name).suffix or '.txt'
+        with NamedTemporaryFile(mode='w+', suffix=suffix) as temp_file:
+            temp_file.write(file_text if file_text is not None else text)
             temp_file.flush()
             temp_file_path = Path(temp_file.name)
             temp_file_path = temp_file_path.rename(temp_file_path.with_name(file_name))
