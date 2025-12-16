@@ -107,7 +107,7 @@ class FileManager(ModuleBase):
         ),
         'archive list': Command(
             handler=list_archive_command,
-            description=t('_list_archive_description'),
+            description=t('_archive_list_description'),
             pattern=re.compile(r'^/list\s+archive$'),
             condition=lambda event, message: is_admin_in_private(event, message)
             and has_file(event, message),
