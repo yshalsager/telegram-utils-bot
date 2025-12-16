@@ -24,11 +24,13 @@ from src.utils.telegram import (
     delete_message_after,
     edit_or_send_as_file,
     get_reply_message,
+    inline_choice_grid,
     send_progress_message,
 )
 
 OCR_MODEL = 'gemini-2.5-flash'
 OCR_MODEL_RPM = 10
+GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']
 OCR_PROMPT = (
     'OCR this PDF page. DONt REMOVE ARABIC Taskheel. '
     'NO text modifications. NO entries from you. '
@@ -80,19 +82,46 @@ async def get_message_for_processing(event: NewMessage.Event | CallbackQuery.Eve
     )
 
 
-async def get_gemini_model(event: NewMessage.Event | CallbackQuery.Event) -> llm.AsyncModel | None:
+async def get_gemini_model(
+    event: NewMessage.Event | CallbackQuery.Event, model_name: str
+) -> llm.AsyncModel | None:
     if not getenv('LLM_GEMINI_KEY'):
         await event.reply(f'{t("missing_api_key")}: <code>LLM_GEMINI_KEY</code>')
         return None
     try:
-        return llm.get_async_model(OCR_MODEL)
+        return llm.get_async_model(model_name)
     except llm.UnknownModelError:
-        await event.reply(f'{t("invalid_model")}: <code>{OCR_MODEL}</code>')
+        await event.reply(f'{t("invalid_model")}: <code>{model_name}</code>')
         return None
 
 
+async def choose_gemini_model(
+    event: NewMessage.Event | CallbackQuery.Event, *, prefix: str
+) -> str | None:
+    if not isinstance(event, CallbackQuery.Event):
+        return OCR_MODEL
+    return await inline_choice_grid(
+        event,
+        prefix=prefix,
+        prompt_text=f'{t("choose_model")}:',
+        pairs=[
+            (
+                name.replace('gemini-', '').replace('-', ' ').title(),
+                f'{prefix}{name}',
+            )
+            for name in GEMINI_MODELS
+        ],
+        cols=2,
+        cast=str,
+    )
+
+
 async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    model = await get_gemini_model(event)
+    model_name = await choose_gemini_model(event, prefix='m|gemini_ocr|model|')
+    if model_name is None:
+        return
+
+    model = await get_gemini_model(event, model_name)
     if not model:
         return
 
@@ -152,7 +181,11 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 
 async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    model = await get_gemini_model(event)
+    model_name = await choose_gemini_model(event, prefix='m|gemini_transcribe|model|')
+    if model_name is None:
+        return
+
+    model = await get_gemini_model(event, model_name)
     if not model:
         return
 

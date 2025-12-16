@@ -319,6 +319,7 @@
   "video_creation_failed": "Video creation failed.",
   "video_created": "Video successfully created.",
   "choose_transcription_method": "Choose the transcription method",
+  "choose_model": "Choose the model",
   "please_set_whisper_model_path": "Please set WHISPER_MODEL_PATH environment variable.",
   "please_set_wit_client_access_tokens": "Please set WIT_CLIENT_ACCESS_TOKENS environment variable.",
   "please_set_whisper_api_key": "Please set GROQ_API_KEY environment variable.",

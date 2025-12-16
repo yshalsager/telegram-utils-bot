@@ -319,6 +319,7 @@
   "video_creation_failed": "فشل إنشاء الفيديو.",
   "video_created": "أنشيء الفيديو بنجاح.",
   "choose_transcription_method": "اختر طريقة التفريغ",
+  "choose_model": "اختر النموذج",
   "please_set_whisper_model_path": "يرجى تعيين متغير بيئة WHISPER_MODEL_PATH.",
   "please_set_wit_client_access_tokens": "يرجى تعيين متغير بيئة WIT_CLIENT_ACCESS_TOKENS.",
   "please_set_whisper_api_key": "يرجى تعيين متغير بيئة GROQ_API_KEY.",
