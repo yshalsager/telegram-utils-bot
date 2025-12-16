@@ -22,7 +22,13 @@ from src.utils.json_processing import json_options, process_dict
 from src.utils.patterns import HTTP_URL_PATTERN, YOUTUBE_URL_PATTERN
 from src.utils.progress import progress_callback
 from src.utils.subtitles import convert_subtitles
-from src.utils.telegram import edit_or_send_as_file, get_reply_message, send_progress_message
+from src.utils.telegram import (
+    delete_callback_after,
+    edit_or_send_as_file,
+    get_reply_message,
+    inline_choice_grid,
+    send_progress_message,
+)
 
 cookies_file = STATE_DIR / 'cookies.txt'
 netrc_file = STATE_DIR / '.netrc'
@@ -264,16 +270,38 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         and event.data.decode().endswith('ytdown')
     )
     is_command_event = isinstance(event, NewMessage.Event)
-    if is_command_event or is_url_event:
+    if is_command_event:
         text = t('choose_format_type')
         buttons = [
-            [Button.inline(t('audio'), 'ytdown|audio|'), Button.inline(t('video'), 'ytdown|video|')]
+            [
+                Button.inline(t('audio'), 'ytdown|type|audio'),
+                Button.inline(t('video'), 'ytdown|type|video'),
+            ]
         ]
-        if is_command_event:
-            await event.reply(text, buttons=buttons)
-        else:
-            await event.edit(text, buttons=buttons)
+        await event.reply(text, buttons=buttons)
         return
+
+    if isinstance(event, CallbackQuery.Event) and event.data:
+        data = event.data.decode('utf-8')
+        if data.startswith('ytdown|type|') or is_url_event:
+            _type = await inline_choice_grid(
+                event,
+                prefix='ytdown|type|',
+                prompt_text=t('choose_format_type'),
+                pairs=[
+                    (t('audio'), 'ytdown|type|audio'),
+                    (t('video'), 'ytdown|type|video'),
+                ],
+                cols=2,
+                cast=str,
+            )
+            if _type is None:
+                return
+            _format = ''
+        else:
+            parts = data.split('|')
+            _type = parts[1] if len(parts) > 1 else ''
+            _format = parts[2] if len(parts) > 2 else ''
 
     reply_message = await get_reply_message(event, previous=True)
     if match := re.search(HTTP_URL_PATTERN, reply_message.raw_text):
@@ -281,7 +309,6 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     else:
         await event.edit(t('no_valid_url_found'))
         return
-    _, _type, _format = event.data.decode().split('|')
     progress_message = await send_progress_message(event, t('starting_process'))
 
     if _type in ('audio', 'video') and not _format:
@@ -320,6 +347,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     # User selected a specific format
     await progress_message.edit(t('starting_download'))
     format_id = _format if _type == 'audio' else f'{_format}+worstaudio/best'
+    delete_callback_after(event)
     post_processors = [
         {
             'key': 'FFmpegMetadata',

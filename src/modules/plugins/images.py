@@ -1,10 +1,8 @@
-from itertools import zip_longest
 from pathlib import Path
 from typing import ClassVar
 
 import pymupdf
 import regex as re
-from telethon import Button
 from telethon.events import CallbackQuery, NewMessage
 
 from src.modules.base import ModuleBase
@@ -15,9 +13,10 @@ from src.utils.i18n import t
 from src.utils.images import crop_image_white_borders
 from src.utils.run import run_command
 from src.utils.telegram import (
-    delete_message_after,
+    delete_callback_after,
     edit_or_send_as_file,
     get_reply_message,
+    inline_choice_grid,
     send_progress_message,
 )
 
@@ -44,18 +43,17 @@ ALLOWED_OUTPUT_FORMATS = {'jpg', 'jpeg', 'png', 'pnm', 'pgm', 'pbm', 'ppm', 'pam
 async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|image_convert|'):
-            target_format = event.data.decode().split('|')[-1]
-            delete_message_after_process = True
-        else:
-            buttons = [
-                [Button.inline(f'{ext}', f'm|image_convert|{ext}') for ext in row if ext]
-                for row in list(
-                    zip_longest(*[iter(sorted(ALLOWED_OUTPUT_FORMATS))] * 3, fillvalue=None)
-                )
-            ]
-            await event.edit(f'{t("choose_target_format")}:', buttons=buttons)
+        target_format = await inline_choice_grid(
+            event,
+            prefix='m|image_convert|',
+            prompt_text=f'{t("choose_target_format")}:',
+            pairs=[(str(ext), f'm|image_convert|{ext}') for ext in sorted(ALLOWED_OUTPUT_FORMATS)],
+            cols=3,
+            cast=str,
+        )
+        if target_format is None:
             return
+        delete_message_after_process = True
     else:
         target_format = event.message.text.split('convert ')[1]
         if target_format not in ALLOWED_OUTPUT_FORMATS:
@@ -85,7 +83,7 @@ async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await upload_file_and_cleanup(event, output_file, progress_message)
 
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def trim_image(event: NewMessage.Event) -> None:

@@ -10,7 +10,6 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import pymupdf
 import regex as re
-from telethon import Button
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 
@@ -25,7 +24,12 @@ from src.utils.downloads import (
 )
 from src.utils.filters import has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
-from src.utils.telegram import delete_message_after, get_reply_message, send_progress_message
+from src.utils.telegram import (
+    delete_callback_after,
+    get_reply_message,
+    inline_choice_grid,
+    send_progress_message,
+)
 
 PDF_SAVE_KWARGS = {
     'garbage': 4,
@@ -236,15 +240,17 @@ async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> No
 async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode().startswith('m|pdf_images|'):
-            output_format = event.data.decode().split('|')[-1]
-            delete_message_after_process = True
-        else:
-            buttons = [
-                [Button.inline('ZIP', 'm|pdf_images|ZIP'), Button.inline('PDF', 'm|pdf_images|PDF')]
-            ]
-            await event.edit(f'{t("choose_output_format")}:', buttons=buttons)
+        output_format = await inline_choice_grid(
+            event,
+            prefix='m|pdf_images|',
+            prompt_text=f'{t("choose_output_format")}:',
+            pairs=[('ZIP', 'm|pdf_images|ZIP'), ('PDF', 'm|pdf_images|PDF')],
+            cols=2,
+            cast=str,
+        )
+        if output_format is None:
             return
+        delete_message_after_process = True
     else:
         args = event.message.text.split('images')
         output_format = 'ZIP' if len(args) == 1 else args[-1]
@@ -290,7 +296,7 @@ async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> No
 
     await progress_message.edit(t('pdf_to_images_conversion_completed'))
     if delete_message_after_process:
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def image_to_pdf(event: NewMessage.Event) -> None:
@@ -383,33 +389,54 @@ async def ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     rmtree(output_dir, ignore_errors=True)
 
 
-async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912
     delete_message_after_process = False
+    method: str
+    option: str
     if isinstance(event, CallbackQuery.Event):
-        if event.data.decode() == 'm|pdf_compress|gs':
-            buttons = [
-                [
-                    Button.inline(opt, f'm|pdf_compress|gs|{opt}')
-                    for opt in ['screen', 'ebook', 'printer', 'prepress', 'default']
-                ]
-            ]
-            await event.edit(f'{t("choose_ghostscript_compression")}:', buttons=buttons)
-            return
-        if event.data.decode().startswith('m|pdf_compress|'):
-            parts = event.data.decode().split('|')
-            method = parts[2] if len(parts) > 2 else 'pymupdf'
-            option = parts[3] if len(parts) > 3 else ''
+        data = event.data.decode('utf-8')
+        if data.startswith('m|pdf_compress|gs|'):
+            method = 'gs'
+            option = data.split('|')[-1]
+            delete_message_after_process = True
+        elif data.startswith('m|pdf_compress|'):
+            method = data.split('|')[-1]
+            option = ''
             delete_message_after_process = True
         else:
-            buttons = [
-                [
-                    Button.inline('Ghostscript', 'm|pdf_compress|gs'),
-                    Button.inline('PyMuPDF', 'm|pdf_compress|pymupdf'),
-                    Button.inline('OCRmyPDF', 'm|pdf_compress|ocrmypdf'),
-                ]
-            ]
-            await event.edit(f'{t("choose_compression_method")}:', buttons=buttons)
-            return
+            _method = await inline_choice_grid(
+                event,
+                prefix='m|pdf_compress|',
+                prompt_text=f'{t("choose_compression_method")}:',
+                pairs=[
+                    ('Ghostscript', 'm|pdf_compress|gs'),
+                    ('PyMuPDF', 'm|pdf_compress|pymupdf'),
+                    ('OCRmyPDF', 'm|pdf_compress|ocrmypdf'),
+                ],
+                cols=3,
+                cast=str,
+            )
+            if _method is None:
+                return
+            method = _method
+            if method == 'gs':
+                _option = await inline_choice_grid(
+                    event,
+                    prefix='m|pdf_compress|gs|',
+                    prompt_text=f'{t("choose_ghostscript_compression")}:',
+                    pairs=[
+                        (opt, f'm|pdf_compress|gs|{opt}')
+                        for opt in ['screen', 'ebook', 'printer', 'prepress', 'default']
+                    ],
+                    cols=5,
+                    cast=str,
+                )
+                if _option is None:
+                    return
+                option = _option
+            else:
+                option = ''
+            delete_message_after_process = True
     else:
         method = 'pymupdf'
         option = ''
@@ -454,7 +481,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     if delete_message_after_process:
         await status_message.delete()
-        delete_message_after(await event.get_message(), seconds=60 * 5)
+        delete_callback_after(event)
 
 
 async def pdf_bw(event: NewMessage.Event | CallbackQuery.Event) -> None:
