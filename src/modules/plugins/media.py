@@ -165,6 +165,7 @@ async def process_media(
                     duration=int(output_info.get('duration', 0)),
                     title=output_info.get('title'),
                     performer=output_info.get('uploader'),
+                    voice=is_voice or None,
                 )
             ]
         else:
@@ -173,6 +174,7 @@ async def process_media(
                     duration=int(output_info.get('duration', 0)),
                     w=output_info.get('width', 0),
                     h=output_info.get('height', 0),
+                    supports_streaming=True,
                 )
             ]
 
@@ -183,6 +185,10 @@ async def process_media(
             is_voice,
             force_document=False,
             attributes=attributes,
+            supports_streaming=output_info.get('vcodec') != 'none',
+            mime_type='video/mp4'
+            if output_info.get('vcodec') != 'none' and output_file.suffix.lower() == '.mp4'
+            else None,
         )
         data['output_size'] = output_file.stat().st_size
 

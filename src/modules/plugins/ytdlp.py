@@ -110,6 +110,13 @@ def calculate_common_formats_and_sizes(
     return common_formats, total_sizes, worst_audio_size, len(entries)
 
 
+def pick_thumb(dir_path: Path, pattern: str) -> tuple[Path | None, set[Path]]:
+    candidates = [p for p in dir_path.glob(pattern) if p.suffix.lower() in {'.jpg', '.jpeg'}]
+    candidates.sort(key=lambda p: p.name)
+    thumb_path = candidates[0] if candidates else None
+    return thumb_path, {thumb_path} if thumb_path else set()
+
+
 async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     progress_message = await send_progress_message(event, t('fetching_information'))
     message = (
@@ -200,7 +207,7 @@ async def get_subtitles(event: NewMessage.Event) -> None:
             await convert_subtitles(vtt_path, srt_path, txt_path)
             for file in [srt_path, txt_path]:
                 file_path = file.rename(
-                    file.with_stem(f'{re.sub("[/:*\"'<>|]", "_", entry["title"])}-{lang}')
+                    file.with_stem(f'{re.sub(r"[/\\:*?\"<>|]", "_", entry["title"])}-{lang}')
                 )
                 await upload_file(
                     event,
@@ -355,6 +362,13 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             'add_chapters': True,
         }
     ]
+    post_processors.append(
+        {
+            'key': 'FFmpegThumbnailsConvertor',
+            'format': 'jpg',
+            'when': 'before_dl',
+        }
+    )
     if _type == 'audio':
         post_processors.append(
             {
@@ -383,6 +397,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             file_path = Path(
                 TMP_DIR / f'{entry["id"]}.{entry["ext"] if _type == "video" else "opus"}'
             )
+            thumb_path, thumb_cleanup_paths = pick_thumb(TMP_DIR, f'{entry["id"]}.*')
             await progress_message.edit(t('uploading_file'))
             if entry.get('vcodec') == 'none':  # audio
                 attributes = [
@@ -390,6 +405,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                         duration=entry.get('duration'),
                         title=entry.get('title'),
                         performer=entry.get('uploader'),
+                        voice=False,
                     )
                 ]
             else:
@@ -398,10 +414,11 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                         duration=entry.get('duration'),
                         w=entry.get('width'),
                         h=entry.get('height'),
+                        supports_streaming=True,
                     )
                 ]
             file_path = file_path.rename(
-                file_path.with_stem(f'{re.sub("[/:*\"'<>|]", "_", entry["title"])}')
+                file_path.with_stem(re.sub(r'[/\\:*?\"<>|]', '_', entry['title']))
             )
 
             if entry.get('vcodec') == 'none':
@@ -418,8 +435,19 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 f'📅 {entry.get("upload_date", "")}\n\n'
                 f'{entry["webpage_url"]}',
                 attributes=attributes,
+                supports_streaming=entry.get('vcodec') != 'none',
+                mime_type=(
+                    'video/mp4'
+                    if file_path.suffix.lower() == '.mp4'
+                    else 'audio/ogg'
+                    if file_path.suffix.lower() == '.ogg'
+                    else None
+                ),
+                thumb=str(thumb_path) if thumb_path else None,
             )
             file_path.unlink(missing_ok=True)
+            for p in thumb_cleanup_paths:
+                p.unlink(missing_ok=True)
 
         await progress_message.edit(t('download_and_upload_completed'))
     except Exception as e:  # noqa: BLE001
@@ -450,11 +478,17 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
         ],
         'postprocessors': [
             {
+                'key': 'FFmpegThumbnailsConvertor',
+                'format': 'jpg',
+                'when': 'before_dl',
+            },
+            {
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'opus',
                 'preferredquality': '64',
-            }
+            },
         ],
+        'writethumbnail': True,
         'external_downloader': 'ffmpeg_i',
         'external_downloader_args': ['-ss', str(start_seconds), '-to', str(end_seconds)],
     }
@@ -465,12 +499,16 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
         )
         file_path = Path(TMP_DIR / f'{info_dict["id"]}-{start_seconds}-{end_seconds}.opus')
         file_path = file_path.rename(file_path.with_suffix('.ogg'))
+        thumb_path, thumb_cleanup_paths = pick_thumb(
+            TMP_DIR, f'{info_dict["id"]}-{start_seconds}-{end_seconds}.*'
+        )
         await progress_message.edit(t('uploading_audio_segment'))
         attributes = [
             DocumentAttributeAudio(
                 duration=end_seconds - start_seconds,
                 title=f'{info_dict["title"]} ({start_time} - {end_time})',
                 performer=info_dict.get('uploader'),
+                voice=False,
             )
         ]
         await upload_file(
@@ -482,8 +520,12 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
             f'⏱ {end_seconds - start_seconds} seconds\n'
             f'{info_dict["webpage_url"]}',
             attributes=attributes,
+            mime_type='audio/ogg',
+            thumb=str(thumb_path) if thumb_path else None,
         )
         file_path.unlink(missing_ok=True)
+        for p in thumb_cleanup_paths:
+            p.unlink(missing_ok=True)
         await progress_message.edit(t('audio_segment_download_and_upload_completed'))
     except Exception as e:  # noqa: BLE001
         await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
