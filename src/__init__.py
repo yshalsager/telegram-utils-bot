@@ -6,7 +6,7 @@ from pathlib import Path
 from shutil import rmtree
 
 # paths
-WORK_DIR = Path(__package__)
+WORK_DIR = Path(__file__).resolve().parent
 PARENT_DIR = WORK_DIR.parent
 
 STATE_DIR = PARENT_DIR / 'state'
@@ -14,7 +14,7 @@ STATE_DIR.mkdir(exist_ok=True)
 
 DOWNLOADS_DIR = PARENT_DIR / 'downloads'
 DOWNLOADS_DIR.mkdir(exist_ok=True)
-TMP_DIR = PARENT_DIR / 'tmp'
+TMP_DIR = (PARENT_DIR / 'tmp').resolve()
 rmtree(TMP_DIR, ignore_errors=True)
 TMP_DIR.mkdir(exist_ok=True)
 
