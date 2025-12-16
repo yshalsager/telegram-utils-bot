@@ -61,6 +61,108 @@ params['extractor_args'] = {
     'youtube': {'player_client': ['default,mweb,web_creator']},
 }
 
+FFMPEG_METADATA_PP = {
+    'key': 'FFmpegMetadata',
+    'add_metadata': True,
+    'add_chapters': True,
+}
+THUMB_PP = {
+    'key': 'FFmpegThumbnailsConvertor',
+    'format': 'jpg',
+    'when': 'before_dl',
+}
+AUDIO_EXTRACT_PP = {
+    'key': 'FFmpegExtractAudio',
+    'preferredcodec': 'opus',
+    'preferredquality': '64',
+}
+
+
+def sanitize_filename(text: str) -> str:
+    return str(re.sub(r'[/\\:*?\"<>|]', '_', text))
+
+
+async def get_target_message(event: NewMessage.Event | CallbackQuery.Event) -> Message:
+    return (
+        await get_reply_message(event, previous=True)
+        if isinstance(event, CallbackQuery.Event)
+        else event.message
+    )
+
+
+def extract_link(text: str) -> str | None:
+    if match := re.search(HTTP_URL_PATTERN, text):
+        return str(match.group(0))
+    return None
+
+
+async def get_link_from_event(event: NewMessage.Event | CallbackQuery.Event) -> str | None:
+    message = await get_target_message(event)
+    return extract_link(message.raw_text)
+
+
+def ydl_progress_hooks(message: Message) -> list[Any]:
+    return [partial(download_hook, message=message, loop=get_running_loop())]
+
+
+async def ydl_extract(link: str, ydl_opts: dict[str, Any], *, download: bool) -> dict[str, Any]:
+    return await get_running_loop().run_in_executor(
+        None,
+        partial(YoutubeDL(ydl_opts).extract_info, link, download=download),
+    )
+
+
+def build_caption(
+    title: str,
+    url: str,
+    lines: list[str],
+    *,
+    title_suffix: str = '',
+    blank_line_before_url: bool = True,
+) -> str:
+    caption = f'<b>{title}</b>{title_suffix}'
+    if lines:
+        caption += f'\n\n{"\n".join(lines)}'
+    caption += ('\n\n' if blank_line_before_url else '\n') + url
+    return caption
+
+
+def mime_type_for_path(file_path: Path) -> str | None:
+    suffix = file_path.suffix.lower()
+    return 'video/mp4' if suffix == '.mp4' else 'audio/ogg' if suffix == '.ogg' else None
+
+
+def cleanup_paths(paths: set[Path]) -> None:
+    for path in paths:
+        path.unlink(missing_ok=True)
+
+
+def media_attributes(
+    entry: dict[str, Any],
+    *,
+    is_audio: bool,
+    duration: int | None = None,
+    title: str | None = None,
+) -> list[Any]:
+    if is_audio:
+        return [
+            DocumentAttributeAudio(
+                duration=int(duration if duration is not None else entry.get('duration') or 0),
+                title=title or entry.get('title'),
+                performer=entry.get('uploader'),
+                voice=False,
+            )
+        ]
+
+    return [
+        DocumentAttributeVideo(
+            duration=int(duration if duration is not None else entry.get('duration') or 0),
+            w=entry.get('width') or 0,
+            h=entry.get('height') or 0,
+            supports_streaming=True,
+        )
+    ]
+
 
 def download_hook(d: dict[str, Any], message: Message, loop: Any) -> None:
     # This won't work with external downloader
@@ -149,29 +251,14 @@ async def download_video_segment(event: NewMessage.Event) -> None:
         'noplaylist': True,
         'format': 'bv*[height<=480]+ba/b[height<=480]',
         'outtmpl': str(TMP_DIR / f'%(id)s-{start_seconds}-{end_seconds}.%(ext)s'),
-        'progress_hooks': [
-            partial(download_hook, message=progress_message, loop=get_running_loop())
-        ],
-        'postprocessors': [
-            {
-                'key': 'FFmpegMetadata',
-                'add_metadata': True,
-                'add_chapters': True,
-            },
-            {
-                'key': 'FFmpegThumbnailsConvertor',
-                'format': 'jpg',
-                'when': 'before_dl',
-            },
-        ],
+        'progress_hooks': ydl_progress_hooks(progress_message),
+        'postprocessors': [FFMPEG_METADATA_PP, THUMB_PP],
         'writethumbnail': True,
         'download_ranges': download_ranges,
     }
 
     try:
-        info_dict = await get_running_loop().run_in_executor(
-            None, partial(YoutubeDL(ydl_opts).extract_info, match.group('url'), download=True)
-        )
+        info_dict = await ydl_extract(match.group('url'), ydl_opts, download=True)
         file_candidates = [
             p
             for p in TMP_DIR.glob(f'{info_dict["id"]}-{start_seconds}-{end_seconds}.*')
@@ -188,38 +275,38 @@ async def download_video_segment(event: NewMessage.Event) -> None:
         )
         await progress_message.edit(t('uploading_file'))
 
-        safe_title = re.sub(r'[/\\:*?\"<>|]', '_', info_dict['title'])
+        safe_title = sanitize_filename(info_dict['title'])
         start_slug = start_time.replace(':', '-')
         end_slug = end_time.replace(':', '-')
         file_path = file_path.rename(
             file_path.with_name(f'{safe_title}-{start_slug}-{end_slug}{file_path.suffix}')
         )
 
-        attributes = [
-            DocumentAttributeVideo(
-                duration=int(info_dict.get('duration') or (end_seconds - start_seconds)),
-                w=info_dict.get('width') or 0,
-                h=info_dict.get('height') or 0,
-                supports_streaming=True,
-            )
-        ]
+        attributes = media_attributes(
+            info_dict,
+            is_audio=False,
+            duration=int(info_dict.get('duration') or (end_seconds - start_seconds)),
+        )
         await upload_file(
             event,
             file_path,
             progress_message,
-            caption=f'<b>{info_dict["title"]}</b>\n\n'
-            f'👤 {info_dict.get("uploader", "")}\n'
-            f'⏱ {start_time} - {end_time}\n'
-            f'💾 {naturalsize(file_path.stat().st_size, binary=True)}\n\n'
-            f'{info_dict["webpage_url"]}',
+            caption=build_caption(
+                info_dict['title'],
+                info_dict['webpage_url'],
+                [
+                    f'👤 {info_dict.get("uploader", "")}',
+                    f'⏱ {start_time} - {end_time}',
+                    f'💾 {naturalsize(file_path.stat().st_size, binary=True)}',
+                ],
+            ),
             attributes=attributes,
             supports_streaming=True,
             mime_type='video/mp4' if file_path.suffix.lower() == '.mp4' else None,
             thumb=str(thumb_path) if thumb_path else None,
         )
         file_path.unlink(missing_ok=True)
-        for p in thumb_cleanup_paths:
-            p.unlink(missing_ok=True)
+        cleanup_paths(thumb_cleanup_paths)
         await progress_message.edit(t('download_and_upload_completed'))
     except Exception as e:  # noqa: BLE001
         await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
@@ -227,26 +314,16 @@ async def download_video_segment(event: NewMessage.Event) -> None:
 
 async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
     progress_message = await send_progress_message(event, t('fetching_information'))
-    message = (
-        await get_reply_message(event, previous=True)
-        if isinstance(event, CallbackQuery.Event)
-        else event.message
-    )
-    match = re.search(HTTP_URL_PATTERN, message.raw_text)
-    if not match:
+    link = await get_link_from_event(event)
+    if not link:
         await progress_message.edit(t('no_valid_url_found'))
         return
-    link = match.group(0)
     ydl_opts = {
         **params,
-        'progress_hooks': [
-            partial(download_hook, message=progress_message, loop=get_running_loop())
-        ],
+        'progress_hooks': ydl_progress_hooks(progress_message),
     }
     try:
-        info_dict = await get_running_loop().run_in_executor(
-            None, partial(YoutubeDL(ydl_opts).extract_info, link, download=False)
-        )
+        info_dict = await ydl_extract(link, ydl_opts, download=False)
         processed_info = process_dict(info_dict)
         json_str = orjson.dumps(processed_info, option=json_options).decode()
         edited = await edit_or_send_as_file(
@@ -267,14 +344,9 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def get_subtitles(event: NewMessage.Event) -> None:
     progress_message = await send_progress_message(event, t('downloading_subtitles'))
-    message = (
-        await get_reply_message(event, previous=True)
-        if isinstance(event, CallbackQuery.Event)
-        else event.message
-    )
-    if match := re.search(HTTP_URL_PATTERN, message.raw_text):
-        link = match.group(0)
-    else:
+    message = await get_target_message(event)
+    link = extract_link(message.raw_text)
+    if not link:
         await progress_message.edit(t('no_valid_url_found'))
         return
     if match := re.search(r'\s+([a-z]{2})\s+', message.raw_text):
@@ -288,14 +360,10 @@ async def get_subtitles(event: NewMessage.Event) -> None:
         'writesubtitles': True,
         'subtitleslangs': [language, f'{language}-orig'],
         'outtmpl': str(TMP_DIR / '%(title)s.%(ext)s'),
-        'progress_hooks': [
-            partial(download_hook, message=progress_message, loop=get_running_loop())
-        ],
+        'progress_hooks': ydl_progress_hooks(progress_message),
     }
     try:
-        info_dict = await get_running_loop().run_in_executor(
-            None, partial(YoutubeDL(ydl_opts).extract_info, link, download=True)
-        )
+        info_dict = await ydl_extract(link, ydl_opts, download=True)
     except Exception as e:  # noqa: BLE001
         await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
         return
@@ -315,7 +383,7 @@ async def get_subtitles(event: NewMessage.Event) -> None:
             await convert_subtitles(vtt_path, srt_path, txt_path)
             for file in [srt_path, txt_path]:
                 file_path = file.rename(
-                    file.with_stem(f'{re.sub(r"[/\\:*?\"<>|]", "_", entry["title"])}-{lang}')
+                    file.with_stem(f'{sanitize_filename(entry["title"])}-{lang}')
                 )
                 await upload_file(
                     event,
@@ -330,14 +398,8 @@ async def get_subtitles(event: NewMessage.Event) -> None:
 
 async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
     progress_message = await send_progress_message(event, t('fetching_available_formats'))
-    message = (
-        await get_reply_message(event, previous=True)
-        if isinstance(event, CallbackQuery.Event)
-        else event.message
-    )
-    if match := re.search(HTTP_URL_PATTERN, message.raw_text):
-        link = match.group(0)
-    else:
+    link = await get_link_from_event(event)
+    if not link:
         await progress_message.edit(t('no_valid_url_found'))
         return
     try:
@@ -345,9 +407,7 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
             **params,
             'listformats': True,
         }
-        info_dict = await get_running_loop().run_in_executor(
-            None, partial(YoutubeDL(ydl_opts).extract_info, link, download=False)
-        )
+        info_dict = await ydl_extract(link, ydl_opts, download=False)
         common_formats, total_sizes, worst_audio_size, entry_count = (
             calculate_common_formats_and_sizes(info_dict)
         )
@@ -419,9 +479,8 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             _format = parts[2] if len(parts) > 2 else ''
 
     reply_message = await get_reply_message(event, previous=True)
-    if match := re.search(HTTP_URL_PATTERN, reply_message.raw_text):
-        link = match.group(0)
-    else:
+    link = extract_link(reply_message.raw_text)
+    if not link:
         await event.edit(t('no_valid_url_found'))
         return
     progress_message = await send_progress_message(event, t('starting_process'))
@@ -429,9 +488,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if _type in ('audio', 'video') and not _format:
         await progress_message.edit(t('fetching_available_formats'))
         ydl_opts = {**params, 'listformats': True}
-        info_dict = await get_running_loop().run_in_executor(
-            None, partial(YoutubeDL(ydl_opts).extract_info, link, download=False)
-        )
+        info_dict = await ydl_extract(link, ydl_opts, download=False)
         common_formats, total_sizes, worst_audio_size, entry_count = (
             calculate_common_formats_and_sizes(info_dict)
         )
@@ -463,43 +520,20 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     await progress_message.edit(t('starting_download'))
     format_id = _format if _type == 'audio' else f'{_format}+worstaudio/best'
     delete_callback_after(event)
-    post_processors = [
-        {
-            'key': 'FFmpegMetadata',
-            'add_metadata': True,
-            'add_chapters': True,
-        }
-    ]
-    post_processors.append(
-        {
-            'key': 'FFmpegThumbnailsConvertor',
-            'format': 'jpg',
-            'when': 'before_dl',
-        }
-    )
+    post_processors = [FFMPEG_METADATA_PP, THUMB_PP]
     if _type == 'audio':
-        post_processors.append(
-            {
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'opus',
-                'preferredquality': '64',
-            }
-        )
+        post_processors.append(AUDIO_EXTRACT_PP)
     ydl_opts = {
         **params,
         'format': format_id,
         'outtmpl': str(TMP_DIR / '%(id)s.%(ext)s'),
-        'progress_hooks': [
-            partial(download_hook, message=progress_message, loop=get_running_loop())
-        ],
+        'progress_hooks': ydl_progress_hooks(progress_message),
         'writethumbnail': True,
         'postprocessors': post_processors,
     }
 
     try:
-        info_dict = await get_running_loop().run_in_executor(
-            None, partial(YoutubeDL(ydl_opts).extract_info, link, download=True)
-        )
+        info_dict = await ydl_extract(link, ydl_opts, download=True)
         entries = info_dict.get('entries', [info_dict])  # Handle both single videos and playlists
         for entry in entries:
             file_path = Path(
@@ -507,55 +541,34 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             )
             thumb_path, thumb_cleanup_paths = pick_thumb(TMP_DIR, f'{entry["id"]}.*')
             await progress_message.edit(t('uploading_file'))
-            if entry.get('vcodec') == 'none':  # audio
-                attributes = [
-                    DocumentAttributeAudio(
-                        duration=entry.get('duration'),
-                        title=entry.get('title'),
-                        performer=entry.get('uploader'),
-                        voice=False,
-                    )
-                ]
-            else:
-                attributes = [
-                    DocumentAttributeVideo(
-                        duration=entry.get('duration'),
-                        w=entry.get('width'),
-                        h=entry.get('height'),
-                        supports_streaming=True,
-                    )
-                ]
-            file_path = file_path.rename(
-                file_path.with_stem(re.sub(r'[/\\:*?\"<>|]', '_', entry['title']))
-            )
+            is_audio = entry.get('vcodec') == 'none'
+            attributes = media_attributes(entry, is_audio=is_audio)
+            file_path = file_path.rename(file_path.with_stem(sanitize_filename(entry['title'])))
 
-            if entry.get('vcodec') == 'none':
+            if is_audio:
                 file_path = file_path.rename(file_path.with_suffix('.ogg'))
 
             await upload_file(
                 event,
                 file_path,
                 progress_message,
-                caption=f'<b>{entry["title"]}</b>\n\n'
-                f'👤 {entry.get("uploader", "")}\n'
-                f'⏱ {entry.get("duration_string", "")}\n'
-                f'💾 {naturalsize(entry.get("filesize_approx", 0), binary=True)}\n'
-                f'📅 {entry.get("upload_date", "")}\n\n'
-                f'{entry["webpage_url"]}',
+                caption=build_caption(
+                    entry['title'],
+                    entry['webpage_url'],
+                    [
+                        f'👤 {entry.get("uploader", "")}',
+                        f'⏱ {entry.get("duration_string", "")}',
+                        f'💾 {naturalsize(entry.get("filesize_approx", 0), binary=True)}',
+                        f'📅 {entry.get("upload_date", "")}',
+                    ],
+                ),
                 attributes=attributes,
                 supports_streaming=entry.get('vcodec') != 'none',
-                mime_type=(
-                    'video/mp4'
-                    if file_path.suffix.lower() == '.mp4'
-                    else 'audio/ogg'
-                    if file_path.suffix.lower() == '.ogg'
-                    else None
-                ),
+                mime_type=mime_type_for_path(file_path),
                 thumb=str(thumb_path) if thumb_path else None,
             )
             file_path.unlink(missing_ok=True)
-            for p in thumb_cleanup_paths:
-                p.unlink(missing_ok=True)
+            cleanup_paths(thumb_cleanup_paths)
 
         await progress_message.edit(t('download_and_upload_completed'))
     except Exception as e:  # noqa: BLE001
@@ -581,59 +594,47 @@ async def download_audio_segment(event: NewMessage.Event) -> None:
         **params,
         'format': 'wa',
         'outtmpl': str(TMP_DIR / f'%(id)s-{start_seconds}-{end_seconds}.%(ext)s'),
-        'progress_hooks': [
-            partial(download_hook, message=progress_message, loop=get_running_loop())
-        ],
-        'postprocessors': [
-            {
-                'key': 'FFmpegThumbnailsConvertor',
-                'format': 'jpg',
-                'when': 'before_dl',
-            },
-            {
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'opus',
-                'preferredquality': '64',
-            },
-        ],
+        'progress_hooks': ydl_progress_hooks(progress_message),
+        'postprocessors': [THUMB_PP, AUDIO_EXTRACT_PP],
         'writethumbnail': True,
         'external_downloader': 'ffmpeg_i',
         'external_downloader_args': ['-ss', str(start_seconds), '-to', str(end_seconds)],
     }
 
     try:
-        info_dict = await get_running_loop().run_in_executor(
-            None, partial(YoutubeDL(ydl_opts).extract_info, match.group('url'), download=True)
-        )
+        info_dict = await ydl_extract(match.group('url'), ydl_opts, download=True)
         file_path = Path(TMP_DIR / f'{info_dict["id"]}-{start_seconds}-{end_seconds}.opus')
         file_path = file_path.rename(file_path.with_suffix('.ogg'))
         thumb_path, thumb_cleanup_paths = pick_thumb(
             TMP_DIR, f'{info_dict["id"]}-{start_seconds}-{end_seconds}.*'
         )
         await progress_message.edit(t('uploading_audio_segment'))
-        attributes = [
-            DocumentAttributeAudio(
-                duration=end_seconds - start_seconds,
-                title=f'{info_dict["title"]} ({start_time} - {end_time})',
-                performer=info_dict.get('uploader'),
-                voice=False,
-            )
-        ]
+        attributes = media_attributes(
+            info_dict,
+            is_audio=True,
+            duration=end_seconds - start_seconds,
+            title=f'{info_dict["title"]} ({start_time} - {end_time})',
+        )
         await upload_file(
             event,
             file_path,
             progress_message,
-            caption=f'<b>{info_dict["title"]}</b> ({start_time} - {end_time})\n\n'
-            f'👤 {info_dict.get("uploader", "")}\n'
-            f'⏱ {end_seconds - start_seconds} seconds\n'
-            f'{info_dict["webpage_url"]}',
+            caption=build_caption(
+                info_dict['title'],
+                info_dict['webpage_url'],
+                [
+                    f'👤 {info_dict.get("uploader", "")}',
+                    f'⏱ {end_seconds - start_seconds} seconds',
+                ],
+                title_suffix=f' ({start_time} - {end_time})',
+                blank_line_before_url=False,
+            ),
             attributes=attributes,
             mime_type='audio/ogg',
             thumb=str(thumb_path) if thumb_path else None,
         )
         file_path.unlink(missing_ok=True)
-        for p in thumb_cleanup_paths:
-            p.unlink(missing_ok=True)
+        cleanup_paths(thumb_cleanup_paths)
         await progress_message.edit(t('audio_segment_download_and_upload_completed'))
     except Exception as e:  # noqa: BLE001
         await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
