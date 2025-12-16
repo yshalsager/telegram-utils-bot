@@ -1,5 +1,7 @@
 import logging
 from asyncio import sleep
+from functools import partial
+from mimetypes import guess_type
 from os import getenv
 from pathlib import Path
 from shutil import rmtree
@@ -40,6 +42,8 @@ OCR_PROMPT = (
 
 GEMINI_OCR_PATTERN = re.compile(r'^/(gemini)\s+(ocr)$')
 GEMINI_TRANSCRIBE_PATTERN = re.compile(r'^/(gemini)\s+(transcribe)(?:\s+([a-zA-Z-]+))?$')
+GEMINI_PROMPT_PATTERN = re.compile(r'^/(gemini)\s+(prompt)$')
+PROMPT_TEXT_PATTERN = re.compile(r'(?s)^(.+)$')
 
 
 logger = logging.getLogger(__name__)
@@ -116,6 +120,16 @@ async def choose_gemini_model(
     )
 
 
+def get_message_mime_type(message: Message) -> str | None:
+    if message.file and message.file.mime_type:
+        return message.file.mime_type or ''
+    if message.file and message.file.name:
+        return guess_type(message.file.name)[0]
+    if message.file and message.file.ext:
+        return guess_type(f'x{message.file.ext}')[0]
+    return None
+
+
 async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     model_name = await choose_gemini_model(event, prefix='m|gemini_ocr|model|')
     if model_name is None:
@@ -126,6 +140,7 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return
 
     reply_message = await get_message_for_processing(event)
+    mime_type = reply_message.file.mime_type if reply_message.file else None
     status_message = await send_progress_message(event, t('starting_process'))
     progress_message = await send_progress_message(event, t('performing_ocr'))
     output_dir = Path(TMP_DIR / str(uuid4()))
@@ -138,6 +153,8 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         suffix=reply_message.file.ext,
         temp_dir=output_dir,
     ) as temp_file_path:
+        if not mime_type:
+            mime_type = guess_type(temp_file_path)[0]
         with pymupdf.open(temp_file_path) as doc:
             total_pages = doc.page_count
             await progress_message.edit(t('converting_pdf_to_images'))
@@ -204,6 +221,7 @@ async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event)
             event, input_message, progress_message, temp_dir=output_dir
         ) as input_file_path:
             audio_file_path = input_file_path
+            attachment_type = input_message.file.mime_type if input_message.file else None
             if (
                 input_message.video
                 or input_message.video_note
@@ -211,6 +229,7 @@ async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event)
                 not in ('.ogg', '.oga', '.opus', '.mp3', '.wav', '.aac', '.flac')
             ):
                 audio_file_path = input_file_path.with_suffix('.ogg')
+                attachment_type = 'audio/ogg'
                 await progress_message.edit(t('converting_media'))
                 output, status_code = await run_command(
                     f'ffmpeg -hide_banner -y -i "{input_file_path}" -vn -ac 1 -c:a libopus -b:a 32k "{audio_file_path}"'
@@ -221,10 +240,16 @@ async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event)
                     )
                     return
 
+            if not attachment_type:
+                attachment_type = guess_type(audio_file_path)[0]
+            if not attachment_type:
+                await status_message.edit(t('unsupported_file_type'))
+                return
+
             await progress_message.edit(t('starting_transcription'))
             response = await model.prompt(
                 f'Transcribe this audio into {language}. Output only the transcription.',
-                attachments=[llm.Attachment(path=str(audio_file_path))],
+                attachments=[llm.Attachment(type=attachment_type, path=str(audio_file_path))],
             )
             transcription = await response.text()
             edited = await edit_or_send_as_file(
@@ -238,6 +263,86 @@ async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event)
     finally:
         delete_message_after(progress_message)
         rmtree(output_dir, ignore_errors=True)
+
+
+async def run_gemini_custom_prompt(
+    event: NewMessage.Event,
+    input_message: Message | None,
+    match: re.Match,
+    *,
+    model_name: str,
+) -> None:
+    if not input_message:
+        await event.reply(t('unsupported_file_type'))
+        return
+
+    prompt = match.group(1).strip()
+    if not prompt:
+        await event.reply(t('invalid_prompt'))
+        return
+
+    model = await get_gemini_model(event, model_name)
+    if not model:
+        return
+
+    mime_type = get_message_mime_type(input_message)
+    if not mime_type or mime_type not in model.attachment_types:
+        await event.reply(t('unsupported_file_type'))
+        return
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('downloading'))
+    output_dir = Path(TMP_DIR / str(uuid4()))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        async with download_to_temp_file(
+            event,
+            input_message,
+            progress_message,
+            suffix=input_message.file.ext,
+            temp_dir=output_dir,
+        ) as input_file_path:
+            await progress_message.edit(t('starting_process'))
+            response = await model.prompt(
+                prompt,
+                attachments=[llm.Attachment(type=mime_type, path=str(input_file_path))],
+            )
+            text = await response.text()
+            await edit_or_send_as_file(
+                event,
+                status_message,
+                text,
+                file_name=f'{get_download_name(input_message).stem}.txt',
+            )
+    finally:
+        delete_message_after(progress_message)
+        rmtree(output_dir, ignore_errors=True)
+
+
+async def gemini_prompt_with_file(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    input_message = await get_message_for_processing(event)
+    if isinstance(event, CallbackQuery.Event):
+        model_name = await choose_gemini_model(event, prefix='m|gemini_prompt|model|')
+        if model_name is None:
+            return
+        model = await get_gemini_model(event, model_name)
+        if not model:
+            return
+
+        mime_type = get_message_mime_type(input_message)
+        if not mime_type or mime_type not in model.attachment_types:
+            await event.reply(t('unsupported_file_type'))
+            return
+        await event.client.reply_prompts.ask(
+            event,
+            t('send_prompt'),
+            pattern=PROMPT_TEXT_PATTERN,
+            handler=partial(run_gemini_custom_prompt, model_name=model_name),
+            invalid_reply_text=t('invalid_prompt'),
+            media_message_id=input_message.id,
+        )
+        return
+
+    await event.reply(t('use_inline_prompt'))
 
 
 class AI(ModuleBase):
@@ -255,6 +360,13 @@ class AI(ModuleBase):
             handler=gemini_transcribe_media,
             description=t('_gemini_transcribe_description'),
             pattern=GEMINI_TRANSCRIBE_PATTERN,
+            condition=lambda e, m: has_media(e, m, any=True),
+            is_applicable_for_reply=True,
+        ),
+        'gemini prompt': Command(
+            handler=gemini_prompt_with_file,
+            description=t('_gemini_prompt_description'),
+            pattern=GEMINI_PROMPT_PATTERN,
             condition=lambda e, m: has_media(e, m, any=True),
             is_applicable_for_reply=True,
         ),

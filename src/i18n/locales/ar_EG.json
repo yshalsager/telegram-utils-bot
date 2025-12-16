@@ -118,8 +118,8 @@
   "_zip_description": "ضغط ملف من تليجرام.",
   "_unzip": "فك الضغط",
   "_unzip_description": "فك ضغط أرشيف إلى مجلد التنزيلات الخاص بالبوت.",
-  "_list_archive": "عرض الأرشيف",
-  "_list_archive_description": "عرض محتويات الأرشيف.",
+  "_archive_list": "عرض الأرشيف",
+  "_archive_list_description": "عرض محتويات الأرشيف.",
   "choose_target_format": "اختر التنسيق المطلوب",
   "unsupported_media_type": "نوع وسائط غير مدعوم للتحويل",
   "allowed_formats": "التنسيقات المتاحة",
@@ -387,7 +387,13 @@
   "_gemini_ocr_description": "التفريغ باستخدام جوجل جيميني.",
   "_gemini_transcribe": "تفريغ جيميني",
   "_gemini_transcribe_description": "تفريغ الصوت/الفيديو باستخدام جوجل جيميني.",
+  "_gemini_prompt": "أمر جيميني",
+  "_gemini_prompt_description": "تشغيل نص مخصص على ملف بالرد باستخدام جوجل جيميني.",
   "converting_media": "جارٍ تحويل الوسائط…",
   "missing_api_key": "مفتاح API مفقود",
-  "invalid_model": "نموذج غير صالح"
+  "invalid_model": "نموذج غير صالح",
+  "send_prompt": "أرسل نص الطلب.",
+  "invalid_prompt": "طلب غير صالح.",
+  "unsupported_file_type": "نوع ملف غير مدعوم.",
+  "use_inline_prompt": "استخدم زر الأمر المضمن لإرسال طلب للملف الذي رددت عليه."
 }

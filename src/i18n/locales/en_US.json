@@ -118,8 +118,8 @@
   "_zip_description": "Zip a Telegram file.",
   "_unzip": "unzip",
   "_unzip_description": "Unzip an archive into the bot downloads folder.",
-  "_list_archive": "list archive",
-  "_list_archive_description": "List archive contents.",
+  "_archive_list": "list archive",
+  "_archive_list_description": "List archive contents.",
   "choose_target_format": "Choose the target format",
   "unsupported_media_type": "Unsupported media type for conversion",
   "allowed_formats": "Allowed formats",
@@ -387,7 +387,13 @@
   "_gemini_ocr_description": "Perform OCR using Google Gemini.",
   "_gemini_transcribe": "Gemini transcribe",
   "_gemini_transcribe_description": "Transcribe audio/video using Google Gemini.",
+  "_gemini_prompt": "Gemini prompt",
+  "_gemini_prompt_description": "Run a custom prompt on a replied file using Google Gemini.",
   "converting_media": "Converting media…",
   "missing_api_key": "Missing API key",
-  "invalid_model": "Invalid model"
+  "invalid_model": "Invalid model",
+  "send_prompt": "Send the prompt text.",
+  "invalid_prompt": "Invalid prompt.",
+  "unsupported_file_type": "Unsupported file type.",
+  "use_inline_prompt": "Use the inline command button to send a prompt for the replied file."
 }
