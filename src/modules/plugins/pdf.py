@@ -399,7 +399,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  
             method = 'gs'
             option = data.split('|')[-1]
             delete_message_after_process = True
-        elif data.startswith('m|pdf_compress|'):
+        elif data.startswith('m|pdf_compress|') and not data.startswith('m|pdf_compress|gs'):
             method = data.split('|')[-1]
             option = ''
             delete_message_after_process = True
