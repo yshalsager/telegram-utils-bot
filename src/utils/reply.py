@@ -8,6 +8,8 @@ from telethon import Button
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
+from src.utils.i18n import t
+
 
 @dataclass
 class ReplyPrompt:
@@ -196,7 +198,8 @@ class FileCollectorManager:
 
         collector.file_message_ids.append(event.id)
         if collector.added_reply_text:
-            await event.reply(collector.added_reply_text)
+            buttons = [Button.inline(t('finish'), b'c|finish')] if collector.on_finish else None
+            await event.reply(collector.added_reply_text, buttons=buttons)
 
         if (
             collector.on_complete
@@ -221,8 +224,16 @@ class FileCollectorManager:
         chat_id = event.chat_id or message.chat_id
         key = (chat_id, event.message_id)
         collector = self.collectors.get(key)
+
         if not collector or collector.sender_id != event.sender_id:
-            return False
+            collector = None
+            for k, c in self.collectors.items():
+                if c.chat_id == chat_id and c.sender_id == event.sender_id:
+                    key = k
+                    collector = c
+                    break
+            if not collector:
+                return False
 
         if action == 'finish' and collector.on_finish:
             if len(collector.file_message_ids) < collector.min_files:
