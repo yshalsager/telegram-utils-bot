@@ -8,6 +8,7 @@ from telethon.tl.custom import Message
 
 from src import DOWNLOADS_DIR, PARENT_DIR
 from src.modules.base import ModuleBase
+from src.modules.plugins.media import build_media_upload_params
 from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import (
@@ -121,11 +122,22 @@ async def upload_as_file_or_media(event: NewMessage.Event | CallbackQuery.Event)
     async with download_to_temp_file(event, reply_message, progress_message) as temp_file_path:
         await progress_message.edit(t('download_complete_starting_upload'))
         output_file = temp_file_path.rename(temp_file_path.with_name(output_file_name))
+        upload_kwargs: dict = {}
+        if not force_document and (
+            reply_message.audio
+            or reply_message.voice
+            or reply_message.video
+            or reply_message.video_note
+        ):
+            upload_kwargs = await build_media_upload_params(
+                output_file, is_voice=bool(reply_message.voice)
+            )
         await upload_file_and_cleanup(
             event,
             output_file,
             progress_message,
             force_document=force_document,
+            **upload_kwargs,
         )
 
     await progress_message.edit(f'{t("file_uploaded_as")} {_type}: <code>{output_file_name}</code>')

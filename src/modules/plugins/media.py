@@ -74,7 +74,7 @@ async def get_output_info(file_path: Path) -> dict[str, Any]:
     audio_info = await get_stream_info('a:0', file_path)
     format_info = await get_format_info(file_path)
 
-    info = {
+    info: dict[str, Any] = {
         'vcodec': video_info.get('codec_name', 'none'),
         'acodec': audio_info.get('codec_name', 'none'),
         'duration': float(
@@ -89,6 +89,42 @@ async def get_output_info(file_path: Path) -> dict[str, Any]:
     }
 
     return info
+
+
+async def build_media_upload_params(
+    output_file: Path,
+    *,
+    is_voice: bool = False,
+) -> dict[str, Any]:
+    output_info = await get_output_info(output_file)
+    if output_info.get('vcodec') == 'none':
+        attributes = [
+            DocumentAttributeAudio(
+                duration=int(output_info.get('duration', 0)),
+                title=output_info.get('title'),
+                performer=output_info.get('uploader'),
+                voice=is_voice or None,
+            )
+        ]
+        supports_streaming = False
+        mime_type = None
+    else:
+        attributes = [
+            DocumentAttributeVideo(
+                duration=int(output_info.get('duration', 0)),
+                w=output_info.get('width', 0),
+                h=output_info.get('height', 0),
+                supports_streaming=True,
+            )
+        ]
+        supports_streaming = True
+        mime_type = 'video/mp4' if output_file.suffix.lower() == '.mp4' else None
+
+    return {
+        'attributes': attributes,
+        'supports_streaming': supports_streaming,
+        'mime_type': mime_type,
+    }
 
 
 async def get_media_bitrate(file_path: str) -> tuple[int, int]:
@@ -157,26 +193,7 @@ async def process_media(
         if not output_file.exists() or not output_file.stat().st_size:
             await status_message.edit(t('process_failed'))
             return data
-
-        output_info = await get_output_info(output_file)
-        if output_info.get('vcodec') == 'none':
-            attributes = [
-                DocumentAttributeAudio(
-                    duration=int(output_info.get('duration', 0)),
-                    title=output_info.get('title'),
-                    performer=output_info.get('uploader'),
-                    voice=is_voice or None,
-                )
-            ]
-        else:
-            attributes = [
-                DocumentAttributeVideo(
-                    duration=int(output_info.get('duration', 0)),
-                    w=output_info.get('width', 0),
-                    h=output_info.get('height', 0),
-                    supports_streaming=True,
-                )
-            ]
+        upload_params = await build_media_upload_params(output_file, is_voice=is_voice)
 
         await upload_file(
             event,
@@ -184,11 +201,7 @@ async def process_media(
             progress_message,
             is_voice,
             force_document=False,
-            attributes=attributes,
-            supports_streaming=output_info.get('vcodec') != 'none',
-            mime_type='video/mp4'
-            if output_info.get('vcodec') != 'none' and output_file.suffix.lower() == '.mp4'
-            else None,
+            **upload_params,
         )
         data['output_size'] = output_file.stat().st_size
 
@@ -304,12 +317,16 @@ async def _cut_media_process(
             )
             await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
             if output_file.exists() and output_file.stat().st_size:
+                upload_params = await build_media_upload_params(
+                    output_file, is_voice=bool(reply_message.voice)
+                )
                 await upload_file_and_cleanup(
                     event,
                     output_file,
                     progress_message,
-                    is_voice=reply_message.voice is not None,
+                    is_voice=bool(reply_message.voice),
                     caption=f'{start_time} - {end_time}',
+                    **upload_params,
                 )
             else:
                 await status_message.edit(t('cut_failed_for_item', item=idx))
@@ -385,12 +402,16 @@ async def _split_media_process(
             output_file_base.parent.glob(f'{output_file_base.stem}_segment_*{input_file.suffix}')
         ):
             if output_file.exists() and output_file.stat().st_size:
+                upload_params = await build_media_upload_params(
+                    output_file, is_voice=bool(reply_message.voice)
+                )
                 await upload_file_and_cleanup(
                     event,
                     output_file,
                     progress_message,
-                    is_voice=reply_message.voice is not None,
+                    is_voice=bool(reply_message.voice),
                     caption=f'<code>{output_file.stem}</code>',
+                    **upload_params,
                 )
             else:
                 await status_message.edit(t('process_failed_for_file', file_name=output_file.name))
@@ -529,11 +550,15 @@ async def _merge_media_process(event: CallbackQuery.Event, files: list[int]) -> 
         ffmpeg_command = f'ffmpeg -hide_banner -y -f concat -safe 0 -i "{file_list_path}" -c copy "{output_file_path}"'
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         if output_file_path.exists() and output_file_path.stat().st_size:
+            upload_params = await build_media_upload_params(
+                output_file_path, is_voice=message.voice is not None
+            )
             await upload_file_and_cleanup(
                 event,
                 output_file_path,
                 progress_message,
                 is_voice=message.voice is not None,
+                **upload_params,
             )
             await status_message.edit(t('merge_completed'))
         else:
@@ -588,12 +613,16 @@ async def trim_silence(event: NewMessage.Event) -> None:
             await status_message.edit(t('silence_trimming_failed'))
             return
 
+        upload_params = await build_media_upload_params(
+            output_file_path, is_voice=bool(reply_message.voice)
+        )
         await upload_file_and_cleanup(
             event,
             output_file_path,
             progress_message,
             is_voice=bool(reply_message.voice),
             caption=t('trimmed_audio'),
+            **upload_params,
         )
 
     await status_message.edit(t('silence_trimmed'))
@@ -822,7 +851,13 @@ async def _video_update_process(event: NewMessage.Event, file_ids: list[int]) ->
             await status_message.edit(t('audio_update_failed'))
             return
 
-        await upload_file_and_cleanup(event, output_file, progress_message)
+        upload_params = await build_media_upload_params(output_file, is_voice=False)
+        await upload_file_and_cleanup(
+            event,
+            output_file,
+            progress_message,
+            **upload_params,
+        )
 
     finally:
         rmtree(output_dir, ignore_errors=True)
@@ -1160,7 +1195,13 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
         if not output_file.exists() or not output_file.stat().st_size:
             await status_message.edit(t('video_creation_failed'))
         else:
-            await upload_file_and_cleanup(event, output_file, progress_message)
+            upload_params = await build_media_upload_params(output_file, is_voice=False)
+            await upload_file_and_cleanup(
+                event,
+                output_file,
+                progress_message,
+                **upload_params,
+            )
             await status_message.edit(t('video_created'))
 
     finally:
