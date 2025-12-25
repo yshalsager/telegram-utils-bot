@@ -24,7 +24,7 @@ async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str
         _line = await stream.readline()
         if not _line:
             break
-        yield f'{_line.decode().strip()}\n'
+        yield f'{_line.decode("utf-8", errors="replace").strip()}\n'
 
 
 async def run_subprocess_shell(
@@ -134,5 +134,5 @@ async def run_command(
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except TimeoutError:
         return t('process_timed_out'), -1
-    output = (stdout + stderr).decode('utf-8').strip()
+    output = (stdout + stderr).decode('utf-8', errors='replace').strip()
     return output, (process.returncode or 0)
