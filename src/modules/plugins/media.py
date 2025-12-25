@@ -190,6 +190,10 @@ async def process_media(
 
         status = await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         data['status_text'] = status
+        failed_marker = t('process_failed_with_return_code', code=1).split('1', 1)[0]
+        if failed_marker and failed_marker in status:
+            await status_message.edit(t('process_failed'))
+            return data
         if not output_file.exists() or not output_file.stat().st_size:
             await status_message.edit(t('process_failed'))
             return data
