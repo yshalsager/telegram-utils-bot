@@ -542,8 +542,15 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         info_dict = await ydl_extract(link, ydl_opts, download=True)
         entries = info_dict.get('entries', [info_dict])  # Handle both single videos and playlists
         for entry in entries:
-            file_path = Path(
-                TMP_DIR / f'{entry["id"]}.{entry["ext"] if _type == "video" else "opus"}'
+            entry_path = (
+                entry.get('filepath')
+                or entry.get('_filename')
+                or (entry.get('requested_downloads') or [{}])[0].get('filepath')
+            )
+            file_path = (
+                Path(entry_path)
+                if entry_path
+                else Path(TMP_DIR / f'{entry["id"]}.{entry["ext"] if _type == "video" else "opus"}')
             )
             thumb_path, thumb_cleanup_paths = pick_thumb(TMP_DIR, f'{entry["id"]}.*')
             await progress_message.edit(t('uploading_file'))
