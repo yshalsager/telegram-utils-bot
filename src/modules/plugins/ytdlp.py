@@ -71,6 +71,10 @@ THUMB_PP = {
     'format': 'jpg',
     'when': 'before_dl',
 }
+FFMPEG_VIDEO_CONVERT_PP = {
+    'key': 'FFmpegVideoConvertor',
+    'preferedformat': 'mp4',
+}
 AUDIO_EXTRACT_PP = {
     'key': 'FFmpegExtractAudio',
     'preferredcodec': 'opus',
@@ -252,7 +256,7 @@ async def download_video_segment(event: NewMessage.Event) -> None:
         'format': 'bv*[height<=480]+ba/b[height<=480]',
         'outtmpl': str(TMP_DIR / f'%(id)s-{start_seconds}-{end_seconds}.%(ext)s'),
         'progress_hooks': ydl_progress_hooks(progress_message),
-        'postprocessors': [FFMPEG_METADATA_PP, THUMB_PP],
+        'postprocessors': [FFMPEG_VIDEO_CONVERT_PP, FFMPEG_METADATA_PP, THUMB_PP],
         'writethumbnail': True,
         'download_ranges': download_ranges,
     }
@@ -523,6 +527,8 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     post_processors = [FFMPEG_METADATA_PP, THUMB_PP]
     if _type == 'audio':
         post_processors.append(AUDIO_EXTRACT_PP)
+    else:
+        post_processors.insert(0, FFMPEG_VIDEO_CONVERT_PP)
     ydl_opts = {
         **params,
         'format': format_id,
