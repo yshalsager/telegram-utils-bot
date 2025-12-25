@@ -48,7 +48,7 @@ ALLOWED_SPEED_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
 ALLOWED_AUDIO_COMPRESS_BITRATES = [16, 32, 48, 64, 96, 128]
 ALLOWED_AMPLIFY_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
 ALLOWED_VIDEO_COMPRESS_PERCENTAGES = list(range(20, 100, 10))
-ALLOWED_VIDEO_X265_CRF = [20, 22, 24, 25, 27]
+ALLOWED_VIDEO_X265_CRF = [18, 20, 22, 24, 26, 28, 30]
 ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'vosk']
 
 
@@ -1088,7 +1088,7 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
             event,
             prefix='m|video_x265|',
             prompt_text=f'{t("choose_crf")}:',
-            pairs=[(f'CRF {crf}', f'm|video_x265|{crf}') for crf in ALLOWED_VIDEO_X265_CRF],
+            pairs=[(str(crf), f'm|video_x265|{crf}') for crf in ALLOWED_VIDEO_X265_CRF],
             cols=len(ALLOWED_VIDEO_X265_CRF),
             cast=int,
         )
