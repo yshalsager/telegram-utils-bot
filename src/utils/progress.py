@@ -7,7 +7,9 @@ from telethon.errors import RPCError
 from telethon.tl.custom import Message
 
 
-async def progress_callback(current: float, total: float, event: Message, action: str) -> None:
+async def progress_callback(
+    current: float, total: float, event: Message, action: str, *, unit: str = ''
+) -> None:
     # Using a global dictionary to store last update time, current progress, and start time for each unique operation
     if not hasattr(progress_callback, 'last_updates'):
         progress_callback.last_updates = {}  # type: ignore[attr-defined]
@@ -24,9 +26,14 @@ async def progress_callback(current: float, total: float, event: Message, action
         progress_callback.last_updates[key] = (now, current, start_time)  # type: ignore[attr-defined]
 
         text = f'<b>{action}…</b>\n\n'
-        text += f'{naturalsize(current)} / {naturalsize(total)} '
-        if speed > 0:
-            text += f'🌐 {naturalsize(speed)}/s '
+        if unit := unit.strip():
+            text += f'{int(current)} / {int(total)} {unit} '
+            if speed > 0:
+                text += f'🌐 {speed:.2f}/{unit}/s '
+        else:
+            text += f'{naturalsize(current)} / {naturalsize(total)} '
+            if speed > 0:
+                text += f'🌐 {naturalsize(speed)}/s '
         text += f'⏱️ {precisedelta(elapsed_time)}'
         if remaining_time > 0:
             text += f' ⏰ {precisedelta(remaining_time)}'
