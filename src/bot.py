@@ -147,11 +147,17 @@ async def handle_commands(event: NewMessage.Event) -> None:
 
 async def handle_messages(event: NewMessage.Event) -> None:
     if applicable_commands := await event.client.modules_registry.get_applicable_commands(event):
+
+        def label_for_command(command: str) -> str:
+            key = f'_{command.replace(" ", "_")}'
+            try:
+                return f'{t(key)}'
+            except KeyError:
+                return command
+
         keyboard = [
             [
-                Button.inline(
-                    t(f'_{command.replace(" ", "_")}'), data=f'm|{command.replace(" ", "_")}'
-                )
+                Button.inline(label_for_command(command), data=f'm|{command.replace(" ", "_")}')
                 for command in row
                 if command is not None
             ]
