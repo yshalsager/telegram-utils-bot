@@ -84,6 +84,7 @@ tmp/
 restart.json
 permissions.json
 modules.json
+state/plugins/
 service_account.json
 update.sh
 

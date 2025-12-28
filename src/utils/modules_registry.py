@@ -1,6 +1,7 @@
 """Bot modules dynamic loader"""
 
 import logging
+import sys
 from importlib import import_module
 from pathlib import Path
 from types import ModuleType
@@ -15,10 +16,31 @@ from src.utils.permission_manager import PermissionManager
 
 logger = logging.getLogger(__name__)
 
+PLUGINS_DIR = STATE_DIR / 'plugins'
+
+
+def load_user_plugins() -> list[ModuleType]:
+    PLUGINS_DIR.mkdir(exist_ok=True)
+    if str(PLUGINS_DIR) not in sys.path:
+        sys.path.append(str(PLUGINS_DIR))
+
+    found_modules: list[ModuleType] = []
+    for entry in sorted(PLUGINS_DIR.glob('*.py'), key=lambda p: p.name):
+        if entry.name.startswith(('.', '_')) or entry.name == '__init__.py':
+            continue
+        try:
+            found_modules.append(import_module(entry.stem))
+        except Exception:
+            logger.exception(f'Failed to load user plugin: {entry}')
+
+    if found_modules:
+        logger.info(f'found user plugins: {", ".join(sorted({m.__name__ for m in found_modules}))}')
+    return found_modules
+
 
 def load_modules(directory: str) -> list[ModuleBase]:
     """Load all modules in modules list"""
-    found_modules: list[ModuleType] = [
+    built_in_modules: list[ModuleType] = [
         import_module(f'{directory}.modules.{module.parent.name}.{module.stem}')
         for module in filter(
             lambda x: x.name not in ('__init__.py', 'base.py')
@@ -27,6 +49,7 @@ def load_modules(directory: str) -> list[ModuleBase]:
             Path(f'{directory}/modules').glob('**/*.py'),
         )
     ]
+    found_modules = [*built_in_modules, *load_user_plugins()]
     logger.info(
         f'found modules: {", ".join([module.__name__.split(".")[-1] for module in found_modules])}'
     )

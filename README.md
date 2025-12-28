@@ -84,6 +84,16 @@ A versatile multilingual modular Telegram bot with multiple features.
 - Use inline queries for web searches by typing `@your_bot_username` followed by your search query. You can list all
   inline command using `@your_bot_username help`.
 
+## User plugins
+
+You can drop your own plugins (or `git clone` them) into `state/plugins/` and they will be loaded on startup.
+
+- Put plugin files directly in the folder: `state/plugins/my_plugin.py`
+- Plugin filenames must be valid Python module names (letters/numbers/underscore), e.g. `my_plugin.py`
+
+Plugin modules should define `ModuleBase` subclasses with `IS_MODULE = True` (same pattern as built-in plugins in
+`src/modules/plugins/`).
+
 ## Setup
 
 Before setting up the bot:
