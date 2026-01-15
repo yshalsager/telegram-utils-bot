@@ -1,4 +1,6 @@
 import shlex
+import shutil
+import time
 import zipfile
 from pathlib import Path
 from typing import ClassVar
@@ -7,7 +9,7 @@ import regex as re
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
-from src import DOWNLOADS_DIR
+from src import TMP_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import download_to_temp_file, get_download_name, upload_file_and_cleanup
@@ -62,7 +64,7 @@ async def unzip_archive_command(event: NewMessage.Event | CallbackQuery.Event) -
     message = await get_target_message(event)
     progress_message = await send_progress_message(event, t('starting_file_download'))
     archive_stem = Path(get_download_name(message).name).stem
-    output_dir = DOWNLOADS_DIR / f'{archive_stem}_unzipped'
+    output_dir = TMP_DIR / f'{archive_stem}_unzipped_{int(time.time() * 1000)}'
     output_dir.mkdir(parents=True, exist_ok=True)
 
     async with download_to_temp_file(event, message, progress_message) as temp_file_path:
@@ -78,12 +80,21 @@ async def unzip_archive_command(event: NewMessage.Event | CallbackQuery.Event) -
                 f'{t("process_failed_with_return_code", code=code)}\n<pre>{output or t("empty_output")}</pre>',
                 file_name=f'{archive_stem}_unzip_error.txt',
             )
+            shutil.rmtree(output_dir, ignore_errors=True)
             return
 
-    extracted_files = sum(1 for p in output_dir.rglob('*') if p.is_file())
-    await progress_message.edit(
-        f'{t("process_completed")} ({extracted_files} files)\n{t("saved_to")}: <code>{output_dir}</code>'
-    )
+    files = sorted(p for p in output_dir.rglob('*') if p.is_file())
+    if not files:
+        await progress_message.edit(t('process_completed'))
+        shutil.rmtree(output_dir, ignore_errors=True)
+        return
+
+    for idx, path in enumerate(files, start=1):
+        await progress_message.edit(f'{t("uploading")} {idx}/{len(files)}')
+        await upload_file_and_cleanup(event, path, progress_message, force_document=True)
+
+    await progress_message.edit(f'{t("process_completed")} ({len(files)} files)')
+    shutil.rmtree(output_dir, ignore_errors=True)
 
 
 class FileManager(ModuleBase):
