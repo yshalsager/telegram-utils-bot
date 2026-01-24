@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.20
+# syntax=docker/dockerfile:1.21
 
 ARG PYTHON_IMAGE=public.ecr.aws/docker/library/python:3.14-slim-bookworm
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.9
