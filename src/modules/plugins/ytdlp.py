@@ -14,6 +14,7 @@ from yt_dlp import YoutubeDL
 
 from src import STATE_DIR, TMP_DIR
 from src.modules.base import ModuleBase
+from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import upload_file
 from src.utils.filters import has_valid_url
@@ -86,6 +87,21 @@ def sanitize_filename(text: str) -> str:
     return str(re.sub(r'[/\\:*?\"<>|]', '_', text))
 
 
+async def convert_webm_to_ogg(
+    event: NewMessage.Event | CallbackQuery.Event,
+    input_path: Path,
+    status_message: Message,
+    progress_message: Message,
+) -> Path:
+    output_path = input_path.with_suffix('.ogg')
+    command = f'ffmpeg -hide_banner -y -i "{input_path}" -vn -c:a copy "{output_path}"'
+    await stream_shell_output(event, command, status_message, progress_message)
+    if output_path.exists():
+        input_path.unlink(missing_ok=True)
+        return output_path
+    return input_path
+
+
 async def get_target_message(event: NewMessage.Event | CallbackQuery.Event) -> Message:
     return (
         await get_reply_message(event, previous=True)
@@ -133,7 +149,13 @@ def build_caption(
 
 def mime_type_for_path(file_path: Path) -> str | None:
     suffix = file_path.suffix.lower()
-    return 'video/mp4' if suffix == '.mp4' else 'audio/ogg' if suffix == '.ogg' else None
+    if suffix == '.mp4':
+        return 'video/mp4'
+    if suffix == '.ogg':
+        return 'audio/ogg'
+    if suffix == '.m4a':
+        return 'audio/mp4'
+    return None
 
 
 def cleanup_paths(paths: set[Path]) -> None:
@@ -525,9 +547,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     format_id = _format if _type == 'audio' else f'{_format}+worstaudio/best'
     delete_callback_after(event)
     post_processors = [FFMPEG_METADATA_PP, THUMB_PP]
-    if _type == 'audio':
-        post_processors.append(AUDIO_EXTRACT_PP)
-    else:
+    if _type == 'video':
         post_processors.insert(0, FFMPEG_VIDEO_CONVERT_PP)
     ydl_opts = {
         **params,
@@ -558,8 +578,10 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             attributes = media_attributes(entry, is_audio=is_audio)
             file_path = file_path.rename(file_path.with_stem(sanitize_filename(entry['title'])))
 
-            if is_audio:
-                file_path = file_path.rename(file_path.with_suffix('.ogg'))
+            if is_audio and file_path.suffix.lower() == '.webm':
+                file_path = await convert_webm_to_ogg(
+                    event, file_path, progress_message, progress_message
+                )
 
             await upload_file(
                 event,
