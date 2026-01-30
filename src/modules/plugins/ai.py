@@ -32,7 +32,12 @@ from src.utils.telegram import (
 
 OCR_MODEL = 'gemini-2.5-flash'
 OCR_MODEL_RPM = 10
-GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']
+GEMINI_MODELS: list[str] = [
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash-lite',
+]
 OCR_PROMPT = (
     'OCR this PDF page. DONt REMOVE ARABIC Taskheel. '
     'NO text modifications. NO entries from you. '
