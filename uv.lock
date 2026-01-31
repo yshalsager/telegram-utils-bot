@@ -3235,8 +3235,7 @@ dependencies = [
     { name = "tafrigh", extra = ["whisper", "wit"] },
     { name = "tahweel" },
     { name = "telethon" },
-    { name = "vosk", version = "0.3.42", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-    { name = "vosk", version = "0.3.45", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin'" },
+    { name = "vosk" },
     { name = "wikipedia" },
     { name = "yt-dlp", extra = ["curl-cffi", "default"] },
 ]
@@ -3271,7 +3270,7 @@ requires-dist = [
     { name = "tahweel", specifier = ">=0.2.0" },
     { name = "telethon", specifier = ">=1.42.0" },
     { name = "vosk", marker = "sys_platform != 'darwin'", specifier = "==0.3.45" },
-    { name = "vosk", marker = "sys_platform == 'darwin'", specifier = "==0.3.42" },
+    { name = "vosk", marker = "sys_platform == 'darwin'", specifier = "==0.3.45" },
     { name = "wikipedia", specifier = ">=1.4.0" },
     { name = "yt-dlp", extras = ["default", "curl-cffi"], specifier = ">=2025.11.12" },
 ]
@@ -3598,34 +3597,14 @@ wheels = [
 
 [[package]]
 name = "vosk"
-version = "0.3.42"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "sys_platform == 'darwin'",
-]
-dependencies = [
-    { name = "cffi", marker = "sys_platform == 'darwin'" },
-    { name = "requests", marker = "sys_platform == 'darwin'" },
-    { name = "srt", marker = "sys_platform == 'darwin'" },
-    { name = "tqdm", marker = "sys_platform == 'darwin'" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/35/89bc8f422b33dcd0797375c66775e2a2ab9685ecd4a10667fd37ba7348c0/vosk-0.3.42-py3-none-macosx_10_6_universal2.whl", hash = "sha256:631b9ff6515945f92078c546a60deab2eeb4f63489a24526cc90e3164e415ff7", size = 4709760, upload-time = "2022-05-26T13:47:16.07Z" },
-]
-
-[[package]]
-name = "vosk"
 version = "0.3.45"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "sys_platform != 'darwin'",
-]
 dependencies = [
-    { name = "cffi", marker = "sys_platform != 'darwin'" },
-    { name = "requests", marker = "sys_platform != 'darwin'" },
-    { name = "srt", marker = "sys_platform != 'darwin'" },
-    { name = "tqdm", marker = "sys_platform != 'darwin'" },
-    { name = "websockets", marker = "sys_platform != 'darwin'" },
+    { name = "cffi" },
+    { name = "requests" },
+    { name = "srt" },
+    { name = "tqdm" },
+    { name = "websockets" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/6d/728d89a4fe8d0573193eb84761b6a55e25690bac91e5bbf30308c7f80051/vosk-0.3.45-py3-none-linux_armv7l.whl", hash = "sha256:4221f83287eefe5abbe54fc6f1da5774e9e3ffcbbdca1705a466b341093b072e", size = 2388263, upload-time = "2022-12-14T23:13:34.467Z" },
