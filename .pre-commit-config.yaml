@@ -48,9 +48,12 @@ repos:
     hooks:
       - id: ruff
       - id: ruff-format
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v1.19.1'  # Use the sha / tag you want to point at
+  - repo: local
     hooks:
-      - id: mypy
-        args:
-          - --install-types
+      - id: ty
+        name: ty
+        entry: uv run ty check src --output-format concise
+        language: system
+        pass_filenames: false
+        stages: [manual]
+        types: [python]

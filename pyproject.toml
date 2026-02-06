@@ -35,8 +35,8 @@ dependencies = [
 dev = [
     "ipython>=9.7.0",
     "pre-commit>=4.4.0",
-    "mypy>=1.17.1",
     "ruff>=0.14.4",
+    "ty>=0.0.15",
     "jurigged>=0.6.1",
 ]
 
@@ -46,22 +46,15 @@ override-dependencies = [
     "yt-dlp[default,curl-cffi]>=2026.2.4",
 ]
 
-[tool.mypy]
-files = ["src"]
-exclude = [
-    '^fast_telethon\.py$',
-]
-ignore_missing_imports = true
-disallow_untyped_defs = true
-#disallow_any_unimported = true
-no_implicit_optional = true
-check_untyped_defs = true
-warn_return_any = true
-show_error_codes = true
-warn_unused_ignores = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = false
-#plugins = ["sqlalchemy.ext.mypy.plugin"]
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.src]
+exclude = ["**/fast_telethon.py"]
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+possibly-missing-attribute = "ignore"
 
 [tool.ruff]  # https://github.com/charliermarsh/ruff
 fix = true
