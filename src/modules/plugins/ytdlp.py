@@ -58,8 +58,8 @@ if netrc_file.exists():
 
 # https://github.com/Brainicism/bgutil-ytdlp-pot-provider
 params['extractor_args'] = {
-    'youtubepot-bgutilhttp': {'base_url': 'http://bgutil-provider:4416'},
-    'youtube': {'player_client': ['default,mweb,web_creator']},
+    # yt-dlp expects extractor args to be lists of strings (same shape as --extractor-args parsing)
+    'youtubepot-bgutilhttp': {'base_url': ['http://bgutil-provider:4416']},
 }
 
 FFMPEG_METADATA_PP = {
