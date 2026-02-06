@@ -47,7 +47,9 @@ class ModuleBase(ABC):
     def commands(self) -> CommandsT:
         pass
 
-    async def is_applicable(self, event: NewMessage.Event) -> bool:
+    async def is_applicable(self, event: Any) -> bool:
+        if not isinstance(event, NewMessage.Event):
+            return False
         reply_message = (
             await get_reply_message(event, previous=True) if event.message.is_reply else None
         )
@@ -62,7 +64,7 @@ class ModuleBase(ABC):
         """
         return
 
-    async def handle(self, event: NewMessage.Event, command: str | None = None) -> bool:
+    async def handle(self, event: Any, command: str | None = None) -> bool:
         assert command is not None
         if '|' in command:
             command, _ = command.split('|', 1)
@@ -81,12 +83,16 @@ class InlineModuleBase(ModuleBase):
     def inline_commands(self) -> InlineCommandsT:
         pass
 
-    async def is_applicable(self, event: InlineQuery.Event) -> bool:
+    async def is_applicable(self, event: Any) -> bool:
+        if not isinstance(event, InlineQuery.Event):
+            return False
         return any(command.pattern.match(event.text) for command in self.inline_commands.values())
 
-    async def handle(self, event: InlineQuery.Event, _: str | None = None) -> bool:
-        for command in self.inline_commands.values():
-            if command.pattern.match(event.text) and callable(command.handler):
-                await command.handler(event)
+    async def handle(self, event: Any, command: str | None = None) -> bool:
+        if not isinstance(event, InlineQuery.Event):
+            return False
+        for inline_cmd in self.inline_commands.values():
+            if inline_cmd.pattern.match(event.text) and callable(inline_cmd.handler):
+                await inline_cmd.handler(event)
                 return True
         return False

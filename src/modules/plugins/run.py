@@ -77,11 +77,7 @@ async def stream_shell_output(  # noqa: C901
     status = (
         t('process_completed') if code == 0 else t('process_failed_with_return_code', code=code)
     )
-    start_time = (
-        event.date.replace(tzinfo=UTC)
-        if hasattr(event, 'date')
-        else status_message.date.replace(tzinfo=UTC)
-    )
+    start_time = status_message.date.replace(tzinfo=UTC)
     end_time = datetime.now(UTC)
     elapsed_time = end_time - start_time
     status += (

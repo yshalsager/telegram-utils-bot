@@ -4,7 +4,7 @@ from os import getenv
 from pathlib import Path
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
-from typing import ClassVar
+from typing import Any, ClassVar
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -116,7 +116,7 @@ async def _merge_pdf_process(event: CallbackQuery.Event, files: list[int]) -> No
 async def _split_pdf_process(
     event: NewMessage.Event,
     reply_message: Message | None,
-    match: re.Match,
+    match: Any,
 ) -> None:
     assert reply_message is not None
     pages_count = int(match.group(1))
@@ -186,7 +186,7 @@ def parse_page_numbers(input_string: str) -> list[int]:
 async def _extract_pdf_pages_process(
     event: NewMessage.Event,
     reply_message: Message | None,
-    match: re.Match,
+    match: Any,
 ) -> None:
     assert reply_message is not None
     pages_input = match.group(1)

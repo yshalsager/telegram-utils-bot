@@ -1,9 +1,8 @@
 from asyncio import Task, create_task, sleep
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 
-import regex as re
-from regex import Pattern
 from telethon import Button
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
@@ -17,8 +16,8 @@ class ReplyPrompt:
     chat_id: int
     reply_message_id: int
     media_message_id: int | None
-    pattern: Pattern
-    handler: Callable[[NewMessage.Event, Message | None, re.Match], Awaitable[None]]
+    pattern: Any
+    handler: Callable[[NewMessage.Event, Message | None, Any], Awaitable[None]]
     invalid_reply_text: str
 
 
@@ -31,8 +30,8 @@ class ReplyPromptManager:
         event: CallbackQuery.Event,
         prompt_text: str,
         *,
-        pattern: Pattern,
-        handler: Callable[[NewMessage.Event, Message | None, re.Match], Awaitable[None]],
+        pattern: Any,
+        handler: Callable[[NewMessage.Event, Message | None, Any], Awaitable[None]],
         invalid_reply_text: str,
         media_message_id: int | None = None,
     ) -> None:

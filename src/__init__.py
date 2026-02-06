@@ -20,9 +20,9 @@ TMP_DIR.mkdir(exist_ok=True)
 
 # bot config
 IS_DEBUG: bool = getenv('DEBUG', '').lower() in ('true', '1')
-BOT_TOKEN = getenv('BOT_TOKEN')
-API_ID = getenv('API_ID')
-API_HASH = getenv('API_HASH')
+BOT_TOKEN = getenv('BOT_TOKEN') or ''
+API_ID = int(getenv('API_ID') or 0)
+API_HASH = getenv('API_HASH') or ''
 BOT_ADMINS = [
     int(admin_str.strip()) for admin_str in getenv('BOT_ADMINS', '').split(',') if admin_str
 ] or []

@@ -1,4 +1,4 @@
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import regex as re
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
@@ -15,7 +15,7 @@ from src.utils.telegram import get_reply_message, send_progress_message
 async def _rename_process(
     event: NewMessage.Event,
     reply_message: Message | None,
-    match: re.Match,
+    match: Any,
 ) -> None:
     assert reply_message is not None
     new_filename = match.group(1).strip()

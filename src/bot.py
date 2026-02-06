@@ -9,7 +9,7 @@ from collections.abc import Callable, Coroutine
 from contextlib import suppress
 from itertools import zip_longest
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import orjson
 from telethon import Button, TelegramClient
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 async def create_bot() -> TelegramClient:
     client = TelegramClient(str(STATE_DIR / 'utils-bot'), API_ID, API_HASH)
-    await client.start(bot_token=BOT_TOKEN)
+    await client.start(bot_token=BOT_TOKEN)  # ty: ignore[invalid-await]
     client.parse_mode = 'html'
     return client
 
@@ -228,7 +228,7 @@ async def cancel_command(event: NewMessage.Event) -> None:
 async def run_bot() -> None:
     """Run the bot."""
     state.permission_manager = PermissionManager(set(BOT_ADMINS), STATE_DIR / 'permissions.json')
-    state.modules_registry = ModuleRegistry(__package__, state.permission_manager)
+    state.modules_registry = ModuleRegistry(__package__ or __name__, state.permission_manager)
     commands_with_modifiers = {
         command.split(' ', 1)[0]
         for module in state.modules_registry.modules
@@ -237,7 +237,7 @@ async def run_bot() -> None:
     }
 
     state.bot = await create_bot()
-    bot = get_bot()
+    bot = cast(Any, get_bot())
     bot.modules_registry = get_modules_registry()
     bot.permission_manager = get_permission_manager()
     bot.commands_with_modifiers = commands_with_modifiers

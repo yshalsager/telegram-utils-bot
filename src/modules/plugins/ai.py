@@ -6,7 +6,7 @@ from os import getenv
 from pathlib import Path
 from shutil import rmtree
 from time import time
-from typing import ClassVar
+from typing import Any, ClassVar
 from uuid import uuid4
 
 import llm
@@ -273,7 +273,7 @@ async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event)
 async def run_gemini_custom_prompt(
     event: NewMessage.Event,
     input_message: Message | None,
-    match: re.Match,
+    match: Any,
     *,
     model_name: str,
 ) -> None:

@@ -78,7 +78,7 @@ async def _run_subprocess(  # noqa: C901, PLR0912
             for task in done:
                 if task.get_name() in ('stdout', 'stderr'):
                     try:
-                        line = task.result()
+                        line = str(task.result())
                         output += line
                         yield output, None
                         pending[task.get_name()] = asyncio.create_task(

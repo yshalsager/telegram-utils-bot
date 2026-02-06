@@ -64,8 +64,17 @@ def delete_event_message_after(event: CallbackQuery.Event, seconds: int = 10) ->
     return create_task(_delete_event_message_after(event, seconds))
 
 
-def delete_callback_after(event: CallbackQuery.Event, seconds: int = 60 * 5) -> Task[None]:
-    return delete_event_message_after(event, seconds)
+async def _delete_callback_after(
+    event: NewMessage.Event | CallbackQuery.Event, seconds: int = 60 * 5
+) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        await _delete_event_message_after(event, seconds)
+
+
+def delete_callback_after(
+    event: NewMessage.Event | CallbackQuery.Event, seconds: int = 60 * 5
+) -> Task[None]:
+    return create_task(_delete_callback_after(event, seconds))
 
 
 async def inline_choice(

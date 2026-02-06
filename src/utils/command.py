@@ -2,33 +2,31 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any
 
-from regex import Pattern
-from telethon.events import CallbackQuery, InlineQuery, NewMessage
-from telethon.tl.custom import Message
-
 
 @dataclass
 class Command:
-    handler: Callable[[NewMessage.Event | CallbackQuery.Event], Coroutine[Any, Any, None]]
+    handler: Callable[..., Coroutine[Any, Any, None]]
     description: str
-    pattern: Pattern
-    condition: Callable[[NewMessage.Event, Message | None], bool] = lambda _, __: True
+    pattern: Any
+    condition: Callable[..., bool] = lambda *_: True
     name: str | None = None
     is_applicable_for_reply: bool = False
 
     def __repr__(self) -> str:
-        return (
-            f"Command(name={self.name or self.handler.__name__}, description='{self.description}')"
-        )
+        handler_name = getattr(self.handler, '__name__', self.handler.__class__.__name__)
+        return f"Command(name={self.name or handler_name}, description='{self.description}')"
 
 
 @dataclass
 class InlineCommand:
-    pattern: Pattern
-    handler: Callable[[InlineQuery.Event], Coroutine[Any, Any, None]] | None = None
+    pattern: Any
+    handler: Callable[..., Coroutine[Any, Any, None]] | None = None
     name: str | None = None
 
     def __repr__(self) -> str:
-        return (
-            f'InlineCommand(name={self.name or self.handler.__name__ if self.handler else "None"})'
+        handler_name = (
+            getattr(self.handler, '__name__', self.handler.__class__.__name__)
+            if self.handler
+            else 'None'
         )
+        return f'InlineCommand(name={self.name or handler_name})'

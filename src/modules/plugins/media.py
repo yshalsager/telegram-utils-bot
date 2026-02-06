@@ -283,7 +283,7 @@ async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
 async def _cut_media_process(
     event: NewMessage.Event,
     reply_message: Message | None,
-    match: re.Match,
+    match: Any,
 ) -> None:
     assert reply_message is not None
 
@@ -370,7 +370,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def _split_media_process(
     event: NewMessage.Event,
     reply_message: Message | None,
-    match: re.Match,
+    match: Any,
 ) -> None:
     assert reply_message is not None
     args = match.group(1)
@@ -470,7 +470,7 @@ async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
 async def _set_metadata_process(
     event: NewMessage.Event,
     reply_message: Message | None,
-    match: re.Match,
+    match: Any,
 ) -> None:
     assert reply_message is not None
     title, artist = match.group(1), match.group(2)
@@ -1330,7 +1330,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     caption=f'<code>{renamed_file.name}</code>',
                 )
             else:
-                await status_message.edit(f'{t("failed_to_transcribe")} {renamed_file.name}')
+                await status_message.edit(f'{t("failed_to_transcribe")} {output_file.name}')
     if transcription_method != 'whisper':
         await status_message.edit(t('transcription_completed'))
     rmtree(output_dir)
