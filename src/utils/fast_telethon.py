@@ -308,7 +308,7 @@ class ParallelTransferrer:
         await self._cleanup()
 
 
-parallel_transfer_locks: defaultdict[int, asyncio.Lock] = defaultdict(lambda: asyncio.Lock())
+parallel_transfer_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 def stream_file(file_to_stream: BinaryIO, chunk_size: int = 1024) -> AsyncGenerator[bytes]:  # type: ignore[misc]
