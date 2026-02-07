@@ -358,7 +358,7 @@ class AI(ModuleBase):
             handler=gemini_ocr_pdf,
             description=t('_gemini_ocr_description'),
             pattern=GEMINI_OCR_PATTERN,
-            condition=lambda e, m: (has_pdf_file(e, m) or has_photo_or_photo_file(e, m)),
+            condition=lambda e, m: has_pdf_file(e, m) or has_photo_or_photo_file(e, m),
             is_applicable_for_reply=True,
         ),
         'gemini transcribe': Command(

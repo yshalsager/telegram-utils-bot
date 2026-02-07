@@ -151,23 +151,27 @@ class DownloadUpload(ModuleBase):
             handler=download_file_command,
             description=t('_download_description'),
             pattern=re.compile(r'^/download(?:\s+(.+))?$'),
-            condition=lambda event, message: is_admin_in_private(event, message)
-            and (has_file(event, message) or has_valid_url(event, message)),
+            condition=lambda event, message: (
+                is_admin_in_private(event, message)
+                and (has_file(event, message) or has_valid_url(event, message))
+            ),
             is_applicable_for_reply=True,
         ),
         'upload': Command(
             handler=upload_file_command,
             description=t('_upload_description'),
             pattern=re.compile(r'^/upload\s+(.+)$'),
-            condition=lambda event, message: is_admin_in_private(event, message)
-            and has_no_file(event, message),
+            condition=lambda event, message: (
+                is_admin_in_private(event, message) and has_no_file(event, message)
+            ),
         ),
         'upload file': Command(
             handler=upload_as_file_or_media,
             description=t('_upload_file_description'),
             pattern=re.compile(r'^/upload\s+file$'),
-            condition=lambda event, message: has_file(event, message)
-            and not is_file(event, message),
+            condition=lambda event, message: (
+                has_file(event, message) and not is_file(event, message)
+            ),
             is_applicable_for_reply=True,
         ),
         'upload media': Command(
