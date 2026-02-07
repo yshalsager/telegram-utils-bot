@@ -46,7 +46,7 @@ repos:
     # Ruff version.
     rev: 'v0.14.14'
     hooks:
-      - id: ruff
+      - id: ruff-check
       - id: ruff-format
   - repo: local
     hooks:
