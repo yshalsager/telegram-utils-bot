@@ -43,9 +43,9 @@ def load_modules(directory: str) -> list[ModuleBase]:
     built_in_modules: list[ModuleType] = [
         import_module(f'{directory}.modules.{module.parent.name}.{module.stem}')
         for module in filter(
-            lambda x: x.name not in ('__init__.py', 'base.py')
-            and x.suffix == '.py'
-            and x.is_file(),
+            lambda x: (
+                x.name not in ('__init__.py', 'base.py') and x.suffix == '.py' and x.is_file()
+            ),
             Path(f'{directory}/modules').glob('**/*.py'),
         )
     ]
@@ -57,8 +57,10 @@ def load_modules(directory: str) -> list[ModuleBase]:
     loaded_module_classes: list[ModuleBase] = []
     for module in found_modules:
         for module_class in filter(
-            lambda x: getattr(x, 'IS_MODULE', False)
-            and x.__name__ not in ('ModuleBase', 'InlineModuleBase'),
+            lambda x: (
+                getattr(x, 'IS_MODULE', False)
+                and x.__name__ not in ('ModuleBase', 'InlineModuleBase')
+            ),
             (getattr(module, i) for i in dir(module)),
         ):
             loaded_module_classes.append(module_class())

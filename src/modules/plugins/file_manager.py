@@ -112,16 +112,18 @@ class FileManager(ModuleBase):
             handler=unzip_archive_command,
             description=t('_unzip_description'),
             pattern=re.compile(r'^/unzip$'),
-            condition=lambda event, message: is_admin_in_private(event, message)
-            and has_file(event, message),
+            condition=lambda event, message: (
+                is_admin_in_private(event, message) and has_file(event, message)
+            ),
             is_applicable_for_reply=True,
         ),
         'archive list': Command(
             handler=list_archive_command,
             description=t('_archive_list_description'),
             pattern=re.compile(r'^/list\s+archive$'),
-            condition=lambda event, message: is_admin_in_private(event, message)
-            and has_file(event, message),
+            condition=lambda event, message: (
+                is_admin_in_private(event, message) and has_file(event, message)
+            ),
             is_applicable_for_reply=True,
         ),
     }
