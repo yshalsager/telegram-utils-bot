@@ -49,11 +49,11 @@ async def list_permissions(event: NewMessage.Event) -> None:
 
 async def user_permissions(event: NewMessage.Event) -> None:
     permission_manager = event.client.permission_manager
-    try:
-        user_id = int(event.pattern_match.group(1))
-    except (ValueError, TypeError):
+    match = re.match(r'^/permissions\\s+(\\d+)$', event.message.text)
+    if not match:
         await event.reply(t('invalid_user_id'))
         return
+    user_id = int(match.group(1))
 
     user_modules = [
         module

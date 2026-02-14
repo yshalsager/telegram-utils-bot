@@ -91,7 +91,13 @@ async def handle_module_execution(
         event, CallbackQuery.Event
     ):
         reply_message = await get_reply_message(event)
-    message = reply_message or event.message
+    if isinstance(event, NewMessage.Event):
+        base_message = event.message
+    else:
+        base_message = await event.get_message()
+        if base_message is None:
+            return
+    message = reply_message or base_message
     task_id = f'{message.chat_id}_{message.id}'
     task: Task[bool] = create_task(module.handle(*handler_args))
 
@@ -121,6 +127,8 @@ async def handle_module_execution(
 
 async def handle_commands(event: NewMessage.Event) -> None:
     match = event.pattern_match
+    if match is None:
+        raise StopPropagation
     command = match.group(1)
     modifier = match.group(2)
     if modifier and command in event.client.commands_with_modifiers:

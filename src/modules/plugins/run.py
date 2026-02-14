@@ -2,7 +2,7 @@ from asyncio import sleep
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from tempfile import NamedTemporaryFile
-from typing import ClassVar, cast
+from typing import ClassVar
 
 import regex as re
 from telethon.errors import FloodWaitError, MessageNotModifiedError
@@ -87,7 +87,10 @@ async def stream_shell_output(  # noqa: C901
     status = (
         t('process_completed') if code == 0 else t('process_failed_with_return_code', code=code)
     )
-    start_time = status_message.date.replace(tzinfo=UTC)
+    start_time = status_message.date
+    if not isinstance(start_time, datetime):
+        start_time = datetime.now(UTC)
+    start_time = start_time.replace(tzinfo=UTC)
     end_time = datetime.now(UTC)
     elapsed_time = end_time - start_time
     status += (
@@ -110,7 +113,7 @@ async def stream_shell_output(  # noqa: C901
                 event.chat_id,
                 file=temp_file.name,
             )
-    return cast(str, status)
+    return status
 
 
 async def run_shell(event: NewMessage.Event) -> None:
