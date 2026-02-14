@@ -17,6 +17,7 @@ from src.utils.i18n import t
 from src.utils.run import (
     ADMIN_TIMEOUT_SECONDS,
     MAX_MESSAGE_LENGTH,
+    TIMEOUT_BYPASS_SECONDS,
     TIMEOUT_SECONDS,
     run_subprocess_exec,
     run_subprocess_shell,
@@ -24,6 +25,15 @@ from src.utils.run import (
 from src.utils.telegram import delete_message_after, send_progress_message
 
 SECONDS_TO_WAIT = 5
+
+
+def get_stream_timeout(event: NewMessage.Event | CallbackQuery.Event) -> int:
+    user_id = event.sender_id or event.chat_id
+    if user_id in BOT_ADMINS:
+        return ADMIN_TIMEOUT_SECONDS
+    if event.client.permission_manager.has_permission('timeout_bypass', user_id):
+        return TIMEOUT_BYPASS_SECONDS
+    return TIMEOUT_SECONDS
 
 
 async def stream_shell_output(  # noqa: C901
@@ -40,7 +50,7 @@ async def stream_shell_output(  # noqa: C901
     if not progress_message:
         progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
     runner = run_subprocess_shell if shell else run_subprocess_exec
-    timeout = ADMIN_TIMEOUT_SECONDS if event.sender_id in BOT_ADMINS else TIMEOUT_SECONDS
+    timeout = get_stream_timeout(event)
     buffer = ''
     code = None
     last_edit_time = datetime.now(UTC)

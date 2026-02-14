@@ -12,6 +12,7 @@ from src.utils.i18n import t
 
 MAX_MESSAGE_LENGTH = 4000  # Max is 4096 but we leave some buffer for formatting
 TIMEOUT_SECONDS = 60 * 10  # 10 minutes timeout for user commands
+TIMEOUT_BYPASS_SECONDS = 60 * 60  # 1 hour timeout for exempt users
 ADMIN_TIMEOUT_SECONDS = 60 * 60 * 6  # 6 hours timeout for admin commands
 
 logger = logging.getLogger(__name__)

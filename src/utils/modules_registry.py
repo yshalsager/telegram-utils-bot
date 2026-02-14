@@ -115,11 +115,12 @@ class ModuleRegistry:
         return self.modules_status.get(module_name, True)
 
     async def get_applicable_modules(self, event: NewMessage.Event) -> list[ModuleBase]:
+        user_id = event.sender_id or event.chat_id
         return [
             module
             for module in self.modules
             if self.is_module_enabled(module.name)
-            and self.permission_manager.has_permission(module.name, event.chat_id)
+            and self.permission_manager.has_permission(module.name, user_id)
             and (await module.is_applicable(event))
         ]
 
@@ -130,11 +131,12 @@ class ModuleRegistry:
         return None
 
     def get_all_commands(self, event: NewMessage.Event) -> dict[str, ModuleBase.CommandsT]:
+        user_id = event.sender_id or event.chat_id
         return {
             module.name: module.commands
             for module in self.modules
             if self.is_module_enabled(module.name)
-            and self.permission_manager.has_permission(module.name, event.chat_id)
+            and self.permission_manager.has_permission(module.name, user_id)
         }
 
     async def get_applicable_commands(self, event: NewMessage.Event) -> list[str]:
