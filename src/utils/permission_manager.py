@@ -32,7 +32,8 @@ class PermissionManager:
             self.module_permissions[module_name].discard(user_id)
             self._save_permissions()
 
-    def has_permission(self, module_name: str, user_id: int) -> bool:
+    def has_permission(self, module_name: str, user_id: int, chat_id: int | None = None) -> bool:
         if user_id in self.bot_admins:
             return True
-        return user_id in self.module_permissions.get(module_name, set())
+        allowed_ids = self.module_permissions.get(module_name, set())
+        return user_id in allowed_ids or bool(chat_id is not None and chat_id in allowed_ids)

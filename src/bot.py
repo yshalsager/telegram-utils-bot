@@ -140,7 +140,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
     module = modules_registry.get_module_by_command(
         command
     ) or modules_registry.get_module_by_command(match.group(1))
-    if not module or not perms.has_permission(module.name, user_id):
+    if not module or not perms.has_permission(module.name, user_id, event.chat_id):
         raise StopPropagation
 
     reply_message = (
@@ -201,7 +201,7 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
     perms = event.client.permission_manager
     user_id = event.sender_id or event.chat_id
     module = event.client.modules_registry.get_module_by_command(command.split('|')[0])
-    if not module or not perms.has_permission(module.name, user_id):
+    if not module or not perms.has_permission(module.name, user_id, event.chat_id):
         return
 
     async def response_func(message: str) -> None:
