@@ -43,6 +43,7 @@ dev = [
 override-dependencies = [
     "openai-whisper @ git+https://github.com/openai/whisper#v20250625",
     "yt-dlp[default,curl-cffi]>=2026.3.3",
+    "pillow>=12.1.1",
 ]
 
 [tool.ty.environment]
