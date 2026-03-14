@@ -10,8 +10,10 @@ from typing import Any, ClassVar
 from uuid import uuid4
 
 import llm
+import llm_gemini
 import pymupdf
 import regex as re
+from llm.plugins import pm
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
@@ -30,12 +32,14 @@ from src.utils.telegram import (
     send_progress_message,
 )
 
-OCR_MODEL = 'gemini-2.5-flash'
+GEMINI_FLASH_LITE_31 = 'gemini-3.1-flash-lite-preview'
+OCR_MODEL = GEMINI_FLASH_LITE_31
 OCR_MODEL_RPM = 10
 GEMINI_MODELS: list[str] = [
     'gemini-3-flash-preview',
+    GEMINI_FLASH_LITE_31,
     'gemini-2.5-flash',
-    'gemini-2.5-pro',
+    'gemini-2.5-pro-exp-03-25',
     'gemini-2.5-flash-lite',
 ]
 OCR_PROMPT = (
@@ -52,6 +56,29 @@ PROMPT_TEXT_PATTERN = re.compile(r'(?s)^(.+)$')
 
 
 logger = logging.getLogger(__name__)
+
+
+if GEMINI_FLASH_LITE_31 not in llm_gemini.MODEL_THINKING_LEVELS and not pm.get_plugin('gemini_flash_lite_31'):
+    class GeminiFlashLite31Plugin:
+        @llm.hookimpl
+        def register_models(self, register) -> None:
+            register(
+                llm_gemini.GeminiPro(
+                    GEMINI_FLASH_LITE_31,
+                    can_google_search=True,
+                    thinking_levels=['minimal', 'low', 'medium', 'high'],
+                    can_schema=True,
+                ),
+                llm_gemini.AsyncGeminiPro(
+                    GEMINI_FLASH_LITE_31,
+                    can_google_search=True,
+                    thinking_levels=['minimal', 'low', 'medium', 'high'],
+                    can_schema=True,
+                ),
+                aliases=(GEMINI_FLASH_LITE_31,),
+            )
+
+    pm.register(GeminiFlashLite31Plugin(), name='gemini_flash_lite_31')
 
 
 class RateLimiter:
