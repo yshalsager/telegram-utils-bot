@@ -62,16 +62,16 @@ async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, A
         f'ffprobe -v error -select_streams {stream_specifier} -show_entries '
         f'stream=codec_name,duration,width,height -of json "{file_path}"'
     )
-    _info = orjson.loads(output)
-    return cast(dict[str, Any], _info['streams'][0]) if _info and _info.get('streams') else {}
+    info = orjson.loads(output)
+    return cast(dict[str, Any], info['streams'][0]) if info and info.get('streams') else {}
 
 
 async def get_format_info(file_path: Path) -> dict[str, Any]:
     output, _ = await run_command(
         f'ffprobe -v error -show_entries format=duration,tags -of json "{file_path}"'
     )
-    _info = orjson.loads(output)
-    return cast(dict[str, Any], _info['format']) if _info.get('format') else {}
+    info = orjson.loads(output)
+    return cast(dict[str, Any], info['format']) if info.get('format') else {}
 
 
 async def get_output_info(file_path: Path) -> dict[str, Any]:
@@ -79,7 +79,7 @@ async def get_output_info(file_path: Path) -> dict[str, Any]:
     audio_info = await get_stream_info('a:0', file_path)
     format_info = await get_format_info(file_path)
 
-    info: dict[str, Any] = {
+    return {
         'vcodec': video_info.get('codec_name', 'none'),
         'acodec': audio_info.get('codec_name', 'none'),
         'duration': float(
@@ -92,8 +92,6 @@ async def get_output_info(file_path: Path) -> dict[str, Any]:
         'title': format_info.get('tags', {}).get('title', ''),
         'uploader': format_info.get('tags', {}).get('artist', ''),
     }
-
-    return info
 
 
 async def build_media_upload_params(
