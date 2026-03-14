@@ -7,6 +7,7 @@ from shutil import rmtree
 from typing import Any, ClassVar, cast
 from uuid import uuid4
 
+import aiohttp
 import orjson
 import regex as re
 from llm import Attachment, get_model
@@ -49,7 +50,11 @@ ALLOWED_AUDIO_COMPRESS_BITRATES = [16, 32, 48, 64, 96, 128]
 ALLOWED_AMPLIFY_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
 ALLOWED_VIDEO_COMPRESS_PERCENTAGES = list(range(20, 100, 10))
 ALLOWED_VIDEO_X265_CRF = [18, 20, 22, 24, 26, 28, 30]
-ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'vosk']
+ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'vosk', 'google']
+GOOGLE_SPEECH_V2_API_KEY = (
+    getenv('GOOGLE_SPEECH_V2_KEY') or 'AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw'
+)
+GOOGLE_SPEECH_V2_API_URL = 'https://www.google.com/speech-api/v2/recognize?output=json&client=chromium&lang={lang}&key={key}'
 
 
 async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, Any]:
@@ -147,6 +152,52 @@ async def get_media_bitrate(file_path: str) -> tuple[int, int]:
         audio_bitrate = int(output.strip() or 0)
 
     return video_bitrate, audio_bitrate
+
+
+def get_google_transcript(response_text: str) -> str | None:
+    for line in response_text.splitlines():
+        if not line.strip():
+            continue
+        result = orjson.loads(line)
+        results = result.get('result') or []
+        if not results:
+            continue
+        alternatives = results[0].get('alternative', [])
+        if not alternatives:
+            continue
+        transcript = alternatives[0].get('transcript')
+        if transcript:
+            return transcript[:1].upper() + transcript[1:]
+    return None
+
+
+async def transcribe_with_google(
+    input_file_path: Path, output_dir: Path, language: str
+) -> Path | None:
+    audio_file_path = output_dir / f'{input_file_path.stem}.wav'
+    output, status_code = await run_command(
+        f'ffmpeg -hide_banner -y -i "{input_file_path}" -vn -acodec pcm_s16le -ac 1 -ar 16000 "{audio_file_path}"'
+    )
+    if status_code != 0:
+        raise RuntimeError(output)
+
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(
+            GOOGLE_SPEECH_V2_API_URL.format(lang=language, key=GOOGLE_SPEECH_V2_API_KEY),
+            data=audio_file_path.read_bytes(),
+            headers={'Content-Type': 'audio/l16; rate=16000;'},
+        ) as response,
+    ):
+        transcript = get_google_transcript(await response.text())
+
+    audio_file_path.unlink(missing_ok=True)
+    if not transcript:
+        return None
+
+    output_file = output_dir / f'{input_file_path.stem}.txt'
+    output_file.write_text(transcript)
+    return output_file
 
 
 async def process_media(
@@ -1213,7 +1264,7 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
     raise StopPropagation
 
 
-async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912, PLR0915
+async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0911, PLR0912, PLR0915
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
         transcription_method = await inline_choice_grid(
@@ -1233,8 +1284,8 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         language = 'ar'
     else:
         match = Media.commands['transcribe'].pattern.match(event.message.text)
-        transcription_method = match.group(2) if match else 'wit'
-        language = match.group(3) if match else 'ar'
+        transcription_method = (match.group(2) if match else 'wit') or 'wit'
+        language = (match.group(3) if match else 'ar') or 'ar'
     wit_access_tokens, whisper_model_path = None, None
     if transcription_method == 'whisper':
         whisper_model_path = getenv('WHISPER_MODEL_PATH')
@@ -1245,8 +1296,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         if not whisper_api_key and not whisper_model_path:
             await event.reply(t('please_set_whisper_api_key'))
             return
-    # if transcription_method == 'wit':
-    else:
+    elif transcription_method == 'wit':
         wit_access_tokens = getenv('WIT_CLIENT_ACCESS_TOKENS')
         if not wit_access_tokens:
             await event.reply(t('please_set_wit_client_access_tokens'))
@@ -1265,7 +1315,16 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         suffix=reply_message.file.ext,
         temp_dir=output_dir,
     ) as input_file_path:
-        if transcription_method == 'vosk':
+        if transcription_method == 'google':
+            try:
+                output_file = await transcribe_with_google(input_file_path, output_dir, language)
+            except RuntimeError as e:
+                await status_message.edit(t('an_error_occurred', error=f'\n<pre>{e}</pre>'))
+                return
+            if not output_file:
+                await status_message.edit(f'{t("failed_to_transcribe")} {input_file_path.name}')
+                return
+        elif transcription_method == 'vosk':
             command = (
                 f'vosk-transcriber --log-level warning -i {input_file_path} -l ar '
                 f'-t srt -o {output_dir.name / input_file_path.with_suffix(".srt")}'
@@ -1466,7 +1525,9 @@ class Media(ModuleBase):
         'transcribe': Command(
             handler=transcribe_media,
             description=t('_transcribe_description'),
-            pattern=re.compile(r'^/(transcribe)(?:\s+(wit|whisper|vosk))?(?:\s+(\w{2,3}))?$'),
+            pattern=re.compile(
+                r'^/(transcribe)(?:\s+(wit|whisper|vosk|google))?(?:\s+(\w{2,3}))?$'
+            ),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
