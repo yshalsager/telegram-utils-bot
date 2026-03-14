@@ -48,6 +48,7 @@ OCR_PROMPT = (
     'Add \n\n between each paragraph. '
     'Correct spelling and punctuations if there are any problems with them.'
 )
+GEMINI_TRANSCRIBE_CHUNK_SECONDS = 30 * 60
 
 GEMINI_OCR_PATTERN = re.compile(r'^/(gemini)\s+(ocr)$')
 GEMINI_TRANSCRIBE_PATTERN = re.compile(r'^/(gemini)\s+(transcribe)(?:\s+([a-zA-Z-]+))?$')
@@ -58,7 +59,10 @@ PROMPT_TEXT_PATTERN = re.compile(r'(?s)^(.+)$')
 logger = logging.getLogger(__name__)
 
 
-if GEMINI_FLASH_LITE_31 not in llm_gemini.MODEL_THINKING_LEVELS and not pm.get_plugin('gemini_flash_lite_31'):
+if GEMINI_FLASH_LITE_31 not in llm_gemini.MODEL_THINKING_LEVELS and not pm.get_plugin(
+    'gemini_flash_lite_31'
+):
+
     class GeminiFlashLite31Plugin:
         @llm.hookimpl
         def register_models(self, register) -> None:
@@ -229,7 +233,7 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     rmtree(output_dir, ignore_errors=True)
 
 
-async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901
     model_name = await choose_gemini_model(event, prefix='m|gemini_transcribe|model|')
     if model_name is None:
         return
@@ -252,38 +256,51 @@ async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event)
         async with download_to_temp_file(
             event, input_message, progress_message, temp_dir=output_dir
         ) as input_file_path:
-            audio_file_path = input_file_path
-            attachment_type = input_message.file.mime_type if input_message.file else None
-            if (
-                input_message.video
-                or input_message.video_note
-                or input_file_path.suffix.lower()
-                not in ('.ogg', '.oga', '.opus', '.mp3', '.wav', '.aac', '.flac')
-            ):
-                audio_file_path = input_file_path.with_suffix('.ogg')
-                attachment_type = 'audio/ogg'
-                await progress_message.edit(t('converting_media'))
-                output, status_code = await run_command(
-                    f'ffmpeg -hide_banner -y -i "{input_file_path}" -vn -ac 1 -c:a libopus -b:a 32k "{audio_file_path}"'
-                )
-                if status_code != 0:
-                    await status_message.edit(
-                        t('an_error_occurred', error=f'\n<pre>{output}</pre>')
-                    )
-                    return
+            audio_file_path = output_dir / 'gemini-input.ogg'
+            await progress_message.edit(t('converting_media'))
+            output, status_code = await run_command(
+                f'ffmpeg -hide_banner -y -i "{input_file_path}" -vn -ac 1 -c:a libopus -b:a 32k "{audio_file_path}"'
+            )
+            if status_code != 0:
+                await status_message.edit(t('an_error_occurred', error=f'\n<pre>{output}</pre>'))
+                return
 
-            if not attachment_type:
-                attachment_type = guess_type(audio_file_path)[0]
-            if not attachment_type:
+            chunk_pattern = output_dir / 'gemini-part-%03d.ogg'
+            output, status_code = await run_command(
+                f'ffmpeg -hide_banner -y -i "{audio_file_path}" -vn -ac 1 -c:a libopus -b:a 32k '
+                f'-f segment -segment_time {GEMINI_TRANSCRIBE_CHUNK_SECONDS} -reset_timestamps 1 "{chunk_pattern}"'
+            )
+            if status_code != 0:
+                await status_message.edit(t('an_error_occurred', error=f'\n<pre>{output}</pre>'))
+                return
+            audio_parts = sorted(
+                path for path in output_dir.glob('gemini-part-*.ogg') if path.stat().st_size
+            )
+            if not audio_parts:
                 await status_message.edit(t('unsupported_file_type'))
                 return
 
             await progress_message.edit(t('starting_transcription'))
-            response = await model.prompt(
-                f'Transcribe this audio into {language}. Output only the transcription.',
-                attachments=[llm.Attachment(type=attachment_type, path=str(audio_file_path))],
-            )
-            transcription = await response.text()
+            transcription_parts = []
+            chunk_count = len(audio_parts)
+            for idx, chunk_path in enumerate(audio_parts, start=1):
+                if chunk_count > 1:
+                    await progress_message.edit(f'<pre>{idx} / {chunk_count}</pre>')
+                prompt = f'Transcribe this audio into {language}. Output only the transcription.'
+                if chunk_count > 1:
+                    prompt = (
+                        f'Transcribe this audio chunk {idx} of {chunk_count} into {language}. '
+                        'Output only the transcription for this chunk.'
+                    )
+                await rate_limiter.wait_if_needed()
+                response = await model.prompt(
+                    prompt,
+                    attachments=[llm.Attachment(type='audio/ogg', path=str(chunk_path))],
+                )
+                part = (await response.text()).strip()
+                if part:
+                    transcription_parts.append(part)
+            transcription = '\n\n'.join(transcription_parts)
             edited = await edit_or_send_as_file(
                 event,
                 status_message,
