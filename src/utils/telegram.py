@@ -4,7 +4,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from telethon import Button
-from telethon.errors import MessageTooLongError
+from telethon.errors import MessageEmptyError, MessageTooLongError
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
@@ -33,6 +33,9 @@ async def edit_or_send_as_file(
 ) -> bool:
     try:
         await message.edit(text, parse_mode=parse_mode)
+        return True
+    except MessageEmptyError:
+        await message.edit(t('empty_output'), parse_mode=parse_mode)
         return True
     except MessageTooLongError:
         progress_message = await send_progress_message(event, t('sending_file'))
