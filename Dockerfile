@@ -79,12 +79,13 @@ WORKDIR /code
 ENV PATH="/code/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    UV_LINK_MODE=copy \
     UV_NO_MANAGED_PYTHON=1 \
     UV_PROJECT_ENVIRONMENT=/code/.venv \
     UV_PYTHON_DOWNLOADS=never \
     VIRTUAL_ENV=/code/.venv
 
-COPY --from=builder /code/.venv /code/.venv
+COPY --from=builder --chown=appuser:appuser /code/.venv /code/.venv
 COPY --chown=appuser:appuser src /code/app/src
 
 RUN mkdir -p /code/app/state \
