@@ -9,7 +9,9 @@ from time import time
 from typing import Any, ClassVar
 from uuid import uuid4
 
+import aiohttp
 import llm
+import llm_gemini
 import pymupdf
 import regex as re
 from telethon.events import CallbackQuery, NewMessage
@@ -47,6 +49,7 @@ OCR_PROMPT = (
     'Correct spelling and punctuations if there are any problems with them.'
 )
 GEMINI_TRANSCRIBE_CHUNK_SECONDS = 30 * 60
+GEMINI_FILES_API_BASE = 'https://generativelanguage.googleapis.com'
 
 GEMINI_OCR_PATTERN = re.compile(r'^/(gemini)\s+(ocr)$')
 GEMINI_TRANSCRIBE_PATTERN = re.compile(r'^/(gemini)\s+(transcribe)(?:\s+([a-zA-Z-]+))?$')
@@ -55,6 +58,24 @@ PROMPT_TEXT_PATTERN = re.compile(r'(?s)^(.+)$')
 
 
 logger = logging.getLogger(__name__)
+
+
+def patch_llm_gemini_file_uris() -> None:
+    if getattr(llm_gemini._SharedGemini, '_files_api_uri_patch', False):
+        return
+
+    original_build_attachment_part = llm_gemini._SharedGemini._build_attachment_part
+
+    def _build_attachment_part(self: Any, attachment: Any, mime_type: str) -> dict[str, Any]:
+        if attachment.url and '/v1beta/files/' in attachment.url:
+            return {'fileData': {'mimeType': mime_type, 'fileUri': attachment.url}}
+        return original_build_attachment_part(self, attachment, mime_type)
+
+    llm_gemini._SharedGemini._build_attachment_part = _build_attachment_part  # type: ignore[assignment]
+    llm_gemini._SharedGemini._files_api_uri_patch = True  # type: ignore[attr-defined]
+
+
+patch_llm_gemini_file_uris()
 
 
 class RateLimiter:
@@ -92,6 +113,74 @@ async def get_message_for_processing(event: NewMessage.Event | CallbackQuery.Eve
     return (
         await get_reply_message(event, previous=True) if event.message.is_reply else event.message
     )
+
+
+async def prompt_with_gemini_file_attachment(
+    model: llm.AsyncModel, prompt: str, chunk_path: Path, api_key: str
+) -> str:
+    num_bytes = chunk_path.stat().st_size
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f'{GEMINI_FILES_API_BASE}/upload/v1beta/files?key={api_key}',
+            headers={
+                'X-Goog-Upload-Protocol': 'resumable',
+                'X-Goog-Upload-Command': 'start',
+                'X-Goog-Upload-Header-Content-Length': str(num_bytes),
+                'X-Goog-Upload-Header-Content-Type': 'audio/ogg',
+                'Content-Type': 'application/json',
+            },
+            json={'file': {'display_name': chunk_path.name}},
+        ) as response:
+            response.raise_for_status()
+            upload_url = response.headers.get('x-goog-upload-url')
+            if not upload_url:
+                raise RuntimeError('Gemini Files API upload URL was not returned')
+
+        async with session.post(
+            upload_url,
+            headers={
+                'Content-Length': str(num_bytes),
+                'X-Goog-Upload-Offset': '0',
+                'X-Goog-Upload-Command': 'upload, finalize',
+            },
+            data=chunk_path.read_bytes(),
+        ) as response:
+            response.raise_for_status()
+            file_info = (await response.json()).get('file') or {}
+            file_uri = file_info.get('uri')
+            file_name = file_info.get('name')
+            if not file_uri or not file_name:
+                raise RuntimeError('Gemini Files API response missing file uri/name')
+
+        try:
+            for _ in range(60):
+                async with session.get(
+                    f'{GEMINI_FILES_API_BASE}/v1beta/{file_name}?key={api_key}'
+                ) as response:
+                    response.raise_for_status()
+                    payload = await response.json()
+                state = str((payload.get('file') or payload).get('state') or '').upper()
+                if state == 'ACTIVE':
+                    break
+                if state in ('FAILED', 'ERROR'):
+                    raise RuntimeError(f'Gemini file processing failed: {state}')
+                await sleep(2)
+            else:
+                raise RuntimeError('Timed out waiting for Gemini uploaded file to become active')
+
+            response = await model.prompt(
+                prompt,
+                attachments=[llm.Attachment(type='audio/ogg', url=file_uri)],
+            )
+            return (await response.text()).strip()
+        finally:
+            async with session.delete(
+                f'{GEMINI_FILES_API_BASE}/v1beta/{file_name}?key={api_key}'
+            ) as response:
+                if response.status >= 400:
+                    logger.warning(
+                        f'Failed to delete Gemini file {file_name}: HTTP {response.status}'
+                    )
 
 
 async def get_gemini_model(
@@ -209,7 +298,9 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     rmtree(output_dir, ignore_errors=True)
 
 
-async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901
+async def gemini_transcribe_media(  # noqa: C901, PLR0912
+    event: NewMessage.Event | CallbackQuery.Event,
+) -> None:
     model_name = await choose_gemini_model(event, prefix='m|gemini_transcribe|model|')
     if model_name is None:
         return
@@ -259,6 +350,10 @@ async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event)
             await progress_message.edit(t('starting_transcription'))
             transcription_parts = []
             chunk_count = len(audio_parts)
+            api_key = model.get_key() or getenv('LLM_GEMINI_KEY') or ''
+            if not api_key:
+                await status_message.edit(f'{t("missing_api_key")}: <code>LLM_GEMINI_KEY</code>')
+                return
             for idx, chunk_path in enumerate(audio_parts, start=1):
                 if chunk_count > 1:
                     await progress_message.edit(f'<pre>{idx} / {chunk_count}</pre>')
@@ -269,11 +364,7 @@ async def gemini_transcribe_media(event: NewMessage.Event | CallbackQuery.Event)
                         'Output only the transcription for this chunk.'
                     )
                 await rate_limiter.wait_if_needed()
-                response = await model.prompt(
-                    prompt,
-                    attachments=[llm.Attachment(type='audio/ogg', path=str(chunk_path))],
-                )
-                part = (await response.text()).strip()
+                part = await prompt_with_gemini_file_attachment(model, prompt, chunk_path, api_key)
                 if part:
                     transcription_parts.append(part)
             transcription = '\n\n'.join(transcription_parts)
