@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from io import BufferedRandom, BufferedWriter
+from os import fsync
 from pathlib import Path
 from tempfile import NamedTemporaryFile, _TemporaryFileWrapper
 from typing import Any
@@ -93,6 +94,8 @@ async def download_to_temp_file(
         suffix = reply_message.file.ext if reply_message.file else ''
     with NamedTemporaryFile(dir=temp_dir, suffix=suffix) as temp_file:
         temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+        temp_file.flush()
+        fsync(temp_file.fileno())
         yield temp_file_path
 
 
