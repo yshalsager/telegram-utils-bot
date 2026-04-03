@@ -19,6 +19,7 @@ from telethon.tl.custom import Message
 
 from src import TMP_DIR
 from src.modules.base import ModuleBase
+from src.modules.plugins.media import get_format_info, get_stream_info
 from src.utils.command import Command
 from src.utils.downloads import download_to_temp_file, get_download_name, upload_file_and_cleanup
 from src.utils.filters import has_media, has_pdf_file, has_photo_or_photo_file
@@ -227,6 +228,31 @@ def get_message_mime_type(message: Message) -> str | None:
     return None
 
 
+def has_corrupt_media_error(output: str) -> bool:
+    text = output.lower()
+    return any(
+        marker in text
+        for marker in (
+            'invalid data found when processing input',
+            'error reading header',
+            'stsz atom truncated',
+            'contradictionary stsc and stco',
+            'moov atom not found',
+        )
+    )
+
+
+async def media_preflight_ok(input_file_path: Path) -> bool:
+    try:
+        video_info = await get_stream_info('v:0', input_file_path)
+        audio_info = await get_stream_info('a:0', input_file_path)
+        format_info = await get_format_info(input_file_path)
+        return bool(video_info or audio_info or format_info)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f'ffprobe preflight failed for {input_file_path}: {e}')
+        return False
+
+
 async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901
     model_name = await choose_gemini_model(event, prefix='m|gemini_ocr|model|')
     if model_name is None:
@@ -298,7 +324,7 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     rmtree(output_dir, ignore_errors=True)
 
 
-async def gemini_transcribe_media(  # noqa: C901, PLR0912
+async def gemini_transcribe_media(  # noqa: C901, PLR0911, PLR0912, PLR0915
     event: NewMessage.Event | CallbackQuery.Event,
 ) -> None:
     model_name = await choose_gemini_model(event, prefix='m|gemini_transcribe|model|')
@@ -323,12 +349,18 @@ async def gemini_transcribe_media(  # noqa: C901, PLR0912
         async with download_to_temp_file(
             event, input_message, progress_message, temp_dir=output_dir
         ) as input_file_path:
+            if not await media_preflight_ok(input_file_path):
+                await status_message.edit(t('corrupt_media_file'))
+                return
             audio_file_path = output_dir / 'gemini-input.ogg'
             await progress_message.edit(t('converting_media'))
             output, status_code = await run_command(
                 f'ffmpeg -hide_banner -y -i "{input_file_path}" -vn -ac 1 -c:a libopus -b:a 32k "{audio_file_path}"'
             )
             if status_code != 0:
+                if has_corrupt_media_error(output):
+                    await status_message.edit(t('corrupt_media_file'))
+                    return
                 await status_message.edit(t('an_error_occurred', error=f'\n<pre>{output}</pre>'))
                 return
 
@@ -338,6 +370,9 @@ async def gemini_transcribe_media(  # noqa: C901, PLR0912
                 f'-f segment -segment_time {GEMINI_TRANSCRIBE_CHUNK_SECONDS} -reset_timestamps 1 "{chunk_pattern}"'
             )
             if status_code != 0:
+                if has_corrupt_media_error(output):
+                    await status_message.edit(t('corrupt_media_file'))
+                    return
                 await status_message.edit(t('an_error_occurred', error=f'\n<pre>{output}</pre>'))
                 return
             audio_parts = sorted(

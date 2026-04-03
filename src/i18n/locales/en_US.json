@@ -401,5 +401,6 @@
   "send_prompt": "Send the prompt text.",
   "invalid_prompt": "Invalid prompt.",
   "unsupported_file_type": "Unsupported file type.",
+  "corrupt_media_file": "Media file appears corrupt or incomplete.",
   "use_inline_prompt": "Use the inline command button to send a prompt for the replied file."
 }
