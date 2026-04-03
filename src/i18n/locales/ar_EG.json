@@ -363,7 +363,7 @@
   "_media_stereo": "تصحيح الصوت",
   "_media_stereo_description": "إصلاح صوت الاستريو باستخدام قناة واحدة.",
   "_transcribe": "تفريغ",
-  "_transcribe_description": "[wit|whisper|vosk]: نسخ الصوت أو الفيديو إلى تنسيقات نصية وترجمة.",
+  "_transcribe_description": "[wit|whisper|vosk|google]: نسخ الصوت أو الفيديو إلى تنسيقات نصية وترجمة.",
   "_video_create": "إنشاء فيديو",
   "_video_create_description": "إنشاء فيديو من ملفات الصوت والترجمة.",
   "_video_compress": "ضغط الفيديو",

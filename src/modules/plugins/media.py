@@ -1262,7 +1262,7 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
     raise StopPropagation
 
 
-async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0911, PLR0912, PLR0915
+async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912, PLR0915
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
         transcription_method = await inline_choice_grid(
@@ -1284,14 +1284,10 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         match = Media.commands['transcribe'].pattern.match(event.message.text)
         transcription_method = (match.group(2) if match else 'wit') or 'wit'
         language = (match.group(3) if match else 'ar') or 'ar'
-    wit_access_tokens, whisper_model_path = None, None
+    wit_access_tokens, whisper_api_key = None, None
     if transcription_method == 'whisper':
-        whisper_model_path = getenv('WHISPER_MODEL_PATH')
         whisper_api_key = getenv('GROQ_API_KEY')
-        if not whisper_model_path and not whisper_api_key:
-            await event.reply(t('please_set_whisper_model_path'))
-            return
-        if not whisper_api_key and not whisper_model_path:
+        if not whisper_api_key:
             await event.reply(t('please_set_whisper_api_key'))
             return
     elif transcription_method == 'wit':
@@ -1360,13 +1356,9 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 transcription,
                 file_name=audio_file_path.with_suffix('.txt').name,
             )
-        else:
+        elif transcription_method == 'wit':
             command = f'tafrigh "{input_file_path}" -o "{output_dir.name}" -f txt srt'
-            command += (
-                f' -w {wit_access_tokens}'
-                if transcription_method == 'wit'
-                else f' -m {whisper_model_path} --use_faster_whisper'
-            )
+            command += f' -w {wit_access_tokens}'
             await stream_shell_output(
                 event, command, status_message, progress_message, max_length=100
             )

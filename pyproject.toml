@@ -17,7 +17,7 @@ dependencies = [
     "pydub>=0.25.1",
     "audioop-lts>=0.2.2", # required for pydub on 3.13
     "regex>=2025.11.3",
-    "tafrigh[wit,whisper]>=1.7.6",
+    "tafrigh[wit]>=1.7.6",
     "wikipedia>=1.4.0",
     "vosk==0.3.45 ; sys_platform != 'darwin'",
     "yt-dlp[default,curl-cffi]>=2026.3.17",
@@ -41,7 +41,6 @@ dev = [
 
 [tool.uv]
 override-dependencies = [
-    "openai-whisper @ git+https://github.com/openai/whisper#v20250625",
     "pillow>=12.1.1",
 ]
 

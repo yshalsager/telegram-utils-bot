@@ -363,7 +363,7 @@
   "_media_stereo": "media stereo",
   "_media_stereo_description": "Fix stereo audio by using one channel.",
   "_transcribe": "transcribe",
-  "_transcribe_description": "[wit|whisper|vosk]: Transcribe audio or video to text and subtitle formats.",
+  "_transcribe_description": "[wit|whisper|vosk|google]: Transcribe audio or video to text and subtitle formats.",
   "_video_create": "video create",
   "_video_create_description": "Create a video from audio and subtitle files.",
   "_video_compress": "video compress",
