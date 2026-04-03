@@ -2,6 +2,7 @@
 
 import logging
 from asyncio import sleep
+from html import escape as html_escape
 from os import execl, getenv
 from pathlib import Path
 from shutil import copy2, copytree, rmtree, which
@@ -26,6 +27,10 @@ from src.utils.telegram import edit_or_send_as_file
 
 DEFAULT_UPDATE_REPO_URL = 'https://github.com/yshalsager/telegram-utils-bot.git'
 DEFAULT_UPDATE_REPO_BRANCH = 'master'
+
+
+def to_pre(text: object) -> str:
+    return f'<pre>{html_escape(str(text))}</pre>'
 
 
 def build_github_archive_url(repo_url: str, branch: str) -> str:
@@ -116,10 +121,10 @@ async def update(event: NewMessage.Event) -> None:  # noqa: PLR0911
         try:
             partial_copy_failures = await update_from_archive(repo_url, branch)
         except (ValueError, RuntimeError, BadZipFile) as e:
-            await message.edit(f'{t("failed_to_fetch_update_source")}:\n<pre>{e}</pre>')
+            await message.edit(f'{t("failed_to_fetch_update_source")}:\n{to_pre(e)}')
             return None
         except OSError as e:
-            await message.edit(f'{t("failed_to_update")}:\n<pre>{e}</pre>')
+            await message.edit(f'{t("failed_to_update")}:\n{to_pre(e)}')
             return None
 
         if partial_copy_failures:
@@ -132,19 +137,17 @@ async def update(event: NewMessage.Event) -> None:  # noqa: PLR0911
     else:
         output, code = await run_command('git pull --rebase', cwd=PARENT_DIR)
         if code and code != 0:
-            await message.edit(f'{t("failed_to_update")}:\n<pre>{output}</pre>')
+            await message.edit(f'{t("failed_to_update")}:\n{to_pre(output)}')
             return None
         if output.strip() == 'Already up to date.':
             await message.edit(t('already_up_to_date'))
             return None
-        await message.edit(
-            f'{t("git_update_successful_updating_requirements")}\n<pre>{output}</pre>'
-        )
+        await message.edit(f'{t("git_update_successful_updating_requirements")}\n{to_pre(output)}')
 
     output, code = await run_command('uv sync --frozen --no-cache', cwd=PARENT_DIR)
     if code and code != 0:
         await edit_or_send_as_file(
-            event, message, f'{t("failed_to_update_requirements")}:\n<pre>{output}</pre>'
+            event, message, f'{t("failed_to_update_requirements")}:\n{to_pre(output)}'
         )
         return None
 
@@ -155,7 +158,7 @@ async def update(event: NewMessage.Event) -> None:  # noqa: PLR0911
     )
     if code and code != 0:
         await edit_or_send_as_file(
-            event, message, f'{t("failed_to_update_requirements")}:\n<pre>{output}</pre>'
+            event, message, f'{t("failed_to_update_requirements")}:\n{to_pre(output)}'
         )
         return None
 
