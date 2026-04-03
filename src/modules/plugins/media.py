@@ -131,13 +131,19 @@ async def build_media_upload_params(
 
 
 async def get_media_bitrate(file_path: str) -> tuple[int, int]:
+    def parse_numeric_output(output: str) -> int:
+        for line in output.splitlines():
+            value = line.strip()
+            if value.isdigit():
+                return int(value)
+        return 0
+
     async def get_bitrate(stream_specifier: str) -> int:
         _output, _ = await run_command(
             f'ffprobe -v error -select_streams {stream_specifier} -show_entries '
             f'stream=bit_rate -of csv=p=0 "{file_path}"'
         )
-        _output = _output.strip()
-        return int(_output) if _output.isdigit() else 0
+        return parse_numeric_output(_output)
 
     video_bitrate = await get_bitrate('v:0')
     audio_bitrate = await get_bitrate('a:0')
@@ -147,7 +153,7 @@ async def get_media_bitrate(file_path: str) -> tuple[int, int]:
             f'ffprobe -v error -show_entries format=bit_rate -of csv=p=0 "{file_path}"'
         )
         # Assume it's all audio if we couldn't get separate streams
-        audio_bitrate = int(output.strip() or 0)
+        audio_bitrate = parse_numeric_output(output)
 
     return video_bitrate, audio_bitrate
 
