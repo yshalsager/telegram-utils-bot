@@ -36,12 +36,14 @@ from src.utils.telegram import (
 OCR_MODEL = 'gemini-3.1-flash-lite-preview'
 OCR_MODEL_RPM = 10
 GEMINI_MODELS: list[str] = [
-    'gemini-3-flash-preview',
     'gemini-3.1-flash-lite-preview',
-    'gemini-2.5-flash',
-    'gemini-2.5-pro-exp-03-25',
+    'gemini-3-flash-preview',
     'gemini-2.5-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-flash-lite-latest',
+    'gemini-flash-latest',
     'gemma-4-31b-it',
+    'gemma-4-26b-a4b-it',
 ]
 OCR_PROMPT = (
     'OCR this PDF page. DONt REMOVE ARABIC Taskheel. '
@@ -202,7 +204,7 @@ async def choose_gemini_model(
 ) -> str | None:
     if not isinstance(event, CallbackQuery.Event):
         return OCR_MODEL
-    return await inline_choice_grid(
+    model_name = await inline_choice_grid(
         event,
         prefix=prefix,
         prompt_text=f'{t("choose_model")}:',
@@ -216,6 +218,10 @@ async def choose_gemini_model(
         cols=2,
         cast=str,
     )
+    if model_name and model_name not in GEMINI_MODELS:
+        await event.reply(f'{t("invalid_model")}: <code>{model_name}</code>')
+        return None
+    return model_name
 
 
 def get_message_mime_type(message: Message) -> str | None:
