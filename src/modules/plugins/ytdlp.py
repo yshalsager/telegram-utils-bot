@@ -1,6 +1,8 @@
 from asyncio import get_running_loop, run_coroutine_threadsafe, sleep
+from contextlib import suppress
 from functools import partial
 from pathlib import Path
+from time import monotonic
 from typing import Any, ClassVar
 
 import orjson
@@ -142,6 +144,39 @@ def valid_entries(info_dict: dict[str, Any] | None) -> list[dict[str, Any]]:
     if entries is None:
         return [info_dict]
     return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def silence_background_error(future: Any) -> None:
+    with suppress(Exception):
+        future.exception()
+
+
+def playlist_progress_match_filter(progress_message: Message, base_text: str) -> Any:
+    loop = get_running_loop()
+    state = {'last_idx': 0, 'last_update': 0.0}
+
+    def match_filter(info_dict: dict[str, Any], *, incomplete: bool = False) -> None:
+        idx = info_dict.get('playlist_autonumber')
+        total = info_dict.get('n_entries')
+        if not isinstance(idx, int) or not isinstance(total, int) or idx <= 0 or total <= 1:
+            return
+
+        now = monotonic()
+        should_update = idx != state['last_idx'] and (
+            now - state['last_update'] >= 1.2 or idx == total
+        )
+        if not should_update:
+            return
+
+        state['last_idx'] = idx
+        state['last_update'] = now
+        future = run_coroutine_threadsafe(
+            progress_message.edit(f'{base_text}\n{idx}/{total}'), loop
+        )
+        future.add_done_callback(silence_background_error)
+        return
+
+    return match_filter
 
 
 async def get_link_from_event(event: NewMessage.Event | CallbackQuery.Event) -> str | None:
@@ -462,7 +497,8 @@ async def get_subtitles(event: NewMessage.Event) -> None:
 
 
 async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    progress_message = await send_progress_message(event, t('fetching_available_formats'))
+    fetching_formats_text = t('fetching_available_formats')
+    progress_message = await send_progress_message(event, fetching_formats_text)
     link = await get_link_from_event(event)
     if not link:
         await progress_message.edit(t('no_valid_url_found'))
@@ -471,6 +507,7 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
         ydl_opts = {
             **params,
             'listformats': True,
+            'match_filter': playlist_progress_match_filter(progress_message, fetching_formats_text),
             **({'ignoreerrors': True} if should_ignore_playlist_entry_errors(link) else {}),
         }
         info_dict = await ydl_extract(link, ydl_opts, download=False)
@@ -562,10 +599,12 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     ignore_playlist_errors = should_ignore_playlist_entry_errors(link, playlist_items)
 
     if _type in ('audio', 'video') and not _format:
-        await progress_message.edit(t('fetching_available_formats'))
+        fetching_formats_text = t('fetching_available_formats')
+        await progress_message.edit(fetching_formats_text)
         ydl_opts = {
             **params,
             'listformats': True,
+            'match_filter': playlist_progress_match_filter(progress_message, fetching_formats_text),
             **({'ignoreerrors': True} if ignore_playlist_errors else {}),
             **({'playlist_items': playlist_items} if playlist_items else {}),
         }
