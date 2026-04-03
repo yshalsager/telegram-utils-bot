@@ -4,7 +4,12 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from telethon import Button
-from telethon.errors import MessageEmptyError, MessageTooLongError
+from telethon.errors import (
+    MessageEmptyError,
+    MessageIdInvalidError,
+    MessageNotModifiedError,
+    MessageTooLongError,
+)
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
@@ -91,8 +96,32 @@ async def inline_choice(
     data = event.data.decode('utf-8')
     if data.startswith(prefix):
         return cast(data.split('|')[-1])
-    await event.edit(prompt_text, buttons=buttons)
+    await safe_event_edit(event, prompt_text, buttons=buttons)
     return None
+
+
+async def safe_event_edit(
+    event: CallbackQuery.Event,
+    text: str,
+    *,
+    buttons: list[list[Button]] | None = None,
+    parse_mode: str | None = None,
+) -> Message:
+    try:
+        return await event.edit(text, buttons=buttons, parse_mode=parse_mode)
+    except MessageNotModifiedError:
+        message = await event.get_message()
+        if message is not None:
+            return message
+    except MessageIdInvalidError:
+        pass
+
+    return await event.client.send_message(
+        event.chat_id,
+        text,
+        buttons=buttons,
+        parse_mode=parse_mode,
+    )
 
 
 async def inline_choice_grid(

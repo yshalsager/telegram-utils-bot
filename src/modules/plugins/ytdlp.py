@@ -31,6 +31,7 @@ from src.utils.telegram import (
     edit_or_send_as_file,
     get_reply_message,
     inline_choice_grid,
+    safe_event_edit,
     send_progress_message,
 )
 
@@ -590,10 +591,10 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     try:
         playlist_items = parse_playlist_items_arg(reply_message.raw_text)
     except ValueError:
-        await event.edit(t('invalid_ytdown_command'))
+        await safe_event_edit(event, t('invalid_ytdown_command'))
         return
     if not link:
-        await event.edit(t('no_valid_url_found'))
+        await safe_event_edit(event, t('no_valid_url_found'))
         return
     progress_message = await send_progress_message(event, t('starting_process'))
     ignore_playlist_errors = should_ignore_playlist_entry_errors(link, playlist_items)
@@ -635,8 +636,10 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         if not buttons:
             await progress_message.edit(t('no_suitable_formats_found'))
             return
-        await event.edit(
-            t('choose_format_for', type=t(_type), entry_count=entry_count), buttons=buttons
+        await safe_event_edit(
+            event,
+            t('choose_format_for', type=t(_type), entry_count=entry_count),
+            buttons=buttons,
         )
         return
 

@@ -21,7 +21,7 @@ from src.utils.i18n import t
 from src.utils.modules_registry import ModuleRegistry
 from src.utils.permission_manager import PermissionManager
 from src.utils.reply import FileCollectorManager, ReplyPromptManager
-from src.utils.telegram import delete_message_after, get_reply_message
+from src.utils.telegram import get_reply_message
 
 
 class BotState:
@@ -207,7 +207,6 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
         await event.answer(message, alert=True)
 
     await handle_module_execution(event, module, (event, command), response_func)
-    delete_message_after(await event.get_message(), seconds=60 * 5)
 
 
 async def handle_inline_query(event: InlineQuery.Event) -> None:
