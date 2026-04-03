@@ -138,7 +138,7 @@ def get_message_mime_type(message: Message) -> str | None:
     return None
 
 
-async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901
     model_name = await choose_gemini_model(event, prefix='m|gemini_ocr|model|')
     if model_name is None:
         return
@@ -175,20 +175,24 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
             for idx, page in enumerate(sorted(output_dir.glob('*.png')), start=1):
                 retry_count = 0
                 backoff_time = 10
-                try:
-                    await rate_limiter.wait_if_needed()
-                    while retry_count <= max_retries:
+                while retry_count <= max_retries:
+                    try:
+                        await rate_limiter.wait_if_needed()
                         response = await model.prompt(
                             OCR_PROMPT, attachments=[llm.Attachment(path=str(page))]
                         )
                         out.write(await response.text() + '\n\n')
                         break
-                except llm.errors.ModelError as e:
-                    retry_count += 1
-                    if 'The model is overloaded' in str(e) and retry_count <= max_retries:
-                        await sleep(backoff_time)
-                        backoff_time *= 2
-                    else:
+                    except llm.errors.ModelError as e:
+                        retry_count += 1
+                        if 'The model is overloaded' in str(e) and retry_count <= max_retries:
+                            await sleep(backoff_time)
+                            backoff_time *= 2
+                            continue
+                        logger.error(f'Failed to process page {idx}: {e}')
+                        out.write(f'[Error processing page {idx}]\n\n')
+                        break
+                    except Exception as e:  # noqa: BLE001
                         logger.error(f'Failed to process page {idx}: {e}')
                         out.write(f'[Error processing page {idx}]\n\n')
                         break
