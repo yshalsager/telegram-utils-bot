@@ -9,6 +9,7 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_admin_in_private
 from src.utils.i18n import t
+from src.utils.run import MAX_MESSAGE_LENGTH
 
 
 async def list_plugins(event: NewMessage.Event) -> None:
@@ -32,15 +33,27 @@ async def list_plugins(event: NewMessage.Event) -> None:
 async def list_commands(event: NewMessage.Event) -> None:
     modules_registry = event.client.modules_registry
     all_commands: dict[str, ModuleBase.CommandsT] = modules_registry.get_all_commands(event)
-    help_text = f'<b>{t("available_commands")}</b>:\n\n'
+    header = f'<b>{t("available_commands")}</b>:'
+    help_chunks: list[str] = []
+    help_text = f'{header}\n\n'
     for module, commands in all_commands.items():
         if not commands:
             continue
-        help_text += f'<i>{module}</i>:\n'
+        module_text = f'<i>{module}</i>:\n'
         for cmd, data in commands.items():
-            help_text += f'/{cmd}: {data.description}\n'
-        help_text += '\n'
-    await event.reply(help_text)
+            module_text += f'/{cmd}: {data.description}\n'
+        module_text += '\n'
+
+        if len(help_text) + len(module_text) > MAX_MESSAGE_LENGTH:
+            help_chunks.append(help_text.rstrip())
+            help_text = f'{header}\n\n'
+        help_text += module_text
+
+    if help_text.strip():
+        help_chunks.append(help_text.rstrip())
+
+    for chunk in help_chunks:
+        await event.reply(chunk)
     # Set bot commands
     await event.client(
         SetBotCommandsRequest(
