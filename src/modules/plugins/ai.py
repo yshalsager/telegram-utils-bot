@@ -22,7 +22,7 @@ from src.modules.base import ModuleBase
 from src.modules.plugins.media import get_format_info, get_stream_info
 from src.utils.command import Command
 from src.utils.downloads import download_to_temp_file, get_download_name, upload_file_and_cleanup
-from src.utils.filters import has_media, has_pdf_file, has_photo_or_photo_file
+from src.utils.filters import has_file, has_media, has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
 from src.utils.run import run_command
 from src.utils.telegram import (
@@ -528,7 +528,7 @@ class AI(ModuleBase):
             handler=gemini_prompt_with_file,
             description=t('_gemini_prompt_description'),
             pattern=GEMINI_PROMPT_PATTERN,
-            condition=lambda e, m: has_media(e, m, any=True),
+            condition=has_file,
             is_applicable_for_reply=True,
         ),
     }
