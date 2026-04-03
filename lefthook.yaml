@@ -3,14 +3,14 @@ pre-commit:
   commands:
     lint:
       glob: "*.py"
-      run: uv run ruff check --fix {staged_files}
+      run: mise x uv -- uv run ruff check --fix {staged_files}
       stage_fixed: true
 
     fmt:
       glob: "*.py"
-      run: uv run ruff format {staged_files}
+      run: mise x uv -- uv run ruff format {staged_files}
       stage_fixed: true
 
     ty:
       glob: "*.py"
-      run: uv run ty check src --output-format concise
+      run: mise x uv -- uv run ty check src --output-format concise
