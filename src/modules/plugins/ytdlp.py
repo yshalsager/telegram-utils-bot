@@ -1,4 +1,4 @@
-from asyncio import get_running_loop, run_coroutine_threadsafe
+from asyncio import get_running_loop, run_coroutine_threadsafe, sleep
 from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar
@@ -50,6 +50,8 @@ params = {
     'format_sort': ['res:480', '+size', 'ext'],
     'restrictfilenames': True,
     'windowsfilenames': True,
+    'sleep_interval_requests': 1,
+    'extractor_retries': 6,
 }
 
 if netrc_file.exists():
@@ -60,6 +62,10 @@ if netrc_file.exists():
 params['extractor_args'] = {
     # yt-dlp expects extractor args to be lists of strings (same shape as --extractor-args parsing)
     'youtubepot-bgutilhttp': {'base_url': ['http://bgutil-provider:4416']},
+    'youtube': {
+        'player_client': ['mweb', 'web'],
+        'webpage_client': ['web'],
+    },
 }
 
 FFMPEG_METADATA_PP = {
@@ -126,10 +132,20 @@ def ydl_progress_hooks(message: Message) -> list[Any]:
 
 
 async def ydl_extract(link: str, ydl_opts: dict[str, Any], *, download: bool) -> dict[str, Any]:
-    return await get_running_loop().run_in_executor(
-        None,
-        partial(YoutubeDL(ydl_opts).extract_info, link, download=download),
-    )
+    retry_count = 0
+    backoff_seconds = 10
+    while True:
+        try:
+            return await get_running_loop().run_in_executor(
+                None,
+                partial(YoutubeDL(ydl_opts).extract_info, link, download=download),
+            )
+        except Exception as e:
+            if 'HTTP Error 429' not in str(e) or retry_count >= 3:
+                raise
+            retry_count += 1
+            await sleep(backoff_seconds)
+            backoff_seconds *= 2
 
 
 def build_caption(
