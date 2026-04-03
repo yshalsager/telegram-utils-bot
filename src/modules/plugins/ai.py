@@ -385,6 +385,8 @@ async def gemini_transcribe_media(  # noqa: C901, PLR0911, PLR0912, PLR0915
             await progress_message.edit(t('starting_transcription'))
             transcription_parts = []
             chunk_count = len(audio_parts)
+            total_chars = 0
+            empty_chunks = 0
             api_key = model.get_key() or getenv('LLM_GEMINI_KEY') or ''
             if not api_key:
                 await status_message.edit(f'{t("missing_api_key")}: <code>LLM_GEMINI_KEY</code>')
@@ -402,6 +404,14 @@ async def gemini_transcribe_media(  # noqa: C901, PLR0911, PLR0912, PLR0915
                 part = await prompt_with_gemini_file_attachment(model, prompt, chunk_path, api_key)
                 if part:
                     transcription_parts.append(part)
+                    part_chars = len(part)
+                    total_chars += part_chars
+                else:
+                    part_chars = 0
+                    empty_chunks += 1
+                await progress_message.edit(
+                    f'<pre>{idx} / {chunk_count} | chars:{part_chars} | total:{total_chars} | empty:{empty_chunks}</pre>'
+                )
             transcription = '\n\n'.join(transcription_parts)
             edited = await edit_or_send_as_file(
                 event,
