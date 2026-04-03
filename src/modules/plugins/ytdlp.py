@@ -131,6 +131,19 @@ def parse_playlist_items_arg(text: str) -> str | None:
     return playlist_items
 
 
+def should_ignore_playlist_entry_errors(link: str, playlist_items: str | None = None) -> bool:
+    return bool(playlist_items or re.search(r'(?:[?&]list=|/playlist\?)', link))
+
+
+def valid_entries(info_dict: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(info_dict, dict):
+        return []
+    entries = info_dict.get('entries')
+    if entries is None:
+        return [info_dict]
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
 async def get_link_from_event(event: NewMessage.Event | CallbackQuery.Event) -> str | None:
     message = await get_target_message(event)
     return extract_link(message.raw_text)
@@ -229,7 +242,7 @@ def download_hook(d: dict[str, Any], message: Message, loop: Any) -> None:
 def calculate_common_formats_and_sizes(
     info_dict: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, int], int, int]:
-    entries = info_dict.get('entries', [info_dict])
+    entries = valid_entries(info_dict)
     common_formats: dict[str, Any] = {}
     total_sizes: dict[str, int] = {}
     worst_audio_size = 0
@@ -412,6 +425,7 @@ async def get_subtitles(event: NewMessage.Event) -> None:
         'subtitleslangs': [language, f'{language}-orig'],
         'outtmpl': str(TMP_DIR / '%(title)s.%(ext)s'),
         'progress_hooks': ydl_progress_hooks(progress_message),
+        **({'ignoreerrors': True} if should_ignore_playlist_entry_errors(link) else {}),
     }
     try:
         info_dict = await ydl_extract(link, ydl_opts, download=True)
@@ -419,7 +433,7 @@ async def get_subtitles(event: NewMessage.Event) -> None:
         await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
         return
 
-    entries = info_dict.get('entries', [info_dict])
+    entries = valid_entries(info_dict)
     for entry in entries:
         subs = entry.get('requested_subtitles', {})
         if not subs:
@@ -457,6 +471,7 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
         ydl_opts = {
             **params,
             'listformats': True,
+            **({'ignoreerrors': True} if should_ignore_playlist_entry_errors(link) else {}),
         }
         info_dict = await ydl_extract(link, ydl_opts, download=False)
         common_formats, total_sizes, worst_audio_size, entry_count = (
@@ -544,15 +559,21 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.edit(t('no_valid_url_found'))
         return
     progress_message = await send_progress_message(event, t('starting_process'))
+    ignore_playlist_errors = should_ignore_playlist_entry_errors(link, playlist_items)
 
     if _type in ('audio', 'video') and not _format:
         await progress_message.edit(t('fetching_available_formats'))
         ydl_opts = {
             **params,
             'listformats': True,
+            **({'ignoreerrors': True} if ignore_playlist_errors else {}),
             **({'playlist_items': playlist_items} if playlist_items else {}),
         }
-        info_dict = await ydl_extract(link, ydl_opts, download=False)
+        try:
+            info_dict = await ydl_extract(link, ydl_opts, download=False)
+        except Exception as e:  # noqa: BLE001
+            await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
+            return
         common_formats, total_sizes, worst_audio_size, entry_count = (
             calculate_common_formats_and_sizes(info_dict)
         )
@@ -594,12 +615,16 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         'progress_hooks': ydl_progress_hooks(progress_message),
         'writethumbnail': True,
         'postprocessors': post_processors,
+        **({'ignoreerrors': True} if ignore_playlist_errors else {}),
         **({'playlist_items': playlist_items} if playlist_items else {}),
     }
 
     try:
         info_dict = await ydl_extract(link, ydl_opts, download=True)
-        entries = info_dict.get('entries', [info_dict])  # Handle both single videos and playlists
+        entries = valid_entries(info_dict)
+        if not entries:
+            await progress_message.edit(t('an_error_occurred', error=t('no_file_found')))
+            return
         for entry in entries:
             entry_path = (
                 entry.get('filepath')
