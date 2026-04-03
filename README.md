@@ -94,6 +94,20 @@ You can drop your own plugins (or `git clone` them) into `state/plugins/` and th
 Plugin modules should define `ModuleBase` subclasses with `IS_MODULE = True` (same pattern as built-in plugins in
 `src/modules/plugins/`).
 
+Custom plugins can declare dependencies using PEP 723 script metadata at the top of the plugin file, then sync them:
+
+```python
+# /// script
+# dependencies = [
+#   "requests>=2.32.0",
+# ]
+# ///
+```
+
+```bash
+mise run plugins-sync
+```
+
 ## Setup
 
 Before setting up the bot:

@@ -20,6 +20,7 @@
   "failed_to_fetch_update_source": "فشل جلب مصدر التحديث",
   "update_partial_copy_warning": "حدث المصدر، لكن تعذر استبدال: {files}. سأكمل تحديث المتطلبات.",
   "source_update_successful_updating_requirements": "اكتمل تحديث المصدر. تحدث المتطلبات الآن…",
+  "syncing_plugin_dependencies": "يجري مزامنة تبعيات الإضافات المخصصة…",
   "already_up_to_date": "مُحدّث بالفعل.",
   "git_update_successful_updating_requirements": "سحبت التغييرات من Git. تحدث المتطلبات الآن…",
   "failed_to_update_requirements": "فشل تحديث المتطلبات",

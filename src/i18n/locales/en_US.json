@@ -20,6 +20,7 @@
   "failed_to_fetch_update_source": "Failed to fetch update source",
   "update_partial_copy_warning": "Updated source, but couldn't replace: {files}. Continuing with dependency sync.",
   "source_update_successful_updating_requirements": "Source update successful. Updating requirements…",
+  "syncing_plugin_dependencies": "Syncing custom plugin dependencies…",
   "already_up_to_date": "Already up to date.",
   "git_update_successful_updating_requirements": "Git update successful. Updating requirements…",
   "failed_to_update_requirements": "Failed to update requirements",

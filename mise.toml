@@ -9,6 +9,12 @@ run = 'uv run -m src'
 [tasks.dev]
 run = 'uv run jurigged -v -m src'
 
+[tasks.plugins-sync]
+run = 'uv run python scripts/sync_plugin_deps.py'
+
+[tasks.plugins-sync-dry]
+run = 'uv run python scripts/sync_plugin_deps.py --dry-run'
+
 [env]
 # the Telegram bot token https://telegram.me/BotFather
 BOT_TOKEN = '0000000000:aaaaaaaaaaaaaaaaaaaa'

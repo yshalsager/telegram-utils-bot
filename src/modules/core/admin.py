@@ -104,7 +104,7 @@ async def restart(event: NewMessage.Event) -> None:
     execl(executable, executable, '-m', 'src')  # noqa: S606
 
 
-async def update(event: NewMessage.Event) -> None:
+async def update(event: NewMessage.Event) -> None:  # noqa: PLR0911
     """Update the bot."""
     message = await event.reply(t('updating_please_wait'))
     has_git_checkout = (PARENT_DIR / '.git').exists()
@@ -147,6 +147,18 @@ async def update(event: NewMessage.Event) -> None:
             event, message, f'{t("failed_to_update_requirements")}:\n<pre>{output}</pre>'
         )
         return None
+
+    await message.edit(t('syncing_plugin_dependencies'))
+    output, code = await run_command(
+        f'{executable} -m src.utils.plugin_deps_sync',
+        cwd=PARENT_DIR,
+    )
+    if code and code != 0:
+        await edit_or_send_as_file(
+            event, message, f'{t("failed_to_update_requirements")}:\n<pre>{output}</pre>'
+        )
+        return None
+
     await message.edit(t('updated_successfully'))
     return await restart(event)
 
