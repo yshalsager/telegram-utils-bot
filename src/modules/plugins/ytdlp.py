@@ -11,6 +11,7 @@ from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeVideo
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import PlaylistEntries
 
 from src import STATE_DIR, TMP_DIR
 from src.modules.base import ModuleBase
@@ -120,6 +121,14 @@ def extract_link(text: str) -> str | None:
     if match := re.search(HTTP_URL_PATTERN, text):
         return str(match.group(0))
     return None
+
+
+def parse_playlist_items_arg(text: str) -> str | None:
+    command_parts = text.split(maxsplit=2)
+    playlist_items = command_parts[2].strip() if len(command_parts) > 2 else None
+    if playlist_items:
+        tuple(PlaylistEntries.parse_playlist_items(playlist_items))
+    return playlist_items
 
 
 async def get_link_from_event(event: NewMessage.Event | CallbackQuery.Event) -> str | None:
@@ -480,14 +489,18 @@ async def get_formats(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await progress_message.edit(f'An error occurred:\n<pre>{e!s}</pre>')
 
 
-async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912, PLR0915
+async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0911, PLR0912, PLR0915
     is_url_event = (
         isinstance(event, CallbackQuery.Event)
         and event.data
         and event.data.decode().endswith('ytdown')
     )
-    is_command_event = isinstance(event, NewMessage.Event)
-    if is_command_event:
+    if isinstance(event, NewMessage.Event):
+        try:
+            parse_playlist_items_arg(event.message.raw_text)
+        except ValueError:
+            await event.reply(t('invalid_ytdown_command'))
+            return
         text = t('choose_format_type')
         buttons = [
             [
@@ -522,6 +535,11 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     reply_message = await get_reply_message(event, previous=True)
     link = extract_link(reply_message.raw_text)
+    try:
+        playlist_items = parse_playlist_items_arg(reply_message.raw_text)
+    except ValueError:
+        await event.edit(t('invalid_ytdown_command'))
+        return
     if not link:
         await event.edit(t('no_valid_url_found'))
         return
@@ -529,7 +547,11 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     if _type in ('audio', 'video') and not _format:
         await progress_message.edit(t('fetching_available_formats'))
-        ydl_opts = {**params, 'listformats': True}
+        ydl_opts = {
+            **params,
+            'listformats': True,
+            **({'playlist_items': playlist_items} if playlist_items else {}),
+        }
         info_dict = await ydl_extract(link, ydl_opts, download=False)
         common_formats, total_sizes, worst_audio_size, entry_count = (
             calculate_common_formats_and_sizes(info_dict)
@@ -572,6 +594,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         'progress_hooks': ydl_progress_hooks(progress_message),
         'writethumbnail': True,
         'postprocessors': post_processors,
+        **({'playlist_items': playlist_items} if playlist_items else {}),
     }
 
     try:
@@ -716,7 +739,7 @@ class YTDLP(ModuleBase):
         'ytdown': Command(
             handler=download_media,
             description=t('_ytdown_description'),
-            pattern=re.compile(rf'^/ytdown\s+{HTTP_URL_PATTERN}$'),
+            pattern=re.compile(rf'^/ytdown\s+{HTTP_URL_PATTERN}(?:\s+\S+)?$'),
             condition=has_valid_url,
             is_applicable_for_reply=True,
         ),
