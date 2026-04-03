@@ -4,7 +4,7 @@ Telegram Bot
 
 import logging
 import traceback
-from asyncio import CancelledError, Task, create_task, get_event_loop
+from asyncio import CancelledError, Task, create_task, run
 from collections.abc import Callable, Coroutine
 from contextlib import suppress
 from itertools import zip_longest
@@ -62,8 +62,7 @@ def get_permission_manager() -> PermissionManager:
 
 def main() -> None:
     """Run bot."""
-    loop = get_event_loop()
-    loop.run_until_complete(run_bot())
+    run(run_bot())
 
 
 async def handle_restart() -> None:
