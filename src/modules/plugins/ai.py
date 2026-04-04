@@ -248,6 +248,24 @@ def has_corrupt_media_error(output: str) -> bool:
     )
 
 
+def is_retryable_gemini_error(error: Exception) -> bool:
+    text = str(error).lower()
+    return any(
+        marker in text
+        for marker in (
+            'the model is overloaded',
+            'rate limit',
+            '429',
+            'resource exhausted',
+            'temporarily unavailable',
+            'service unavailable',
+            'internal',
+            'timeout',
+            'deadline exceeded',
+        )
+    )
+
+
 async def media_preflight_ok(input_file_path: Path) -> bool:
     try:
         video_info = await get_stream_info('v:0', input_file_path)
@@ -259,7 +277,7 @@ async def media_preflight_ok(input_file_path: Path) -> bool:
         return False
 
 
-async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901
+async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     model_name = await choose_gemini_model(event, prefix='m|gemini_ocr|model|')
     if model_name is None:
         return
@@ -304,16 +322,16 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                         )
                         out.write(await response.text() + '\n\n')
                         break
-                    except llm.errors.ModelError as e:
+                    except Exception as e:  # noqa: BLE001
                         retry_count += 1
-                        if 'The model is overloaded' in str(e) and retry_count <= max_retries:
+                        if retry_count <= max_retries and is_retryable_gemini_error(e):
+                            logger.warning(
+                                f'Retrying OCR page {idx} in {backoff_time}s '
+                                f'({retry_count}/{max_retries}) after: {e}'
+                            )
                             await sleep(backoff_time)
                             backoff_time *= 2
                             continue
-                        logger.error(f'Failed to process page {idx}: {e}')
-                        out.write(f'[Error processing page {idx}]\n\n')
-                        break
-                    except Exception as e:  # noqa: BLE001
                         logger.error(f'Failed to process page {idx}: {e}')
                         out.write(f'[Error processing page {idx}]\n\n')
                         break
