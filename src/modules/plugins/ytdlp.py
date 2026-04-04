@@ -655,6 +655,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         'format': format_id,
         'outtmpl': str(TMP_DIR / '%(id)s.%(ext)s'),
         'progress_hooks': ydl_progress_hooks(progress_message),
+        'match_filter': playlist_progress_match_filter(progress_message, t('starting_download')),
         'writethumbnail': True,
         'postprocessors': post_processors,
         **({'ignoreerrors': True} if ignore_playlist_errors else {}),
@@ -667,7 +668,8 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         if not entries:
             await progress_message.edit(t('an_error_occurred', error=t('no_file_found')))
             return
-        for entry in entries:
+        entry_count = len(entries)
+        for idx, entry in enumerate(entries, start=1):
             entry_path = (
                 entry.get('filepath')
                 or entry.get('_filename')
@@ -679,7 +681,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 else Path(TMP_DIR / f'{entry["id"]}.{entry["ext"] if _type == "video" else "opus"}')
             )
             thumb_path, thumb_cleanup_paths = pick_thumb(TMP_DIR, f'{entry["id"]}.*')
-            await progress_message.edit(t('uploading_file'))
+            await progress_message.edit(f'{t("uploading_file")} {idx}/{entry_count}')
             is_audio = entry.get('vcodec') == 'none'
             attributes = media_attributes(entry, is_audio=is_audio)
             file_path = file_path.rename(file_path.with_stem(sanitize_filename(entry['title'])))
