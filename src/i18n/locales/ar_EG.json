@@ -402,5 +402,7 @@
   "invalid_prompt": "طلب غير صالح.",
   "unsupported_file_type": "نوع ملف غير مدعوم.",
   "corrupt_media_file": "ملف الوسائط يبدو تالفًا أو غير مكتمل.",
+  "gemini_quota_exceeded": "تم تجاوز حصة Gemini. يرجى المحاولة لاحقًا.",
+  "gemini_quota_exceeded_partial": "تم تجاوز حصة Gemini. تم إرسال نتيجة جزئية.",
   "use_inline_prompt": "استخدم زر الأمر المضمن لإرسال طلب للملف الذي رددت عليه."
 }

@@ -1,5 +1,6 @@
 import logging
 from asyncio import sleep
+from collections.abc import Awaitable, Callable
 from functools import partial
 from mimetypes import guess_type
 from os import getenv
@@ -61,6 +62,10 @@ PROMPT_TEXT_PATTERN = re.compile(r'(?s)^(.+)$')
 
 
 logger = logging.getLogger(__name__)
+
+
+class GeminiQuotaExceededError(RuntimeError):
+    pass
 
 
 def patch_llm_gemini_file_uris() -> None:
@@ -171,9 +176,12 @@ async def prompt_with_gemini_file_attachment(
             else:
                 raise RuntimeError('Timed out waiting for Gemini uploaded file to become active')
 
-            response = await model.prompt(
-                prompt,
-                attachments=[llm.Attachment(type='audio/ogg', url=file_uri)],
+            response = await call_gemini_with_retries(
+                operation=f'transcription chunk file {chunk_path.name}',
+                action=lambda: model.prompt(
+                    prompt,
+                    attachments=[llm.Attachment(type='audio/ogg', url=file_uri)],
+                ),
             )
             return (await response.text()).strip()
         finally:
@@ -254,8 +262,12 @@ def is_retryable_gemini_error(error: Exception) -> bool:
         marker in text
         for marker in (
             'the model is overloaded',
+            'high demand',
             'rate limit',
             '429',
+            'quota',
+            'exceeded your current quota',
+            'free_tier_requests',
             'resource exhausted',
             'temporarily unavailable',
             'service unavailable',
@@ -264,6 +276,52 @@ def is_retryable_gemini_error(error: Exception) -> bool:
             'deadline exceeded',
         )
     )
+
+
+def get_gemini_retry_after_seconds(error: Exception) -> float | None:
+    text = str(error)
+    if match := re.search(r'Please retry in\s+(\d+(?:\.\d+)?)s', text, re.IGNORECASE):
+        return float(match.group(1))
+    if match := re.search(r'retry in\s+(\d+(?:\.\d+)?)\s*seconds?', text, re.IGNORECASE):
+        return float(match.group(1))
+    return None
+
+
+def is_quota_exceeded_gemini_error(error: Exception) -> bool:
+    text = str(error).lower()
+    return any(
+        marker in text
+        for marker in (
+            'exceeded your current quota',
+            'quota exceeded',
+            'free_tier_requests',
+            'resource exhausted',
+        )
+    )
+
+
+async def call_gemini_with_retries[T](*, operation: str, action: Callable[[], Awaitable[T]]) -> T:
+    retry_count = 0
+    backoff_time = 10.0
+    while True:
+        try:
+            await rate_limiter.wait_if_needed()
+            return await action()
+        except Exception as e:
+            retry_count += 1
+            if retry_count <= max_retries and is_retryable_gemini_error(e):
+                retry_after = get_gemini_retry_after_seconds(e)
+                wait_seconds = max(backoff_time, retry_after or 0)
+                logger.warning(
+                    f'Retrying {operation} in {wait_seconds:.1f}s '
+                    f'({retry_count}/{max_retries}) after: {e}'
+                )
+                await sleep(wait_seconds)
+                backoff_time *= 2
+                continue
+            if is_quota_exceeded_gemini_error(e):
+                raise GeminiQuotaExceededError(str(e)) from e
+            raise
 
 
 async def media_preflight_ok(input_file_path: Path) -> bool:
@@ -310,31 +368,25 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     page.get_pixmap().tobytes('png')
                 )
         output_file = temp_file_path.with_suffix('.txt')
+        quota_exceeded_error: GeminiQuotaExceededError | None = None
         with output_file.open('w') as out:
             for idx, page in enumerate(sorted(output_dir.glob('*.png')), start=1):
-                retry_count = 0
-                backoff_time = 10
-                while retry_count <= max_retries:
-                    try:
-                        await rate_limiter.wait_if_needed()
-                        response = await model.prompt(
-                            OCR_PROMPT, attachments=[llm.Attachment(path=str(page))]
-                        )
-                        out.write(await response.text() + '\n\n')
-                        break
-                    except Exception as e:  # noqa: BLE001
-                        retry_count += 1
-                        if retry_count <= max_retries and is_retryable_gemini_error(e):
-                            logger.warning(
-                                f'Retrying OCR page {idx} in {backoff_time}s '
-                                f'({retry_count}/{max_retries}) after: {e}'
-                            )
-                            await sleep(backoff_time)
-                            backoff_time *= 2
-                            continue
-                        logger.error(f'Failed to process page {idx}: {e}')
-                        out.write(f'[Error processing page {idx}]\n\n')
-                        break
+                try:
+                    response = await call_gemini_with_retries(
+                        operation=f'OCR page {idx}/{total_pages}',
+                        action=lambda _page=page: model.prompt(
+                            OCR_PROMPT, attachments=[llm.Attachment(path=str(_page))]
+                        ),
+                    )
+                    out.write(await response.text() + '\n\n')
+                except GeminiQuotaExceededError as e:
+                    quota_exceeded_error = e
+                    logger.error(f'Gemini quota exhausted during OCR page {idx}: {e}')
+                    out.write(f'[Stopped at page {idx} due to Gemini quota limits]\n\n')
+                    break
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f'Failed to process page {idx}: {e}')
+                    out.write(f'[Error processing page {idx}]\n\n')
 
                 if idx % 10 == 0:
                     await progress_message.edit(f'<pre>{idx} / {total_pages}</pre>')
@@ -344,7 +396,10 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         )
         await upload_file_and_cleanup(event, output_file, progress_message)
 
-    await status_message.edit(t('pdf_ocr_process_completed'))
+    if quota_exceeded_error:
+        await status_message.edit(t('gemini_quota_exceeded_partial'))
+    else:
+        await status_message.edit(t('pdf_ocr_process_completed'))
     rmtree(output_dir, ignore_errors=True)
 
 
@@ -411,6 +466,7 @@ async def gemini_transcribe_media(  # noqa: C901, PLR0911, PLR0912, PLR0915
             chunk_count = len(audio_parts)
             total_chars = 0
             empty_chunks = 0
+            quota_exceeded_partial = False
             api_key = model.get_key() or getenv('LLM_GEMINI_KEY') or ''
             if not api_key:
                 await status_message.edit(f'{t("missing_api_key")}: <code>LLM_GEMINI_KEY</code>')
@@ -424,8 +480,20 @@ async def gemini_transcribe_media(  # noqa: C901, PLR0911, PLR0912, PLR0915
                         f'Transcribe this audio chunk {idx} of {chunk_count} into {language}. '
                         'Output only the transcription for this chunk.'
                     )
-                await rate_limiter.wait_if_needed()
-                part = await prompt_with_gemini_file_attachment(model, prompt, chunk_path, api_key)
+                try:
+                    part = await prompt_with_gemini_file_attachment(
+                        model, prompt, chunk_path, api_key
+                    )
+                except GeminiQuotaExceededError:
+                    if not transcription_parts:
+                        await status_message.edit(t('gemini_quota_exceeded'))
+                        return
+                    quota_exceeded_partial = True
+                    await status_message.edit(t('gemini_quota_exceeded_partial'))
+                    break
+                except Exception as e:  # noqa: BLE001
+                    await status_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
+                    return
                 if part:
                     transcription_parts.append(part)
                     part_chars = len(part)
@@ -444,7 +512,11 @@ async def gemini_transcribe_media(  # noqa: C901, PLR0911, PLR0912, PLR0915
                 file_name=f'{get_download_name(input_message).stem}.txt',
             )
             if not edited:
-                await status_message.edit(t('transcription_completed'))
+                await status_message.edit(
+                    t('gemini_quota_exceeded_partial')
+                    if quota_exceeded_partial
+                    else t('transcription_completed')
+                )
     finally:
         delete_message_after(progress_message)
         rmtree(output_dir, ignore_errors=True)
@@ -487,10 +559,20 @@ async def run_gemini_custom_prompt(
             temp_dir=output_dir,
         ) as input_file_path:
             await progress_message.edit(t('starting_process'))
-            response = await model.prompt(
-                prompt,
-                attachments=[llm.Attachment(type=mime_type, path=str(input_file_path))],
-            )
+            try:
+                response = await call_gemini_with_retries(
+                    operation='gemini prompt',
+                    action=lambda: model.prompt(
+                        prompt,
+                        attachments=[llm.Attachment(type=mime_type, path=str(input_file_path))],
+                    ),
+                )
+            except GeminiQuotaExceededError:
+                await status_message.edit(t('gemini_quota_exceeded'))
+                return
+            except Exception as e:  # noqa: BLE001
+                await status_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
+                return
             text = await response.text()
             await edit_or_send_as_file(
                 event,

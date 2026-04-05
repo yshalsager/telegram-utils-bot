@@ -402,5 +402,7 @@
   "invalid_prompt": "Invalid prompt.",
   "unsupported_file_type": "Unsupported file type.",
   "corrupt_media_file": "Media file appears corrupt or incomplete.",
+  "gemini_quota_exceeded": "Gemini quota exceeded. Please try again later.",
+  "gemini_quota_exceeded_partial": "Gemini quota exceeded. Sent partial result.",
   "use_inline_prompt": "Use the inline command button to send a prompt for the replied file."
 }
