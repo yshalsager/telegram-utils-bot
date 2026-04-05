@@ -192,14 +192,35 @@ def ydl_progress_hooks(message: Message) -> list[Any]:
 async def ydl_extract(link: str, ydl_opts: dict[str, Any], *, download: bool) -> dict[str, Any]:
     retry_count = 0
     backoff_seconds = 10
+    used_native_downloader_fallback = False
+    current_ydl_opts = ydl_opts
     while True:
         try:
             return await get_running_loop().run_in_executor(
                 None,
-                partial(YoutubeDL(ydl_opts).extract_info, link, download=download),
+                partial(YoutubeDL(current_ydl_opts).extract_info, link, download=download),
             )
         except Exception as e:
-            if 'HTTP Error 429' not in str(e) or retry_count >= 3:
+            error_text = str(e)
+            if (
+                download
+                and not used_native_downloader_fallback
+                and current_ydl_opts.get('external_downloader') == 'aria2c'
+                and (
+                    'ERROR: Postprocessing:' in error_text
+                    or 'ERROR: ffmpeg exited with code 1' in error_text
+                    or 'Invalid data found when processing input' in error_text
+                )
+            ):
+                used_native_downloader_fallback = True
+                current_ydl_opts = {
+                    **current_ydl_opts,
+                    'overwrites': True,
+                }
+                current_ydl_opts.pop('external_downloader', None)
+                current_ydl_opts.pop('external_downloader_args', None)
+                continue
+            if 'HTTP Error 429' not in error_text or retry_count >= 3:
                 raise
             retry_count += 1
             await sleep(backoff_seconds)
