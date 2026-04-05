@@ -80,24 +80,26 @@ async def cancel_task(event: NewMessage.Event) -> None:
         for task_id in list(active_tasks.keys()):
             if task_id == current_task_id:
                 continue
-            task = active_tasks[task_id]
+            task = active_tasks.get(task_id)
+            if not task:
+                continue
             task.cancel()
-            del active_tasks[task_id]
+            active_tasks.pop(task_id, None)
         await event.reply(t('all_tasks_cancelled'))
         return
 
-    if task_id not in active_tasks:
+    task = active_tasks.get(task_id)
+    if not task:
         await event.reply(t('task_not_found', task_id=task_id))
         return
 
-    task = active_tasks[task_id]
     if task.done():
         await event.reply(t('task_already_completed', task_id=task_id))
     else:
         task.cancel()
         await event.reply(t('task_cancelled', task_id=task_id))
 
-    del active_tasks[task_id]
+    active_tasks.pop(task_id, None)
 
 
 class TasksManager(ModuleBase):
