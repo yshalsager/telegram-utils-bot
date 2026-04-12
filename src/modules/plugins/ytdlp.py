@@ -44,6 +44,7 @@ params = {
     'quiet': True,
     'no_color': True,
     'nocheckcertificate': True,
+    'remote_components': ['ejs:github'],
     'external_downloader': 'aria2c',
     'external_downloader_args': [
         '--min-split-size=1M',
