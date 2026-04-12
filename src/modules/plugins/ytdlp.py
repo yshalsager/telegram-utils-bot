@@ -1,6 +1,7 @@
 from asyncio import get_running_loop, run_coroutine_threadsafe, sleep
 from contextlib import suppress
 from functools import partial
+from os import getenv
 from pathlib import Path
 from time import monotonic
 from typing import Any, ClassVar
@@ -37,6 +38,8 @@ from src.utils.telegram import (
 
 cookies_file = STATE_DIR / 'cookies.txt'
 netrc_file = STATE_DIR / '.netrc'
+proxy = getenv('ALL_PROXY') or getenv('HTTPS_PROXY') or getenv('HTTP_PROXY') or ''
+use_aria2 = not proxy.lower().startswith(('socks4://', 'socks4a://', 'socks5://', 'socks5h://'))
 
 cookies = {'cookiefile': str(cookies_file.absolute())} if cookies_file.exists() else {}
 params = {
@@ -45,19 +48,21 @@ params = {
     'no_color': True,
     'nocheckcertificate': True,
     'remote_components': ['ejs:github'],
-    'external_downloader': 'aria2c',
-    'external_downloader_args': [
-        '--min-split-size=1M',
-        '--max-connection-per-server=16',
-        '--max-concurrent-downloads=16',
-        '--split=16',
-    ],
     'format_sort': ['res:480', '+size', 'ext'],
     'restrictfilenames': True,
     'windowsfilenames': True,
     'sleep_interval_requests': 1,
     'extractor_retries': 6,
 }
+
+if use_aria2:
+    params['external_downloader'] = 'aria2c'
+    params['external_downloader_args'] = [
+        '--min-split-size=1M',
+        '--max-connection-per-server=16',
+        '--max-concurrent-downloads=16',
+        '--split=16',
+    ]
 
 if netrc_file.exists():
     params['usenetrc'] = True
@@ -211,6 +216,7 @@ async def ydl_extract(link: str, ydl_opts: dict[str, Any], *, download: bool) ->
                     'ERROR: Postprocessing:' in error_text
                     or 'ERROR: ffmpeg exited with code 1' in error_text
                     or 'Invalid data found when processing input' in error_text
+                    or 'aria2c exited with code 22' in error_text
                 )
             ):
                 used_native_downloader_fallback = True
