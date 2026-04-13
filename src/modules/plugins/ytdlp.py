@@ -38,8 +38,16 @@ from src.utils.telegram import (
 
 cookies_file = STATE_DIR / 'cookies.txt'
 netrc_file = STATE_DIR / '.netrc'
-proxy = getenv('ALL_PROXY') or getenv('HTTPS_PROXY') or getenv('HTTP_PROXY') or ''
-use_aria2 = not proxy.lower().startswith(('socks4://', 'socks4a://', 'socks5://', 'socks5h://'))
+ytdlp_proxy = (
+    getenv('YTDLP_PROXY')
+    or getenv('ALL_PROXY')
+    or getenv('HTTPS_PROXY')
+    or getenv('HTTP_PROXY')
+    or ''
+)
+use_aria2 = not ytdlp_proxy.lower().startswith(
+    ('socks4://', 'socks4a://', 'socks5://', 'socks5h://')
+)
 
 cookies = {'cookiefile': str(cookies_file.absolute())} if cookies_file.exists() else {}
 params = {
@@ -54,6 +62,9 @@ params = {
     'sleep_interval_requests': 1,
     'extractor_retries': 6,
 }
+
+if ytdlp_proxy:
+    params['proxy'] = ytdlp_proxy
 
 if use_aria2:
     params['external_downloader'] = 'aria2c'
