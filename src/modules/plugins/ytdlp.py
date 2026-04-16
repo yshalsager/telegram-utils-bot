@@ -145,6 +145,8 @@ def extract_link(text: str) -> str | None:
 
 def parse_playlist_items_arg(text: str) -> str | None:
     command_parts = text.split(maxsplit=2)
+    if not command_parts or command_parts[0] != '/ytdown':
+        return None
     playlist_items = command_parts[2].strip() if len(command_parts) > 2 else None
     if playlist_items:
         tuple(PlaylistEntries.parse_playlist_items(playlist_items))
