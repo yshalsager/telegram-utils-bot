@@ -13,8 +13,8 @@ services:
       - .env
     volumes:
       - ./src:/code/app/src
-      - ./pyproject.toml:/code/app/pyproject.toml:ro
-      - ./uv.lock:/code/app/uv.lock:ro
+      - ./pyproject.toml:/code/app/pyproject.toml
+      - ./uv.lock:/code/app/uv.lock
       - ./downloads:/code/app/downloads
       - ./tmp:/code/app/tmp
       - ./state:/code/app/state
