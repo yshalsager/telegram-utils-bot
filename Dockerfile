@@ -1,7 +1,7 @@
-# syntax=docker/dockerfile:1.21
+# syntax=docker/dockerfile:1.23
 
 ARG PYTHON_IMAGE=public.ecr.aws/docker/library/python:3.14-slim-bookworm
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.10
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11
 # deno runtime, for yt-dlp
 ARG DENO_IMAGE=denoland/deno:bin-2.6.0
 
