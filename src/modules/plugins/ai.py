@@ -79,8 +79,8 @@ def patch_llm_gemini_file_uris() -> None:
             return {'fileData': {'mimeType': mime_type, 'fileUri': attachment.url}}
         return original_build_attachment_part(self, attachment, mime_type)
 
-    llm_gemini._SharedGemini._build_attachment_part = _build_attachment_part  # type: ignore[assignment]
-    llm_gemini._SharedGemini._files_api_uri_patch = True  # type: ignore[attr-defined]
+    type.__setattr__(llm_gemini._SharedGemini, '_build_attachment_part', _build_attachment_part)
+    type.__setattr__(llm_gemini._SharedGemini, '_files_api_uri_patch', True)
 
 
 patch_llm_gemini_file_uris()

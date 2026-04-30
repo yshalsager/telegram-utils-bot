@@ -6,17 +6,15 @@ from humanize import naturalsize, precisedelta
 from telethon.errors import RPCError
 from telethon.tl.custom import Message
 
+last_updates: dict[str, tuple[float, float, float]] = {}
+
 
 async def progress_callback(
     current: float, total: float, event: Message, action: str, *, unit: str = ''
 ) -> None:
-    # Using a global dictionary to store last update time, current progress, and start time for each unique operation
-    if not hasattr(progress_callback, 'last_updates'):
-        progress_callback.last_updates = {}  # type: ignore[attr-defined]
-
     key = f'{event.chat_id}:{event.id}'
     now = time.time()
-    last_update, last_current, start_time = progress_callback.last_updates.get(key, (0, 0, now))  # type: ignore[attr-defined]
+    last_update, last_current, start_time = last_updates.get(key, (0, 0, now))
 
     if now - last_update > 2 or current == total:
         percentage = current * 100 / total
@@ -25,7 +23,7 @@ async def progress_callback(
         remaining_time = (total - current) / speed if speed > 0 else 0
         if remaining_time > 60 * 60 * 24 * 365:
             remaining_time = 0
-        progress_callback.last_updates[key] = (now, current, start_time)  # type: ignore[attr-defined]
+        last_updates[key] = (now, current, start_time)
 
         text = f'<b>{action}…</b>\n\n'
         if unit := unit.strip():
