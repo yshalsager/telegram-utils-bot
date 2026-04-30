@@ -15,6 +15,7 @@ from telethon.tl.custom import Message
 
 from src.utils.downloads import upload_file
 from src.utils.i18n import t
+from src.utils.run import MAX_MESSAGE_LENGTH
 
 
 async def get_reply_message(
@@ -24,6 +25,25 @@ async def get_reply_message(
         message = await event.get_message()
         return message if not previous else await message.get_reply_message()
     return await event.message.get_reply_message()
+
+
+def chunk_message(header: str, lines: list[str]) -> list[str]:
+    chunks = []
+    message = f'{header}\n\n' if header else ''
+    for line in lines:
+        message_line = f'{line}\n'
+        if len(message) + len(message_line) > MAX_MESSAGE_LENGTH and message.strip():
+            chunks.append(message.rstrip())
+            message = f'{header}\n\n' if header else ''
+        message += message_line
+    if message.strip():
+        chunks.append(message.rstrip())
+    return chunks
+
+
+async def reply_in_chunks(event: NewMessage.Event, header: str, lines: list[str]) -> None:
+    for chunk in chunk_message(header, lines):
+        await event.reply(chunk)
 
 
 async def edit_or_send_as_file(
