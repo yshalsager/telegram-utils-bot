@@ -27,12 +27,12 @@ async def get_reply_message(
     return await event.message.get_reply_message()
 
 
-def chunk_message(header: str, lines: list[str]) -> list[str]:
+def chunk_message(header: str, lines: list[str], max_length: int = MAX_MESSAGE_LENGTH) -> list[str]:
     chunks = []
     message = f'{header}\n\n' if header else ''
     for line in lines:
         message_line = f'{line}\n'
-        if len(message) + len(message_line) > MAX_MESSAGE_LENGTH and message.strip():
+        if len(message) + len(message_line) > max_length and message.strip():
             chunks.append(message.rstrip())
             message = f'{header}\n\n' if header else ''
         message += message_line
