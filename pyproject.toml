@@ -6,7 +6,7 @@ authors = [
     { name = "yshalsager", email = "contact@yshalsager.com" }
 ]
 license = { file = "LICENSE" }
-requires-python = ">=3.13"
+requires-python = ">=3.14, <3.15"
 dependencies = [
     "telethon>=1.42.0",
     "cryptg>=0.5.1",
@@ -45,7 +45,7 @@ override-dependencies = [
 ]
 
 [tool.ty.environment]
-python-version = "3.13"
+python-version = "3.14"
 
 [tool.ty.src]
 exclude = ["**/fast_telethon.py"]
@@ -58,7 +58,7 @@ possibly-missing-attribute = "ignore"
 fix = true
 line-length = 100
 src = ["src"]
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["A", "B", "BLE", "C4", "C90", "DTZ", "E", "ERA", "F", "G", "I", "INP", "ISC", "N", "NPY", "PGH", "PIE", "PLC", "PLE", "PLR", "PLW", "PT", "PTH", "PYI", "RET", "RSE", "RUF", "S", "SIM", "T10", "T20", "TID", "UP", "W", "YTT"]
