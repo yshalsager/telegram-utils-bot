@@ -3,7 +3,7 @@
 ARG PYTHON_IMAGE=public.ecr.aws/docker/library/python:3.14-slim-bookworm
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11
 # deno runtime, for yt-dlp
-ARG DENO_IMAGE=denoland/deno:bin-2.6.0
+ARG DENO_IMAGE=denoland/deno:bin-2.7.14
 
 FROM ${UV_IMAGE} AS uv
 FROM ${DENO_IMAGE} AS deno
@@ -46,11 +46,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     ( \
-      if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-        sed -i 's/^Components: main$/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources; \
-      else \
-        echo 'deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware' > /etc/apt/sources.list.d/nonfree.list; \
-      fi \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+    sed -i 's/^Components: main$/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources; \
+    else \
+    echo 'deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware' > /etc/apt/sources.list.d/nonfree.list; \
+    fi \
     ) \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
