@@ -1,4 +1,3 @@
-from datetime import datetime
 from functools import partial
 from math import floor
 from os import getenv
@@ -55,6 +54,74 @@ GOOGLE_SPEECH_V2_API_KEY = (
     getenv('GOOGLE_SPEECH_V2_KEY') or 'AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw'
 )
 GOOGLE_SPEECH_V2_API_URL = 'https://www.google.com/speech-api/v2/recognize?output=json&client=chromium&lang={lang}&key={key}'
+TIME_RANGES_PATTERN = re.compile(
+    r'^(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$'
+)
+TIME_RANGE_PATTERN = re.compile(r'(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})')
+
+
+def parse_timestamp(time_text: str) -> int:
+    hours, minutes, seconds = [int(part) for part in time_text.split(':')]
+    if minutes > 59 or seconds > 59:
+        raise ValueError
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def format_timestamp(seconds: float) -> str:
+    hours, remainder = divmod(floor(seconds), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f'{hours:02d}:{minutes:02d}:{seconds:02d}'
+
+
+def format_ffmpeg_time(seconds: float) -> str:
+    if seconds == floor(seconds):
+        return str(floor(seconds))
+    return f'{seconds:.3f}'.rstrip('0').rstrip('.')
+
+
+def parse_time_ranges(time_ranges_text: str) -> list[tuple[int, int]]:
+    ranges = []
+    for start_time, end_time in TIME_RANGE_PATTERN.findall(time_ranges_text):
+        start_seconds = parse_timestamp(start_time)
+        end_seconds = parse_timestamp(end_time)
+        if start_seconds >= end_seconds:
+            raise ValueError
+        ranges.append((start_seconds, end_seconds))
+    if not ranges:
+        raise ValueError
+    return ranges
+
+
+def merge_time_ranges(ranges: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    merged_ranges: list[tuple[float, float]] = []
+    for start_seconds, end_seconds in sorted(ranges):
+        if merged_ranges and start_seconds <= merged_ranges[-1][1]:
+            merged_ranges[-1] = (
+                merged_ranges[-1][0],
+                max(merged_ranges[-1][1], end_seconds),
+            )
+            continue
+        merged_ranges.append((start_seconds, end_seconds))
+    return merged_ranges
+
+
+def invert_time_ranges(ranges: list[tuple[int, int]], duration: float) -> list[tuple[float, float]]:
+    remove_ranges = merge_time_ranges(
+        [
+            (start_seconds, min(end_seconds, duration))
+            for start_seconds, end_seconds in ranges
+            if start_seconds < duration
+        ]
+    )
+    keep_ranges = []
+    cursor = 0.0
+    for start_seconds, end_seconds in remove_ranges:
+        if start_seconds > cursor:
+            keep_ranges.append((cursor, start_seconds))
+        cursor = max(cursor, end_seconds)
+    if cursor < duration:
+        keep_ranges.append((cursor, duration))
+    return keep_ranges
 
 
 async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, Any]:
@@ -342,13 +409,8 @@ async def _cut_media_process(
 ) -> None:
     assert reply_message is not None
 
-    cut_points = re.findall(r'(\d{2}:\d{2}:\d{2})\s+(\d{2}:\d{2}:\d{2})', match.group(1))
-
     try:
-        # Simple validation of time format
-        for start_time, end_time in cut_points:
-            datetime.strptime(start_time, '%H:%M:%S')  # noqa: DTZ007
-            datetime.strptime(end_time, '%H:%M:%S')  # noqa: DTZ007
+        cut_points = parse_time_ranges(match.group(1))
     except ValueError:
         await event.reply(t('invalid_time_format'))
         return
@@ -365,13 +427,13 @@ async def _cut_media_process(
         input_file = get_download_name(reply_message)
         output_file_base = (temp_file_path.parent / input_file).with_suffix('')
 
-        for idx, (start_time, end_time) in enumerate(cut_points, 1):
+        for idx, (start_seconds, end_seconds) in enumerate(cut_points, 1):
             output_file = output_file_base.with_name(
                 f'{output_file_base.stem}_cut_{idx}{reply_message.file.ext}'
             )
             ffmpeg_command = (
                 f'ffmpeg -hide_banner -y -i "{temp_file_path}" '
-                f'-ss {start_time} -to {end_time} '
+                f'-ss {format_ffmpeg_time(start_seconds)} -to {format_ffmpeg_time(end_seconds)} '
                 f'-c copy -map 0 "{output_file}"'
             )
             await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
@@ -384,7 +446,7 @@ async def _cut_media_process(
                     output_file,
                     progress_message,
                     is_voice=bool(reply_message.voice),
-                    caption=f'{start_time} - {end_time}',
+                    caption=f'{format_timestamp(start_seconds)} - {format_timestamp(end_seconds)}',
                     **upload_params,
                 )
             else:
@@ -399,9 +461,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.client.reply_prompts.ask(
             event,
             f'{t("enter_cut_points")} (<code>00:00:00 00:30:00 00:45:00 01:15:00</code>)',
-            pattern=re.compile(
-                r'^(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$'
-            ),
+            pattern=TIME_RANGES_PATTERN,
             handler=_cut_media_process,
             invalid_reply_text=t('invalid_cut_points'),
         )
@@ -411,7 +471,7 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     if not (
         match := re.match(
-            r'^(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$',
+            r'^/media\s+cut\s+(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$',
             event.message.text,
         )
     ):
@@ -419,6 +479,109 @@ async def cut_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return
 
     await _cut_media_process(event, reply_message, match)
+    raise StopPropagation
+
+
+async def _crop_out_media_process(
+    event: NewMessage.Event,
+    reply_message: Message | None,
+    match: Any,
+) -> None:
+    assert reply_message is not None
+
+    try:
+        crop_out_points = parse_time_ranges(match.group(1))
+    except ValueError:
+        await event.reply(t('invalid_time_format'))
+        return
+
+    status_message = await send_progress_message(event, t('starting_crop_out'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+    ) as temp_file_path:
+        output_info = await get_output_info(temp_file_path)
+        duration = output_info.get('duration', 0)
+        if not duration or not any(
+            start_seconds < duration for start_seconds, _ in crop_out_points
+        ):
+            await status_message.edit(t('invalid_crop_out_points'))
+            return
+        keep_ranges = invert_time_ranges(crop_out_points, duration)
+        if not keep_ranges:
+            await status_message.edit(t('invalid_crop_out_points'))
+            return
+
+        input_file = get_download_name(reply_message)
+        output_file_base = (temp_file_path.parent / input_file).with_suffix('')
+        file_list_path = temp_file_path.parent / 'crop_out_files.txt'
+
+        with file_list_path.open('w') as file_list:
+            for idx, (start_seconds, end_seconds) in enumerate(keep_ranges, 1):
+                segment_file = output_file_base.with_name(
+                    f'{output_file_base.stem}_crop_out_{idx}{reply_message.file.ext}'
+                )
+                ffmpeg_command = (
+                    f'ffmpeg -hide_banner -y -ss {format_ffmpeg_time(start_seconds)} '
+                    f'-i "{temp_file_path}" -t {format_ffmpeg_time(end_seconds - start_seconds)} '
+                    f'-c copy -map 0 "{segment_file}"'
+                )
+                await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+                if not segment_file.exists() or not segment_file.stat().st_size:
+                    await status_message.edit(t('crop_out_failed'))
+                    return
+                file_list.write(f"file '{segment_file.absolute()}'\n")
+
+        output_file = output_file_base.with_name(
+            f'{output_file_base.stem}_crop_out{reply_message.file.ext}'
+        )
+        ffmpeg_command = f'ffmpeg -hide_banner -y -f concat -safe 0 -i "{file_list_path}" -c copy "{output_file}"'
+        await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
+        if output_file.exists() and output_file.stat().st_size:
+            upload_params = await build_media_upload_params(
+                output_file, is_voice=bool(reply_message.voice)
+            )
+            await upload_file_and_cleanup(
+                event,
+                output_file,
+                progress_message,
+                is_voice=bool(reply_message.voice),
+                **upload_params,
+            )
+            await status_message.edit(t('crop_out_completed'))
+        else:
+            await status_message.edit(t('crop_out_failed'))
+
+    raise StopPropagation
+
+
+async def crop_out_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        await event.client.reply_prompts.ask(
+            event,
+            f'{t("enter_crop_out_points")} (<code>00:01:00 00:02:00 00:05:00 00:05:30</code>)',
+            pattern=TIME_RANGES_PATTERN,
+            handler=_crop_out_media_process,
+            invalid_reply_text=t('invalid_crop_out_points'),
+        )
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+
+    if not (
+        match := re.match(
+            r'^/media\s+crop\s+out\s+(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$',
+            event.message.text,
+        )
+    ):
+        await event.reply(t('invalid_crop_out_points'))
+        return
+
+    await _crop_out_media_process(event, reply_message, match)
     raise StopPropagation
 
 
@@ -1485,6 +1648,16 @@ class Media(ModuleBase):
             description=t('_media_cut_description'),
             pattern=re.compile(
                 r'^/(media)\s+(cut)\s+(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}'
+                r'(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$'
+            ),
+            condition=partial(has_media, any=True),
+            is_applicable_for_reply=True,
+        ),
+        'media crop': Command(
+            handler=crop_out_media,
+            description=t('_media_crop_description'),
+            pattern=re.compile(
+                r'^/(media)\s+(crop)\s+out\s+(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}'
                 r'(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$'
             ),
             condition=partial(has_media, any=True),
