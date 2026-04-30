@@ -29,15 +29,19 @@ async def list_tasks(event: NewMessage.Event) -> None:
         message += f'📦 <code>{task_id}</code>'
         try:
             task_event: NewMessage.Event | CallbackQuery.Event
-            if task_event := task.get_coro().cr_frame.f_locals.get('event'):
+            coro = task.get_coro()
+            frame = getattr(coro, 'cr_frame', None)
+            local_event = frame.f_locals.get('event') if frame else None
+            if isinstance(local_event, NewMessage.Event | CallbackQuery.Event):
+                task_event = local_event
                 task_command = (
                     task_event.message.text
-                    if hasattr(task_event, 'message')
+                    if isinstance(task_event, NewMessage.Event)
                     else task_event.data.decode()
                 )
                 start_time = (
                     task_event.date.replace(tzinfo=UTC)
-                    if hasattr(task_event, 'date')
+                    if isinstance(task_event, NewMessage.Event)
                     else getattr(
                         await get_reply_message(task_event, previous=True),
                         'date',
