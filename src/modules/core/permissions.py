@@ -8,6 +8,7 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import is_admin_in_private
 from src.utils.i18n import t
+from src.utils.telegram import reply_in_chunks
 
 
 async def manage_permissions(event: NewMessage.Event) -> None:
@@ -32,7 +33,7 @@ async def manage_permissions(event: NewMessage.Event) -> None:
             permission_manager.remove_user_from_module(module_name, user_id)
             results.append(t('permissions_user_removed', user_id=user_id, module_name=module_name))
 
-    await event.reply('\n'.join(results))
+    await reply_in_chunks(event, '', results)
 
 
 async def list_permissions(event: NewMessage.Event) -> None:
@@ -41,15 +42,18 @@ async def list_permissions(event: NewMessage.Event) -> None:
         await event.reply(t('no_permissions_found'))
         return
 
-    message = f'<b>{t("modules_permissions")}</b>:\n\n'
+    header = f'<b>{t("modules_permissions")}</b>:'
+    lines = []
     for module, users in permission_manager.module_permissions.items():
-        message += f'<i>{module}</i>\n{", ".join(f'<a href="tg://user?id={user}">{user}</a>' for user in users)}\n'
-    await event.reply(message)
+        lines.append(f'<i>{module}</i>')
+        lines.extend(f'- <a href="tg://user?id={user}">{user}</a>' for user in users)
+        lines.append('')
+    await reply_in_chunks(event, header, lines)
 
 
 async def user_permissions(event: NewMessage.Event) -> None:
     permission_manager = event.client.permission_manager
-    match = re.match(r'^/permissions\\s+(\\d+)$', event.message.text)
+    match = re.match(r'^/permissions\s+(\d+)$', event.message.text)
     if not match:
         await event.reply(t('invalid_user_id'))
         return
@@ -65,9 +69,11 @@ async def user_permissions(event: NewMessage.Event) -> None:
         await event.reply(t('user_has_no_permissions', user_id=user_id))
         return
 
-    message = f'<a href="tg://user?id={user_id}">{user_id}</a> <b>has access to:</b>\n\n'
-    message += '\n'.join(f'- {module}' for module in user_modules)
-    await event.reply(message)
+    await reply_in_chunks(
+        event,
+        f'<a href="tg://user?id={user_id}">{user_id}</a> <b>has access to:</b>',
+        [f'- {module}' for module in user_modules],
+    )
 
 
 async def list_all_users(event: NewMessage.Event) -> None:
@@ -83,12 +89,14 @@ async def list_all_users(event: NewMessage.Event) -> None:
         await event.reply(t('no_users_found'))
         return
 
-    message = f'<b>{t("all_users_with_permissions")}:</b>\n\n'
+    header = f'<b>{t("all_users_with_permissions")}:</b>'
+    lines = []
     for user_id, modules in sorted(user_to_modules.items()):
-        modules_list = ', '.join(modules)
-        message += f'- <a href="tg://user?id={user_id}">{user_id}</a>: {modules_list}\n'
+        lines.append(f'<a href="tg://user?id={user_id}">{user_id}</a>')
+        lines.extend(f'- {module}' for module in modules)
+        lines.append('')
 
-    await event.reply(message)
+    await reply_in_chunks(event, header, lines)
 
 
 class Permissions(ModuleBase):
