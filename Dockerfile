@@ -1,13 +1,16 @@
 # syntax=docker/dockerfile:1.23
 
-ARG PYTHON_IMAGE=public.ecr.aws/docker/library/python:3.14-slim-bookworm
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11
+ARG PYTHON_IMAGE=public.ecr.aws/docker/library/python
+ARG PYTHON_VERSION=3.14-slim-bookworm
+ARG UV_IMAGE=ghcr.io/astral-sh/uv
+ARG UV_VERSION=0.11
 # deno runtime, for yt-dlp
-ARG DENO_IMAGE=denoland/deno:bin-2.7.14
+ARG DENO_IMAGE=denoland/deno
+ARG DENO_VERSION=bin-2.7.14
 
-FROM ${UV_IMAGE} AS uv
-FROM ${DENO_IMAGE} AS deno
-FROM ${PYTHON_IMAGE} AS builder
+FROM ${UV_IMAGE}:${UV_VERSION} AS uv
+FROM ${DENO_IMAGE}:${DENO_VERSION} AS deno
+FROM ${PYTHON_IMAGE}:${PYTHON_VERSION} AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -37,7 +40,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=/code/pyproject.toml \
     uv sync --no-install-project --no-dev
 
-FROM ${PYTHON_IMAGE} AS runtime
+FROM ${PYTHON_IMAGE}:${PYTHON_VERSION} AS runtime
 
 ARG UID=1000
 ARG GID=1000

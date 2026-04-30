@@ -1,7 +1,7 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
-    'config:recommended',
+    'config:best-practices',
     ':rebaseStalePrs',
     'group:allNonMajor',
   ],
@@ -11,6 +11,9 @@
   schedule: [
     'before 5am on saturday',
   ],
+  minimumReleaseAge: '3 days',
+  prCreation: 'not-pending',
+  internalChecksFilter: 'strict',
   lockFileMaintenance: {
     enabled: true,
     automerge: true,
@@ -20,11 +23,19 @@
   },
   packageRules: [
     {
+      matchDatasources: [
+        'docker',
+      ],
+      matchUpdateTypes: [
+        'digest',
+      ],
+      automerge: true,
+    },
+    {
       matchUpdateTypes: [
         'minor',
         'patch',
         'pin',
-        'digest',
       ],
       automerge: true,
     },
