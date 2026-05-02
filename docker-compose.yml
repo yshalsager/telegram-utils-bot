@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
   bgutil-provider:
     container_name: bgutil-provider
-    image: brainicism/bgutil-ytdlp-pot-provider:1.3.1
+    image: brainicism/bgutil-ytdlp-pot-provider:1.3.1@sha256:1aaa43a0ca72dfca6a6d2129a0fb4a23465c25adb1b043f8aff829a20825646b
     ports:
       - "127.0.0.1:4416:4416"
     restart: unless-stopped

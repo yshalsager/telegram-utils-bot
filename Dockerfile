@@ -1,12 +1,12 @@
-# syntax=docker/dockerfile:1.23
+# syntax=docker/dockerfile:1.23@sha256:2780b5c3bab67f1f76c781860de469442999ed1a0d7992a5efdf2cffc0e3d769
 
 ARG PYTHON_IMAGE=public.ecr.aws/docker/library/python
-ARG PYTHON_VERSION=3.14-slim-bookworm
+ARG PYTHON_VERSION=3.14-slim-bookworm@sha256:2e256d0381371566ed96980584957ed31297f437569b79b0e5f7e17f2720e53a
 ARG UV_IMAGE=ghcr.io/astral-sh/uv
-ARG UV_VERSION=0.11
+ARG UV_VERSION=0.11@sha256:3b7b60a81d3c57ef471703e5c83fd4aaa33abcd403596fb22ab07db85ae91347
 # deno runtime, for yt-dlp
 ARG DENO_IMAGE=denoland/deno
-ARG DENO_VERSION=bin-2.7.14
+ARG DENO_VERSION=bin-2.7.14@sha256:4c99106eadea6645640dacf35967c97ae34814d54fc417f4f9e9746245e8633f
 
 FROM ${UV_IMAGE}:${UV_VERSION} AS uv
 FROM ${DENO_IMAGE}:${DENO_VERSION} AS deno
