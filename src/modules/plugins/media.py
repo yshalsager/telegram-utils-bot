@@ -56,6 +56,7 @@ GOOGLE_SPEECH_V2_API_KEY = (
     getenv('GOOGLE_SPEECH_V2_KEY') or 'AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw'
 )
 GOOGLE_SPEECH_V2_API_URL = 'https://www.google.com/speech-api/v2/recognize?output=json&client=chromium&lang={lang}&key={key}'
+TAFRIGH_COMPAT_RUNNER = Path(__file__).resolve().parents[2] / 'utils' / 'tafrigh_compat.py'
 TIME_RANGES_PATTERN = re.compile(
     r'^(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$'
 )
@@ -1528,7 +1529,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 file_name=audio_file_path.with_suffix('.txt').name,
             )
         elif transcription_method == 'wit':
-            command = f'{quote(executable)} -m src.utils.tafrigh_compat {quote(str(input_file_path))} -o {quote(output_dir.name)} -f txt srt'
+            command = f'{quote(executable)} {quote(str(TAFRIGH_COMPAT_RUNNER))} {quote(str(input_file_path))} -o {quote(output_dir.name)} -f txt srt'
             command += f' -w {quote(wit_access_tokens)}'
             await stream_shell_output(
                 event, command, status_message, progress_message, max_length=100
