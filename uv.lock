@@ -2074,16 +2074,16 @@ wheels = [
 
 [[package]]
 name = "tafrigh"
-version = "1.7.7"
+version = "1.7.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numba" },
     { name = "tqdm" },
     { name = "yt-dlp", extra = ["default"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/bf/8349380b3f37fa6924329462bcb355f01390b0e9bfe4e23cc953d2e9b9d9/tafrigh-1.7.7.tar.gz", hash = "sha256:62214649249fb01466a40407b70913a5cfb10df265d23d0d7347c882dfc08443", size = 25501, upload-time = "2026-02-06T21:34:40.677Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/97/e9/aef4693c081b568b19f84b04d83cfb032e53dc7b080b1a5064f04a696057/tafrigh-1.7.8.tar.gz", hash = "sha256:0237f82587c09e608834c7bb3c0ffad2dbf6eefab55d7f24dca24da1a10b4b9e", size = 25514, upload-time = "2026-05-03T09:47:00.321Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/77/98/f168f7ceb25bf467a35b8bf841acd7dd10635ca0639f6a1c2b1b33c457c7/tafrigh-1.7.7-py3-none-any.whl", hash = "sha256:8fcdd55b90190d6ba4ef2df8ee94a4a1b9c2f09fc830b5893f52abb8e9b7c179", size = 25730, upload-time = "2026-02-06T21:34:39.438Z" },
+    { url = "https://files.pythonhosted.org/packages/45/1c/d594004326e218799c619e0d0177afc3a5dd3cadf9ac154be5ec15a577fe/tafrigh-1.7.8-py3-none-any.whl", hash = "sha256:6e67d37f89e577906743a98c797f9f5e48619248db0a0ac230a4440c6addb56f", size = 25744, upload-time = "2026-05-03T09:46:58.744Z" },
 ]
 
 [package.optional-dependencies]
@@ -2167,7 +2167,7 @@ requires-dist = [
     { name = "pydub", specifier = ">=0.25.1" },
     { name = "pymupdf", specifier = ">=1.26.6" },
     { name = "regex", specifier = ">=2025.11.3" },
-    { name = "tafrigh", extras = ["wit"], specifier = ">=1.7.6" },
+    { name = "tafrigh", extras = ["wit"], specifier = ">=1.7.8" },
     { name = "tahweel", specifier = ">=0.2.0" },
     { name = "telethon", specifier = ">=1.42.0" },
     { name = "vosk", marker = "sys_platform != 'darwin'", specifier = "==0.3.45" },

@@ -2,9 +2,7 @@ from functools import partial
 from math import floor
 from os import getenv
 from pathlib import Path
-from shlex import quote
 from shutil import rmtree
-from sys import executable
 from typing import Any, ClassVar, cast
 from uuid import uuid4
 
@@ -56,7 +54,6 @@ GOOGLE_SPEECH_V2_API_KEY = (
     getenv('GOOGLE_SPEECH_V2_KEY') or 'AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw'
 )
 GOOGLE_SPEECH_V2_API_URL = 'https://www.google.com/speech-api/v2/recognize?output=json&client=chromium&lang={lang}&key={key}'
-TAFRIGH_COMPAT_RUNNER = Path(__file__).resolve().parents[2] / 'utils' / 'tafrigh_compat.py'
 TIME_RANGES_PATTERN = re.compile(
     r'^(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$'
 )
@@ -1456,7 +1453,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         match = Media.commands['transcribe'].pattern.match(event.message.text)
         transcription_method = (match.group(2) if match else 'wit') or 'wit'
         language = (match.group(3) if match else 'ar') or 'ar'
-    wit_access_tokens, whisper_api_key = '', None
+    wit_access_tokens, whisper_api_key = None, None
     if transcription_method == 'whisper':
         whisper_api_key = getenv('GROQ_API_KEY')
         if not whisper_api_key:
@@ -1529,8 +1526,8 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 file_name=audio_file_path.with_suffix('.txt').name,
             )
         elif transcription_method == 'wit':
-            command = f'{quote(executable)} {quote(str(TAFRIGH_COMPAT_RUNNER))} {quote(str(input_file_path))} -o {quote(output_dir.name)} -f txt srt'
-            command += f' -w {quote(wit_access_tokens)}'
+            command = f'tafrigh "{input_file_path}" -o "{output_dir.name}" -f txt srt'
+            command += f' -w {wit_access_tokens}'
             await stream_shell_output(
                 event, command, status_message, progress_message, max_length=100
             )
