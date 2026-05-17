@@ -118,6 +118,8 @@
   "_upload_media_description": "رفع المستند كوسائط: الرد على رسالة تحتوي على ملف واستخدام <code>/as_media</code>.",
   "_upload_url": "الرفع من عنوان URL",
   "_upload_url_description": "[url] أو [url] | [اسم الملف]: تحميل ملف من عنوان URL ورفعه إلى تليجرام.",
+  "_gdrive": "تحميل من جوجل درايف",
+  "_gdrive_description": "[url أو id]: تحميل ملفات أو مجلدات Google Drive العامة ورفع جميع الملفات إلى تليجرام.",
   "_file_manager_module_description": "ضغط/فك ضغط الملفات وعرض محتوى الأرشيف.",
   "_zip": "ضغط",
   "_zip_description": "ضغط ملف من تليجرام.",

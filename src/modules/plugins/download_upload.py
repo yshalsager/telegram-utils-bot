@@ -1,12 +1,15 @@
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from shlex import quote
+from shutil import which
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import ClassVar
 
+import aiohttp
 import regex as re
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
-from src import DOWNLOADS_DIR, PARENT_DIR
+from src import DOWNLOADS_DIR, PARENT_DIR, STATE_DIR
 from src.modules.base import ModuleBase
 from src.modules.plugins.media import build_media_upload_params
 from src.modules.plugins.run import stream_shell_output
@@ -29,6 +32,58 @@ from src.utils.filters import (
 from src.utils.i18n import t
 from src.utils.patterns import HTTP_URL_PATTERN
 from src.utils.telegram import get_reply_message, send_progress_message
+
+GDL_DOWNLOAD_URL = (
+    'https://raw.githubusercontent.com/Akianonymus/gdrive-downloader/master/release/gdl'
+)
+GDL_PATH = STATE_DIR / 'bin' / 'gdl'
+GDL_REQUIRED_PROGRAMS = ('bash', 'curl', 'jq', 'xargs')
+GDRIVE_ID_PATTERN = re.compile(r'^[A-Za-z0-9_-]{10,}$')
+GDRIVE_URL_PATTERN = re.compile(
+    r'https?://(?:'
+    r'drive\.google\.com/[^\s<>"\']*id=[A-Za-z0-9_-]+'
+    r'|drive\.google\.com/[^\s<>"\']*file/d/[A-Za-z0-9_-]+'
+    r'|drive\.google\.com/[^\s<>"\']*drive[^\s<>"\']*folders/[A-Za-z0-9_-]+'
+    r'|docs\.google\.com/[^\s<>"\']*/d/[A-Za-z0-9_-]+'
+    r')[^\s<>"\']*'
+)
+
+
+def extract_gdrive_input(text: str) -> str | None:
+    if match := re.search(GDRIVE_URL_PATTERN, text):
+        return match.group(0).rstrip('.,،)')
+
+    text = text.strip()
+    if re.fullmatch(GDRIVE_ID_PATTERN, text):
+        return text
+    return None
+
+
+def extract_gdrive_command_input(text: str) -> str:
+    match = DownloadUpload.commands['gdrive'].pattern.match(text)
+    return (match.group(1) if match else '') or ''
+
+
+def collect_downloaded_files(download_dir: Path) -> list[Path]:
+    return sorted(path for path in download_dir.rglob('*') if path.is_file())
+
+
+def missing_gdl_dependencies() -> list[str]:
+    return [program for program in GDL_REQUIRED_PROGRAMS if which(program) is None]
+
+
+async def ensure_gdrive_downloader() -> Path:
+    if GDL_PATH.exists():
+        return GDL_PATH
+
+    GDL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = GDL_PATH.with_suffix('.tmp')
+    async with aiohttp.ClientSession() as session, session.get(GDL_DOWNLOAD_URL) as response:
+        response.raise_for_status()
+        temp_path.write_bytes(await response.read())
+    temp_path.chmod(0o755)
+    temp_path.replace(GDL_PATH)
+    return GDL_PATH
 
 
 async def download_from_url(
@@ -62,6 +117,56 @@ async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -
             temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
             temp_file_path.rename(download_to)
     await progress_message.edit(f'{t("file_downloaded")}: <code>{download_to}</code>')
+
+
+async def download_from_gdrive(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    input_text = (
+        extract_gdrive_command_input(event.message.raw_text or '')
+        if isinstance(event, NewMessage.Event)
+        else ''
+    )
+    if not input_text:
+        reply_message = await get_reply_message(event, previous=True)
+        input_text = reply_message.raw_text if reply_message else ''
+
+    gdrive_input = extract_gdrive_input(input_text)
+    if not gdrive_input:
+        await event.reply(t('no_valid_url_found'))
+        return
+
+    progress_message = await send_progress_message(event, t('starting_file_download'))
+    if missing_dependencies := missing_gdl_dependencies():
+        await progress_message.edit(
+            f'Missing gdrive-downloader dependencies: <code>{", ".join(missing_dependencies)}</code>'
+        )
+        return
+
+    if not GDL_PATH.exists():
+        await progress_message.edit('Installing gdrive-downloader…')
+    try:
+        gdl_path = await ensure_gdrive_downloader()
+    except aiohttp.ClientError as e:
+        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e}</pre>'))
+        return
+
+    with TemporaryDirectory(dir=DOWNLOADS_DIR) as download_dir_name:
+        download_dir = Path(download_dir_name)
+        command = (
+            f'{quote(str(gdl_path))} {quote(gdrive_input)} '
+            f'-d {quote(str(download_dir))} --skip-internet-check'
+        )
+        await stream_shell_output(event, command, progress_message=progress_message)
+        output_files = collect_downloaded_files(download_dir)
+        if not output_files:
+            await progress_message.edit(t('download_failed'))
+            return
+
+        await progress_message.edit(t('download_complete_starting_upload'))
+        for idx, output_file in enumerate(output_files, start=1):
+            await progress_message.edit(f'{t("uploading")} {idx}/{len(output_files)}')
+            await upload_file_and_cleanup(event, output_file, progress_message)
+
+    await progress_message.edit(f'{t("file_uploaded")}: <code>{len(output_files)}</code>')
 
 
 async def upload_file_command(event: NewMessage.Event) -> None:
@@ -164,6 +269,13 @@ class DownloadUpload(ModuleBase):
             condition=lambda event, message: (
                 is_admin_in_private(event, message) and has_no_file(event, message)
             ),
+        ),
+        'gdrive': Command(
+            handler=download_from_gdrive,
+            description=t('_gdrive_description'),
+            pattern=re.compile(r'^/gdrive(?:\s+(.+))?$'),
+            condition=is_admin_in_private,
+            is_applicable_for_reply=True,
         ),
         'upload file': Command(
             handler=upload_as_file_or_media,
