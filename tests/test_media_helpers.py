@@ -1,4 +1,6 @@
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 from unittest import TestCase
 
 from src.modules.plugins.media import (
@@ -6,13 +8,17 @@ from src.modules.plugins.media import (
     TIME_RANGES_PATTERN,
     Media,
     build_atempo_filter,
+    build_audio_thumbnail_command,
     build_static_image_video_command,
+    build_telegram_thumbnail_command,
     format_ffmpeg_time,
     format_timestamp,
     invert_time_ranges,
+    is_audio_thumbnail_image_message,
     merge_time_ranges,
     parse_time_ranges,
     parse_timestamp,
+    supports_audio_thumbnail_message,
 )
 
 
@@ -95,6 +101,54 @@ class MediaSpeedHelpersTest(TestCase):
         assert build_atempo_filter(3) == 'atempo=2,atempo=1.5'
 
 
+class AudioThumbnailHelpersTest(TestCase):
+    def make_audio_message(self, ext: str, *, voice: bool = False) -> Any:
+        return SimpleNamespace(
+            audio=True,
+            voice=voice,
+            file=SimpleNamespace(ext=ext, mime_type='audio/mpeg'),
+        )
+
+    def make_image_message(self, mime_type: str = 'image/png') -> Any:
+        return SimpleNamespace(
+            photo=None,
+            file=SimpleNamespace(ext='.png', mime_type=mime_type),
+        )
+
+    def test_audio_thumbnail_support_is_limited_to_music_formats(self) -> None:
+        assert supports_audio_thumbnail_message(self.make_audio_message('.mp3'))
+        assert supports_audio_thumbnail_message(self.make_audio_message('.m4a'))
+        assert supports_audio_thumbnail_message(self.make_audio_message('.m4b'))
+        assert not supports_audio_thumbnail_message(self.make_audio_message('.ogg'))
+        assert not supports_audio_thumbnail_message(self.make_audio_message('.mp3', voice=True))
+
+    def test_audio_thumbnail_image_accepts_photo_or_image_file(self) -> None:
+        assert is_audio_thumbnail_image_message(SimpleNamespace(photo=object(), file=None))
+        assert is_audio_thumbnail_image_message(self.make_image_message())
+        assert not is_audio_thumbnail_image_message(self.make_image_message('application/pdf'))
+
+    def test_build_telegram_thumbnail_command_outputs_small_jpeg_shape(self) -> None:
+        command = build_telegram_thumbnail_command(Path('cover.png'), Path('thumbnail.jpg'), 320, 8)
+
+        assert '-vf "scale=320:320:force_original_aspect_ratio=increase,crop=320:320"' in command
+        assert '-frames:v 1' in command
+        assert '-q:v 8' in command
+        assert command.endswith('"thumbnail.jpg"')
+
+    def test_build_audio_thumbnail_command_uses_format_specific_cover_mapping(self) -> None:
+        mp3_command = build_audio_thumbnail_command(
+            Path('input.mp3'), Path('cover.jpg'), Path('output.mp3')
+        )
+        m4a_command = build_audio_thumbnail_command(
+            Path('input.m4a'), Path('cover.jpg'), Path('output.m4a')
+        )
+
+        assert '-id3v2_version 3' in mp3_command
+        assert 'comment="Cover (front)"' in mp3_command
+        assert '-disposition:v attached_pic' in m4a_command
+        assert '-map 0:a -map 1:v' in m4a_command
+
+
 class MediaCommandPatternsTest(TestCase):
     def test_existing_media_cut_command_pattern_still_matches(self) -> None:
         match = Media.commands['media cut'].pattern.match(
@@ -126,3 +180,10 @@ class MediaCommandPatternsTest(TestCase):
         assert match.group(1) == 'media'
         assert match.group(2) == 'speed'
         assert match.group(3) == '0.5'
+
+    def test_audio_thumbnail_command_pattern_matches(self) -> None:
+        match = Media.commands['audio thumbnail'].pattern.match('/audio thumbnail')
+
+        assert match is not None
+        assert match.group(1) == 'audio'
+        assert match.group(2) == 'thumbnail'

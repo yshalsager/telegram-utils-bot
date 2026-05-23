@@ -50,6 +50,8 @@ ALLOWED_AMPLIFY_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
 ALLOWED_VIDEO_COMPRESS_PERCENTAGES = list(range(20, 100, 10))
 ALLOWED_VIDEO_X265_CRF = [18, 20, 22, 24, 26, 28, 30]
 ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'vosk', 'google']
+SUPPORTED_AUDIO_THUMBNAIL_EXTS = {'.mp3', '.m4a', '.m4b'}
+TELEGRAM_THUMBNAIL_MAX_SIZE = 20_000
 GOOGLE_SPEECH_V2_API_KEY = (
     getenv('GOOGLE_SPEECH_V2_KEY') or 'AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw'
 )
@@ -90,6 +92,55 @@ def build_atempo_filter(speed_factor: float) -> str:
         remaining /= 2
     atempo_filters.append(f'atempo={remaining:.5f}'.rstrip('0').rstrip('.'))
     return ','.join(atempo_filters)
+
+
+def normalized_file_ext(message: Any) -> str:
+    ext = getattr(getattr(message, 'file', None), 'ext', '') or ''
+    return f'.{ext.lstrip(".").lower()}' if ext else ''
+
+
+def supports_audio_thumbnail_message(message: Any) -> bool:
+    return bool(
+        getattr(message, 'audio', None)
+        and not getattr(message, 'voice', None)
+        and normalized_file_ext(message) in SUPPORTED_AUDIO_THUMBNAIL_EXTS
+    )
+
+
+def is_audio_thumbnail_image_message(message: Any) -> bool:
+    file = getattr(message, 'file', None)
+    mime_type = getattr(file, 'mime_type', '') or ''
+    return bool(getattr(message, 'photo', None) or mime_type.startswith('image/'))
+
+
+def has_audio_thumbnail_input(event: NewMessage.Event, reply_message: Message | None) -> bool:
+    return supports_audio_thumbnail_message(reply_message or event.message)
+
+
+def build_telegram_thumbnail_command(
+    input_file: Path, output_file: Path, size: int, quality: int
+) -> str:
+    return (
+        f'ffmpeg -hide_banner -y -i "{input_file}" '
+        f'-vf "scale={size}:{size}:force_original_aspect_ratio=increase,crop={size}:{size}" '
+        f'-frames:v 1 -q:v {quality} "{output_file}"'
+    )
+
+
+def build_audio_thumbnail_command(input_file: Path, thumbnail_file: Path, output_file: Path) -> str:
+    if output_file.suffix.lower() == '.mp3':
+        return (
+            f'ffmpeg -hide_banner -y -i "{input_file}" -i "{thumbnail_file}" '
+            '-map 0:a -map 1:v -map_metadata 0 -c:a copy -c:v mjpeg '
+            '-id3v2_version 3 -metadata:s:v title="Album cover" '
+            '-metadata:s:v comment="Cover (front)" '
+            f'"{output_file}"'
+        )
+    return (
+        f'ffmpeg -hide_banner -y -i "{input_file}" -i "{thumbnail_file}" '
+        '-map 0:a -map 1:v -map_metadata 0 -c:a copy -c:v mjpeg '
+        f'-disposition:v attached_pic "{output_file}"'
+    )
 
 
 def parse_time_ranges(time_ranges_text: str) -> list[tuple[int, int]]:
@@ -140,7 +191,8 @@ def invert_time_ranges(ranges: list[tuple[int, int]], duration: float) -> list[t
 async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, Any]:
     output, _ = await run_command(
         f'ffprobe -v error -select_streams {stream_specifier} -show_entries '
-        f'stream=codec_name,duration,width,height -of json "{file_path}"'
+        f'stream=codec_name,duration,width,height:stream_disposition=attached_pic '
+        f'-of json "{file_path}"'
     )
     info = orjson.loads(output)
     return cast(dict[str, Any], info['streams'][0]) if info and info.get('streams') else {}
@@ -169,6 +221,7 @@ async def get_output_info(file_path: Path) -> dict[str, Any]:
         ),
         'width': video_info.get('width', 0),
         'height': video_info.get('height', 0),
+        'attached_pic': bool(video_info.get('disposition', {}).get('attached_pic')),
         'title': format_info.get('tags', {}).get('title', ''),
         'uploader': format_info.get('tags', {}).get('artist', ''),
     }
@@ -180,7 +233,7 @@ async def build_media_upload_params(
     is_voice: bool = False,
 ) -> dict[str, Any]:
     output_info = await get_output_info(output_file)
-    if output_info.get('vcodec') == 'none':
+    if output_info.get('vcodec') == 'none' or output_info.get('attached_pic'):
         attributes = [
             DocumentAttributeAudio(
                 duration=int(output_info.get('duration', 0)),
@@ -741,6 +794,99 @@ async def set_metadata(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     await _set_metadata_process(event, reply_message, match)
     raise StopPropagation
+
+
+async def prepare_telegram_thumbnail(input_file: Path, output_file: Path) -> bool:
+    for size in (320, 256, 200):
+        for quality in (4, 8, 12, 16, 20, 24, 28, 31):
+            output_file.unlink(missing_ok=True)
+            command = build_telegram_thumbnail_command(input_file, output_file, size, quality)
+            _, status_code = await run_command(command)
+            if (
+                status_code == 0
+                and output_file.exists()
+                and 0 < output_file.stat().st_size <= TELEGRAM_THUMBNAIL_MAX_SIZE
+            ):
+                return True
+    return output_file.exists() and output_file.stat().st_size > 0
+
+
+async def set_audio_thumbnail(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    if not supports_audio_thumbnail_message(reply_message):
+        await event.reply(t('audio_thumbnail_unsupported_format'))
+        raise StopPropagation
+
+    await event.client.file_collectors.start(
+        event,
+        t('send_audio_thumbnail_image'),
+        first_message_id=reply_message.id,
+        accept=lambda e: is_audio_thumbnail_image_message(e.message),
+        on_complete=_set_audio_thumbnail_process,
+        min_files=2,
+        max_files=2,
+        not_enough_files_text=t('audio_thumbnail_image_required'),
+        allow_non_reply=True,
+        reply_to=reply_message.id,
+    )
+    raise StopPropagation
+
+
+async def _set_audio_thumbnail_process(event: NewMessage.Event, files: list[int]) -> None:
+    status_message = await send_progress_message(event, t('starting_audio_thumbnail_update'))
+    progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
+    output_dir = Path(TMP_DIR / str(uuid4()))
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        audio_message = await event.client.get_messages(event.chat_id, ids=files[0])
+        thumbnail_message = await event.client.get_messages(event.chat_id, ids=files[1])
+        if not supports_audio_thumbnail_message(audio_message):
+            await status_message.edit(t('audio_thumbnail_unsupported_format'))
+            return
+        if not is_audio_thumbnail_image_message(thumbnail_message):
+            await status_message.edit(t('audio_thumbnail_image_required'))
+            return
+
+        input_ext = normalized_file_ext(audio_message)
+        input_file = output_dir / f'input{input_ext}'
+        image_file = output_dir / f'image{normalized_file_ext(thumbnail_message) or ".jpg"}'
+        thumbnail_file = output_dir / 'thumbnail.jpg'
+        output_file = output_dir / get_download_name(audio_message)
+        if output_file.suffix.lower() != input_ext:
+            output_file = output_file.with_suffix(input_ext)
+
+        with input_file.open('wb') as temp_file:
+            await download_file(event, temp_file, audio_message, progress_message)
+        with image_file.open('wb') as temp_file:
+            await download_file(event, temp_file, thumbnail_message, progress_message)
+
+        if not await prepare_telegram_thumbnail(image_file, thumbnail_file):
+            await status_message.edit(t('audio_thumbnail_update_failed'))
+            return
+
+        command = build_audio_thumbnail_command(input_file, thumbnail_file, output_file)
+        status = await stream_shell_output(event, command, status_message, progress_message)
+        failed_marker = t('process_failed_with_return_code', code=1).split('1', 1)[0]
+        if (
+            (failed_marker and failed_marker in status)
+            or not output_file.exists()
+            or not output_file.stat().st_size
+        ):
+            await status_message.edit(t('audio_thumbnail_update_failed'))
+            return
+
+        upload_params = await build_media_upload_params(output_file)
+        await upload_file_and_cleanup(
+            event,
+            output_file,
+            progress_message,
+            thumb=str(thumbnail_file),
+            **upload_params,
+        )
+        await status_message.edit(t('audio_thumbnail_updated'))
+    finally:
+        rmtree(output_dir, ignore_errors=True)
 
 
 async def merge_media_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -1630,6 +1776,13 @@ class Media(ModuleBase):
             description=t('_audio_metadata_description'),
             pattern=re.compile(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$'),
             condition=partial(has_media, audio=True),
+            is_applicable_for_reply=True,
+        ),
+        'audio thumbnail': Command(
+            handler=set_audio_thumbnail,
+            description=t('_audio_thumbnail_description'),
+            pattern=re.compile(r'^/(audio)\s+(thumbnail)$'),
+            condition=has_audio_thumbnail_input,
             is_applicable_for_reply=True,
         ),
         'audio trim': Command(
