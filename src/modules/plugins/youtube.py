@@ -29,6 +29,7 @@ from src.utils.cryptography import (
     has_state_encryption_key,
 )
 from src.utils.downloads import download_to_temp_file, get_download_name
+from src.utils.filters import has_media
 from src.utils.i18n import t
 from src.utils.telegram import (
     buttons_grid,
@@ -688,7 +689,7 @@ class YouTube(ModuleBase):
             handler=youtube_upload_entrypoint,
             description=t('_youtube_upload_description'),
             pattern=YOUTUBE_PATTERN,
-            condition=lambda e, _: bool(e.is_private),
+            condition=lambda e, m: bool(e.is_private) and has_media(e, m, video=True),
             is_applicable_for_reply=True,
         ),
     }
