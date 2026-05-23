@@ -21,7 +21,7 @@ from src import STATE_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.downloads import download_to_temp_file, get_download_name
-from src.utils.filters import has_file, is_owner_in_private
+from src.utils.filters import has_file, is_admin_in_private
 from src.utils.i18n import t
 from src.utils.telegram import get_reply_message, send_progress_message
 
@@ -332,19 +332,19 @@ class YouTube(ModuleBase):
             handler=youtube_auth,
             description=t('_youtube_auth_description'),
             pattern=YOUTUBE_AUTH_PATTERN,
-            condition=is_owner_in_private,
+            condition=is_admin_in_private,
         ),
         'youtube status': Command(
             handler=youtube_status,
             description=t('_youtube_status_description'),
             pattern=YOUTUBE_STATUS_PATTERN,
-            condition=is_owner_in_private,
+            condition=is_admin_in_private,
         ),
         'youtube upload': Command(
             handler=youtube_upload,
             description=t('_youtube_upload_description'),
             pattern=YOUTUBE_UPLOAD_PATTERN,
-            condition=lambda e, m: is_owner_in_private(e, m) and has_file(e, m),
+            condition=lambda e, m: is_admin_in_private(e, m) and has_file(e, m),
             is_applicable_for_reply=True,
         ),
     }
