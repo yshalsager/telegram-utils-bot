@@ -1,8 +1,11 @@
+from dataclasses import dataclass
 from pathlib import Path
 from shlex import quote
 from shutil import which
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import ClassVar
+from urllib.parse import quote as url_quote
+from urllib.parse import unquote, urlparse
 
 import aiohttp
 import regex as re
@@ -47,6 +50,45 @@ GDRIVE_URL_PATTERN = re.compile(
     r'|docs\.google\.com/[^\s<>"\']*/d/[A-Za-z0-9_-]+'
     r')[^\s<>"\']*'
 )
+ARCHIVE_IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$')
+ARCHIVE_URL_PATTERN = re.compile(
+    r'https?://(?:www\.)?archive\.org/(?:details|download)/[^\s<>"\']+'
+)
+ARCHIVE_IGNORED_SUFFIXES = (
+    '_archive.torrent',
+    '_files.xml',
+    '_meta.sqlite',
+    '_meta.xml',
+)
+
+
+@dataclass(frozen=True)
+class ArchiveInput:
+    identifier: str
+    selected_path: str = ''
+
+
+@dataclass(frozen=True)
+class ArchiveFile:
+    name: str
+    source: str = ''
+
+    @classmethod
+    def from_payload(cls, payload: dict) -> ArchiveFile:
+        return cls(name=str(payload.get('name') or ''), source=str(payload.get('source') or ''))
+
+    @property
+    def is_original(self) -> bool:
+        return self.source == 'original'
+
+    @property
+    def is_metadata(self) -> bool:
+        return self.name.startswith('__ia_') or self.name.endswith(ARCHIVE_IGNORED_SUFFIXES)
+
+    def download_url(self, identifier: str) -> str:
+        return (
+            f'https://archive.org/download/{url_quote(identifier)}/{url_quote(self.name, safe="/")}'
+        )
 
 
 def extract_gdrive_input(text: str) -> str | None:
@@ -62,6 +104,42 @@ def extract_gdrive_input(text: str) -> str | None:
 def extract_gdrive_command_input(text: str) -> str:
     match = DownloadUpload.commands['gdrive'].pattern.match(text)
     return (match.group(1) if match else '') or ''
+
+
+def extract_archive_input(text: str) -> ArchiveInput | None:
+    if match := re.search(ARCHIVE_URL_PATTERN, text):
+        url = match.group(0).rstrip('.,،)')
+        parsed = urlparse(url)
+        parts = [unquote(part) for part in parsed.path.strip('/').split('/')]
+        if len(parts) >= 2 and re.fullmatch(ARCHIVE_IDENTIFIER_PATTERN, parts[1]):
+            return ArchiveInput(parts[1], '/'.join(parts[2:]).strip('/'))
+
+    text = text.strip()
+    if re.fullmatch(ARCHIVE_IDENTIFIER_PATTERN, text):
+        return ArchiveInput(text)
+    return None
+
+
+def extract_archive_command_input(text: str) -> str:
+    match = DownloadUpload.commands['archive'].pattern.match(text)
+    return (match.group(1) if match else '') or ''
+
+
+def select_archive_files(files: list[ArchiveFile], selected_path: str = '') -> list[ArchiveFile]:
+    selected_path = selected_path.strip('/')
+    if not selected_path:
+        return sorted(
+            [file for file in files if file.is_original and not file.is_metadata],
+            key=lambda file: file.name,
+        )
+
+    exact_matches = [file for file in files if file.name == selected_path]
+    if exact_matches:
+        return exact_matches
+
+    path_matches = [file for file in files if file.name.startswith(selected_path)]
+    original_matches = [file for file in path_matches if file.is_original and not file.is_metadata]
+    return sorted(original_matches or path_matches, key=lambda file: file.name)
 
 
 def collect_downloaded_files(download_dir: Path) -> list[Path]:
@@ -91,12 +169,28 @@ async def download_from_url(
     url: str,
     download_dir: Path,
     progress_message: Message | None = None,
+    filename: str | None = None,
 ) -> Path:
-    filename = get_filename_from_url(url)
+    filename = filename or get_filename_from_url(url)
     download_to = download_dir / filename
-    cmd = f"aria2c -x 16 -d {download_dir} -o {filename} '{url}' --allow-overwrite=true"
+    cmd = (
+        f'aria2c -x 16 -d {quote(str(download_dir))} -o {quote(filename)} '
+        f'{quote(url)} --allow-overwrite=true'
+    )
     await stream_shell_output(event, cmd, progress_message=progress_message)
     return download_to
+
+
+async def fetch_archive_files(identifier: str) -> list[ArchiveFile]:
+    async with (
+        aiohttp.ClientSession() as session,
+        session.get(
+            f'https://archive.org/metadata/{identifier}', params={'extended_err': '1'}
+        ) as response,
+    ):
+        response.raise_for_status()
+        payload = await response.json()
+    return [ArchiveFile.from_payload(file) for file in payload.get('files', []) if file.get('name')]
 
 
 async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -167,6 +261,54 @@ async def download_from_gdrive(event: NewMessage.Event | CallbackQuery.Event) ->
             await upload_file_and_cleanup(event, output_file, progress_message)
 
     await progress_message.edit(f'{t("file_uploaded")}: <code>{len(output_files)}</code>')
+
+
+async def download_from_archive(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    input_text = (
+        extract_archive_command_input(event.message.raw_text or '')
+        if isinstance(event, NewMessage.Event)
+        else ''
+    )
+    if not input_text:
+        reply_message = await get_reply_message(event, previous=True)
+        input_text = reply_message.raw_text if reply_message else ''
+
+    archive_input = extract_archive_input(input_text)
+    if not archive_input:
+        await event.reply(t('no_valid_url_found'))
+        return
+
+    progress_message = await send_progress_message(event, t('starting_file_download'))
+    try:
+        files = await fetch_archive_files(archive_input.identifier)
+    except aiohttp.ClientError as e:
+        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e}</pre>'))
+        return
+
+    archive_files = select_archive_files(files, archive_input.selected_path)
+    if not archive_files:
+        await progress_message.edit(t('no_files_found'))
+        return
+
+    with TemporaryDirectory(dir=DOWNLOADS_DIR) as download_dir_name:
+        download_dir = Path(download_dir_name)
+        await progress_message.edit(t('download_complete_starting_upload'))
+        for idx, archive_file in enumerate(archive_files, start=1):
+            await progress_message.edit(f'{t("downloading")} {idx}/{len(archive_files)}')
+            output_file = await download_from_url(
+                event,
+                archive_file.download_url(archive_input.identifier),
+                download_dir,
+                progress_message=progress_message,
+                filename=Path(archive_file.name).name,
+            )
+            if not output_file.exists():
+                await progress_message.edit(t('download_failed'))
+                return
+            await progress_message.edit(f'{t("uploading")} {idx}/{len(archive_files)}')
+            await upload_file_and_cleanup(event, output_file, progress_message)
+
+    await progress_message.edit(f'{t("file_uploaded")}: <code>{len(archive_files)}</code>')
 
 
 async def upload_file_command(event: NewMessage.Event) -> None:
@@ -274,6 +416,13 @@ class DownloadUpload(ModuleBase):
             handler=download_from_gdrive,
             description=t('_gdrive_description'),
             pattern=re.compile(r'^/gdrive(?:\s+(.+))?$'),
+            condition=is_admin_in_private,
+            is_applicable_for_reply=True,
+        ),
+        'archive': Command(
+            handler=download_from_archive,
+            description=t('_archive_description'),
+            pattern=re.compile(r'^/archive(?:\s+(.+))?$'),
             condition=is_admin_in_private,
             is_applicable_for_reply=True,
         ),

@@ -120,6 +120,8 @@
   "_upload_url_description": "[url] or [url] | [filename]: Download a file from URL and upload it to Telegram.",
   "_gdrive": "gdrive",
   "_gdrive_description": "[url or id]: Download public Google Drive files or folders and upload all files to Telegram.",
+  "_archive": "archive.org",
+  "_archive_description": "[url or id]: Download one Archive.org file or matching item files and upload them to Telegram.",
   "_file_manager_module_description": "Zip/unzip and inspect archives.",
   "_zip": "zip",
   "_zip_description": "Zip a Telegram file.",
