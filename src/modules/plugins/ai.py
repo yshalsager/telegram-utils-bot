@@ -7,7 +7,7 @@ from os import getenv
 from pathlib import Path
 from shutil import rmtree
 from time import time
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from uuid import uuid4
 
 import aiohttp
@@ -34,17 +34,16 @@ from src.utils.telegram import (
     send_progress_message,
 )
 
-OCR_MODEL = 'gemini-3.1-flash-lite-preview'
+OCR_MODEL = 'gemini-3.5-flash'
 OCR_MODEL_RPM = 10
 GEMINI_MODELS: list[str] = [
+    'gemini-flash-latest',
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite',
     'gemini-3.1-flash-lite-preview',
     'gemini-3-flash-preview',
-    'gemini-2.5-flash-lite',
     'gemini-2.5-flash',
-    'gemini-flash-lite-latest',
-    'gemini-flash-latest',
-    'gemma-4-31b-it',
-    'gemma-4-26b-a4b-it',
 ]
 OCR_PROMPT = (
     'OCR this PDF page. DONt REMOVE ARABIC Taskheel. '
@@ -203,8 +202,10 @@ async def get_gemini_model(
     try:
         return llm.get_async_model(model_name)
     except llm.UnknownModelError:
-        await event.reply(f'{t("invalid_model")}: <code>{model_name}</code>')
-        return None
+        if model_name in GEMINI_MODELS:
+            return cast(llm.AsyncModel, llm_gemini.AsyncGeminiPro(model_name))
+    await event.reply(f'{t("invalid_model")}: <code>{model_name}</code>')
+    return None
 
 
 async def choose_gemini_model(
