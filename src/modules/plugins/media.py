@@ -1,7 +1,9 @@
+from collections.abc import Awaitable, Callable
 from functools import partial
 from math import floor
 from os import getenv
 from pathlib import Path
+from shlex import quote
 from shutil import rmtree
 from typing import Any, ClassVar, cast
 from uuid import uuid4
@@ -42,7 +44,7 @@ from src.utils.telegram import (
     send_progress_message,
 )
 
-ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
+ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams {input}'
 
 ALLOWED_SPEED_FACTORS = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
 ALLOWED_AUDIO_COMPRESS_BITRATES = [16, 32, 48, 64, 96, 128]
@@ -52,6 +54,20 @@ ALLOWED_VIDEO_X265_CRF = [18, 20, 22, 24, 26, 28, 30]
 ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'vosk', 'google']
 SUPPORTED_AUDIO_THUMBNAIL_EXTS = {'.mp3', '.m4a', '.m4b'}
 TELEGRAM_THUMBNAIL_MAX_SIZE = 20_000
+DEFAULT_AUDIO_BITRATE = '96k'
+DEFAULT_VIDEO_BITRATE = '1500k'
+MIN_VIDEO_COMPRESS_BITRATE = 128_000
+COPY_COMPATIBLE_AUDIO_CODECS = {
+    '.mp4': {'aac', 'alac', 'mp3'},
+    '.m4v': {'aac', 'alac', 'mp3'},
+    '.mov': {'aac', 'alac', 'mp3'},
+    '.m4a': {'aac', 'alac', 'mp3'},
+    '.webm': {'opus', 'vorbis'},
+    '.ogg': {'opus', 'vorbis'},
+    '.opus': {'opus', 'vorbis'},
+    '.mp3': {'mp3'},
+    '.flac': {'flac'},
+}
 GOOGLE_SPEECH_V2_API_KEY = (
     getenv('GOOGLE_SPEECH_V2_KEY') or 'AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw'
 )
@@ -79,6 +95,29 @@ def format_ffmpeg_time(seconds: float) -> str:
     if seconds == floor(seconds):
         return str(floor(seconds))
     return f'{seconds:.3f}'.rstrip('0').rstrip('.')
+
+
+def shell_arg(value: Any) -> str:
+    return quote(str(value))
+
+
+def double_quoted_shell_value(value: Any) -> str:
+    return (
+        str(value)
+        .replace('\\', '\\\\')
+        .replace('"', '\\"')
+        .replace('$', '\\$')
+        .replace('`', '\\`')
+        .replace('\n', ' ')
+    )
+
+
+def concat_file_line(file_path: Path) -> str:
+    return f'file {shell_arg(file_path.absolute())}\n'
+
+
+def ffmpeg_filter_value(value: Any) -> str:
+    return str(value).replace('\\', '\\\\').replace(':', '\\:').replace("'", "\\'")
 
 
 def build_atempo_filter(speed_factor: float) -> str:
@@ -121,25 +160,43 @@ def build_telegram_thumbnail_command(
     input_file: Path, output_file: Path, size: int, quality: int
 ) -> str:
     return (
-        f'ffmpeg -hide_banner -y -i "{input_file}" '
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} '
         f'-vf "scale={size}:{size}:force_original_aspect_ratio=increase,crop={size}:{size}" '
-        f'-frames:v 1 -q:v {quality} "{output_file}"'
+        f'-frames:v 1 -q:v {quality} {shell_arg(output_file)}'
+    )
+
+
+def video_thumbnail_timestamps(duration: float, count: int = 16) -> list[float]:
+    if duration <= 0 or count <= 0:
+        return []
+    interval = duration / count
+    return [min(duration, max(0.0, interval * idx + interval / 2)) for idx in range(count)]
+
+
+def build_video_thumbnail_grid_command(input_file: Path, output_file: Path, duration: float) -> str:
+    select_frames = '+'.join(
+        f'gte(t,{format_ffmpeg_time(ts)})' for ts in video_thumbnail_timestamps(duration)
+    )
+    return (
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} '
+        f'-vf "select=\'{select_frames}\',scale=480:-1,tile=4x4" '
+        f'-frames:v 1 {shell_arg(output_file)}'
     )
 
 
 def build_audio_thumbnail_command(input_file: Path, thumbnail_file: Path, output_file: Path) -> str:
     if output_file.suffix.lower() == '.mp3':
         return (
-            f'ffmpeg -hide_banner -y -i "{input_file}" -i "{thumbnail_file}" '
+            f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} -i {shell_arg(thumbnail_file)} '
             '-map 0:a -map 1:v -map_metadata 0 -c:a copy -c:v mjpeg '
             '-id3v2_version 3 -metadata:s:v title="Album cover" '
             '-metadata:s:v comment="Cover (front)" '
-            f'"{output_file}"'
+            f'{shell_arg(output_file)}'
         )
     return (
-        f'ffmpeg -hide_banner -y -i "{input_file}" -i "{thumbnail_file}" '
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} -i {shell_arg(thumbnail_file)} '
         '-map 0:a -map 1:v -map_metadata 0 -c:a copy -c:v mjpeg '
-        f'-disposition:v attached_pic "{output_file}"'
+        f'-disposition:v attached_pic {shell_arg(output_file)}'
     )
 
 
@@ -191,8 +248,8 @@ def invert_time_ranges(ranges: list[tuple[int, int]], duration: float) -> list[t
 async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, Any]:
     output, _ = await run_command(
         f'ffprobe -v error -select_streams {stream_specifier} -show_entries '
-        f'stream=codec_name,duration,width,height:stream_disposition=attached_pic '
-        f'-of json "{file_path}"'
+        f'stream=codec_name,duration,width,height,pix_fmt,sample_rate,channels,channel_layout,avg_frame_rate:stream_disposition=attached_pic '
+        f'-of json {shell_arg(file_path)}'
     )
     info = orjson.loads(output)
     return cast(dict[str, Any], info['streams'][0]) if info and info.get('streams') else {}
@@ -200,7 +257,7 @@ async def get_stream_info(stream_specifier: str, file_path: Path) -> dict[str, A
 
 async def get_format_info(file_path: Path) -> dict[str, Any]:
     output, _ = await run_command(
-        f'ffprobe -v error -show_entries format=duration,tags -of json "{file_path}"'
+        f'ffprobe -v error -show_entries format=duration,tags -of json {shell_arg(file_path)}'
     )
     info = orjson.loads(output)
     return cast(dict[str, Any], info['format']) if info.get('format') else {}
@@ -221,10 +278,323 @@ async def get_output_info(file_path: Path) -> dict[str, Any]:
         ),
         'width': video_info.get('width', 0),
         'height': video_info.get('height', 0),
+        'pix_fmt': video_info.get('pix_fmt', ''),
+        'sample_rate': audio_info.get('sample_rate', ''),
+        'channels': audio_info.get('channels', 0),
+        'channel_layout': audio_info.get('channel_layout', ''),
+        'avg_frame_rate': video_info.get('avg_frame_rate', ''),
         'attached_pic': bool(video_info.get('disposition', {}).get('attached_pic')),
         'title': format_info.get('tags', {}).get('title', ''),
         'uploader': format_info.get('tags', {}).get('artist', ''),
     }
+
+
+def has_real_video(output_info: dict[str, Any]) -> bool:
+    return bool(output_info.get('vcodec') != 'none' and not output_info.get('attached_pic'))
+
+
+def has_audio(output_info: dict[str, Any]) -> bool:
+    return bool(output_info.get('acodec') != 'none')
+
+
+def audio_encoder_for_suffix(suffix: str, *, is_voice: bool = False) -> str:
+    suffix = suffix.lower()
+    if is_voice or suffix in {'.ogg', '.opus'}:
+        return '-c:a libopus -b:a 48k'
+    if suffix == '.mp3':
+        return '-c:a libmp3lame -q:a 2'
+    return '-c:a aac -b:a 96k'
+
+
+def can_copy_audio_to_suffix(suffix: str, audio_codec: str) -> bool:
+    audio_codec = audio_codec.lower()
+    if not audio_codec or audio_codec == 'none':
+        return False
+    suffix = suffix.lower()
+    if suffix == '.mkv':
+        return True
+    if suffix == '.wav':
+        return audio_codec.startswith('pcm_')
+    return audio_codec in COPY_COMPATIBLE_AUDIO_CODECS.get(suffix, set())
+
+
+def audio_codec_for_suffix(
+    suffix: str, input_audio_codec: str = '', *, is_voice: bool = False
+) -> str:
+    if can_copy_audio_to_suffix(suffix, input_audio_codec):
+        return '-c:a copy'
+    return audio_encoder_for_suffix(suffix, is_voice=is_voice)
+
+
+def faststart_for_suffix(suffix: str) -> str:
+    return ' -movflags +faststart' if suffix.lower() in {'.mp4', '.m4v', '.mov'} else ''
+
+
+def format_bitrate_value(value: int) -> str:
+    return f'{value // 1_000_000}M' if value >= 1_000_000 else f'{max(1, value // 1000)}k'
+
+
+def format_bitrate_arg(value: int, default: str) -> str:
+    return str(value) if value > 0 else default
+
+
+def calculate_video_compress_bitrate(
+    file_size: int, duration: float, target_percentage: int
+) -> str:
+    target_size = ((100 - target_percentage) / 100) * max(file_size, 0)
+    target_bitrate = floor(target_size * 8 / max(duration, 1))
+    return format_bitrate_value(max(target_bitrate, MIN_VIDEO_COMPRESS_BITRATE))
+
+
+def copy_concat_signature(file_path: Path, output_info: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        file_path.suffix.lower(),
+        output_info.get('vcodec'),
+        output_info.get('acodec'),
+        output_info.get('width'),
+        output_info.get('height'),
+        output_info.get('pix_fmt'),
+        output_info.get('avg_frame_rate'),
+        output_info.get('sample_rate'),
+        output_info.get('channels'),
+        output_info.get('channel_layout'),
+        output_info.get('attached_pic'),
+    )
+
+
+def build_filter_concat_command(
+    input_files: list[Path],
+    output_file: Path,
+    *,
+    has_video_stream: bool,
+    has_audio_stream: bool,
+    target_width: int = 0,
+    target_height: int = 0,
+) -> str:
+    inputs = ' '.join(f'-i {shell_arg(input_file)}' for input_file in input_files)
+    filters = []
+    labels = []
+    for idx, _input_file in enumerate(input_files):
+        if has_video_stream:
+            video_filters = 'setpts=PTS-STARTPTS'
+            video_filters += (
+                f',scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,'
+                f'pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p'
+                if target_width and target_height
+                else ',scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1,format=yuv420p'
+            )
+            filters.append(f'[{idx}:v:0]{video_filters}[v{idx}]')
+            labels.append(f'[v{idx}]')
+        if has_audio_stream:
+            filters.append(f'[{idx}:a:0]asetpts=PTS-STARTPTS[a{idx}]')
+            labels.append(f'[a{idx}]')
+
+    output_labels = ''
+    maps = ''
+    codecs = ''
+    if has_video_stream:
+        output_labels += '[v]'
+        maps += ' -map "[v]"'
+        codecs += ' -c:v libx264 -preset ultrafast'
+    if has_audio_stream:
+        output_labels += '[a]'
+        maps += ' -map "[a]"'
+        codecs += f' {audio_encoder_for_suffix(output_file.suffix)}'
+
+    filters.append(
+        f'{"".join(labels)}concat=n={len(input_files)}:v={int(has_video_stream)}:a={int(has_audio_stream)}{output_labels}'
+    )
+    return (
+        f'ffmpeg -hide_banner -y {inputs} -filter_complex "{";".join(filters)}"'
+        f'{maps}{codecs}{faststart_for_suffix(output_file.suffix)} {shell_arg(output_file)}'
+    )
+
+
+def build_crop_out_filter_command(
+    input_file: Path,
+    output_file: Path,
+    keep_ranges: list[tuple[float, float]],
+    *,
+    has_video_stream: bool,
+    has_audio_stream: bool,
+    is_voice: bool = False,
+) -> str:
+    filters = []
+    labels = []
+    for idx, (start_seconds, end_seconds) in enumerate(keep_ranges):
+        start = format_ffmpeg_time(start_seconds)
+        end = format_ffmpeg_time(end_seconds)
+        if has_video_stream:
+            filters.append(
+                f'[0:v:0]trim=start={start}:end={end},setpts=PTS-STARTPTS,format=yuv420p[v{idx}]'
+            )
+            labels.append(f'[v{idx}]')
+        if has_audio_stream:
+            filters.append(f'[0:a:0]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{idx}]')
+            labels.append(f'[a{idx}]')
+
+    output_labels = ''
+    maps = ''
+    codecs = ''
+    if has_video_stream:
+        output_labels += '[v]'
+        maps += ' -map "[v]"'
+        codecs += ' -c:v libx264 -preset ultrafast'
+    if has_audio_stream:
+        output_labels += '[a]'
+        maps += ' -map "[a]"'
+        codecs += f' {audio_encoder_for_suffix(output_file.suffix, is_voice=is_voice)}'
+
+    filters.append(
+        f'{"".join(labels)}concat=n={len(keep_ranges)}:v={int(has_video_stream)}:a={int(has_audio_stream)}{output_labels}'
+    )
+    return (
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} -filter_complex "{";".join(filters)}"'
+        f'{maps}{codecs}{faststart_for_suffix(output_file.suffix)} {shell_arg(output_file)}'
+    )
+
+
+def build_cut_media_command(
+    input_file: Path,
+    output_file: Path,
+    start_seconds: float,
+    end_seconds: float,
+) -> str:
+    return (
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} '
+        f'-ss {format_ffmpeg_time(start_seconds)} -to {format_ffmpeg_time(end_seconds)} '
+        f'-map 0:v? -map 0:a? -dn -sn -c copy {shell_arg(output_file)}'
+    )
+
+
+def build_video_audio_update_command(
+    video_file: Path, audio_file: Path, output_file: Path, input_audio_codec: str = ''
+) -> str:
+    return (
+        f'ffmpeg -hide_banner -y -i {shell_arg(video_file)} -i {shell_arg(audio_file)} '
+        f'-map 0:v:0 -map 1:a:0 -c:v copy {audio_codec_for_suffix(output_file.suffix, input_audio_codec)}'
+        f'{faststart_for_suffix(output_file.suffix)} {shell_arg(output_file)}'
+    )
+
+
+def build_resize_video_command(quality: int) -> str:
+    return (
+        'ffmpeg -hide_banner -y -i "{input}" '
+        f'-vf "scale=width=-2:height={quality}:force_original_aspect_ratio=decrease,'
+        'pad=ceil(iw/2)*2:ceil(ih/2)*2" '
+        '-map 0:v:0 -map 0:a? -dn -sn '
+        '-c:v libx264 -crf 23 -preset veryfast -c:a copy '
+        '-movflags +faststart "{output}"'
+    )
+
+
+def build_split_media_command(input_file: Path, output_pattern: Path, segment_duration: int) -> str:
+    return (
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} -f segment '
+        f'-segment_time {segment_duration} -map 0:v? -map 0:a? -dn -sn '
+        f'-c copy {shell_arg(output_pattern)}'
+    )
+
+
+def build_speed_video_command(
+    input_file: Path,
+    output_file: Path,
+    speed_factor: float,
+    atempo: str,
+    *,
+    has_audio_stream: bool,
+) -> str:
+    if has_audio_stream:
+        return (
+            f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} '
+            f'-filter_complex "[0:v:0]setpts=PTS/{speed_factor}[v];[0:a:0]{atempo}[a]" '
+            '-map "[v]" -map "[a]" '
+            f'-c:v libx264 -preset ultrafast -c:a aac -b:a 128k -movflags +faststart {shell_arg(output_file)}'
+        )
+    return (
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} '
+        f'-vf "setpts=PTS/{speed_factor}" -an '
+        f'-c:v libx264 -preset ultrafast -movflags +faststart {shell_arg(output_file)}'
+    )
+
+
+def build_video_compress_command(bitrate: str) -> str:
+    return (
+        'ffmpeg -hide_banner -y -i "{input}" '
+        f'-map 0:v:0 -map 0:a? -dn -sn -c:v libx264 -b:v {bitrate} -bufsize {bitrate} '
+        '-preset ultrafast -c:a copy -movflags +faststart "{output}"'
+    )
+
+
+def build_x265_command(crf: int, input_audio_codec: str = '') -> str:
+    return (
+        'ffmpeg -hide_banner -y -i "{input}" '
+        f'-map 0:v:0 -map 0:a? -dn -sn -c:v libx265 -crf {crf} -preset ultrafast '
+        f'{audio_codec_for_suffix(".mp4", input_audio_codec)} -movflags +faststart "{{output}}"'
+    )
+
+
+def build_voice_note_command() -> str:
+    return 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a libopus -b:a 48k "{output}"'
+
+
+def build_audio_compress_command(audio_bitrate: str) -> str:
+    return f'ffmpeg -hide_banner -y -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
+
+
+def build_convert_to_audio_command(*, copy_audio: bool) -> str:
+    if copy_audio:
+        return 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a copy "{output}"'
+    return 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a aac -b:a {audio_bitrate} "{output}"'
+
+
+def build_set_metadata_command(title: str, artist: str) -> str:
+    return (
+        'ffmpeg -hide_banner -y -i "{input}" -c copy '
+        f'-metadata title="{double_quoted_shell_value(title)}" '
+        f'-metadata artist="{double_quoted_shell_value(artist)}" '
+        '"{output}"'
+    )
+
+
+def build_mute_video_command() -> str:
+    return 'ffmpeg -hide_banner -y -i "{input}" -map 0:v:0 -dn -sn -c:v copy -an "{output}"'
+
+
+def build_convert_media_command(
+    *, target_is_audio: bool, output_suffix: str = '', input_audio_codec: str = ''
+) -> str:
+    if target_is_audio:
+        return 'ffmpeg -hide_banner -y -i "{input}" -vn -b:a {audio_bitrate} "{output}"'
+    return (
+        'ffmpeg -hide_banner -y -i "{input}" -map 0:v:0 -map 0:a? -dn -sn '
+        f'-c:v libx264 -crf 23 -preset veryfast {audio_codec_for_suffix(output_suffix, input_audio_codec)} "{{output}}"'
+    )
+
+
+def build_amplify_command(amplification_factor: float, *, has_video_stream: bool) -> str:
+    command = (
+        'ffmpeg -hide_banner -y -i "{input}" '
+        f'-filter:a "volume={amplification_factor}" '
+        '-b:a {audio_bitrate}'
+    )
+    return command + (' -c:v copy "{output}"' if has_video_stream else ' -vn "{output}"')
+
+
+def build_speed_audio_command(atempo: str, *, is_voice: bool) -> str:
+    return (
+        'ffmpeg -hide_banner -y -i "{input}" '
+        f'-filter:a "{atempo}" '
+        + ('-vn -c:a libopus -b:a 48k ' if is_voice else '-vn -c:a libmp3lame -q:a 2 ')
+        + '"{output}"'
+    )
+
+
+def build_fix_stereo_command(channel: str) -> str:
+    return (
+        f'ffmpeg -hide_banner -y -i "{{input}}" -af "pan=mono|c0={channel}" '
+        '-c:a aac -b:a {audio_bitrate} "{output}"'
+    )
 
 
 async def build_media_upload_params(
@@ -274,7 +644,7 @@ async def get_media_bitrate(file_path: str) -> tuple[int, int]:
     async def get_bitrate(stream_specifier: str) -> int:
         _output, _ = await run_command(
             f'ffprobe -v error -select_streams {stream_specifier} -show_entries '
-            f'stream=bit_rate -of csv=p=0 "{file_path}"'
+            f'stream=bit_rate -of csv=p=0 {shell_arg(file_path)}'
         )
         return parse_numeric_output(_output)
 
@@ -283,7 +653,7 @@ async def get_media_bitrate(file_path: str) -> tuple[int, int]:
 
     if video_bitrate == 0 and audio_bitrate == 0:
         output, _ = await run_command(
-            f'ffprobe -v error -show_entries format=bit_rate -of csv=p=0 "{file_path}"'
+            f'ffprobe -v error -show_entries format=bit_rate -of csv=p=0 {shell_arg(file_path)}'
         )
         # Assume it's all audio if we couldn't get separate streams
         audio_bitrate = parse_numeric_output(output)
@@ -313,7 +683,7 @@ async def transcribe_with_google(
 ) -> Path | None:
     audio_file_path = output_dir / f'{input_file_path.stem}.wav'
     output, status_code = await run_command(
-        f'ffmpeg -hide_banner -y -i "{input_file_path}" -vn -acodec pcm_s16le -ac 1 -ar 16000 "{audio_file_path}"'
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file_path)} -vn -acodec pcm_s16le -ac 1 -ar 16000 {shell_arg(audio_file_path)}'
     )
     if status_code != 0:
         raise RuntimeError(output)
@@ -346,6 +716,7 @@ async def process_media(
     get_file_name: bool = True,
     get_bitrate: bool = False,
     feedback_text: str = t('file_processed'),
+    command_builder: Callable[[Path, Path], Awaitable[str]] | None = None,
 ) -> dict[str, Any]:
     data: dict[str, Any] = {}
     if not reply_message:
@@ -364,17 +735,20 @@ async def process_media(
         else:
             output_file = temp_file_path.with_suffix(output_suffix)
 
-        input_path = str(temp_file_path)
-        if get_bitrate:
-            video_bitrate, audio_bitrate = await get_media_bitrate(input_path)
+        input_path = double_quoted_shell_value(temp_file_path)
+        output_path = double_quoted_shell_value(output_file)
+        if command_builder:
+            ffmpeg_command = await command_builder(temp_file_path, output_file)
+        elif get_bitrate:
+            video_bitrate, audio_bitrate = await get_media_bitrate(str(temp_file_path))
             ffmpeg_command = ffmpeg_command.format(
                 input=input_path,
-                output=output_file,
-                video_bitrate=video_bitrate,
-                audio_bitrate=audio_bitrate,
+                output=output_path,
+                video_bitrate=format_bitrate_arg(video_bitrate, DEFAULT_VIDEO_BITRATE),
+                audio_bitrate=format_bitrate_arg(audio_bitrate, DEFAULT_AUDIO_BITRATE),
             )
         else:
-            ffmpeg_command = ffmpeg_command.format(input=input_path, output=output_file)
+            ffmpeg_command = ffmpeg_command.format(input=input_path, output=output_path)
 
         status = await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         data['status_text'] = status
@@ -405,10 +779,9 @@ async def process_media(
 
 
 async def convert_to_voice_note(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a libopus -b:a 48k "{output}"'
     await process_media(
         event,
-        ffmpeg_command,
+        build_voice_note_command(),
         '.ogg',
         is_voice=True,
         feedback_text=t('converted_to_voice_note'),
@@ -437,12 +810,9 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     else:
         await event.reply(t('invalid_bitrate'))
         return
-    ffmpeg_command = (
-        f'ffmpeg -hide_banner -y -i "{{input}}" -vn -c:a aac -b:a {audio_bitrate}k "{{output}}"'
-    )
     await process_media(
         event,
-        ffmpeg_command,
+        build_audio_compress_command(audio_bitrate),
         '.m4a',
         feedback_text=t('audio_successfully_compressed'),
     )
@@ -452,15 +822,11 @@ async def compress_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    if reply_message.file and reply_message.file.ext in ['aac', 'm4a', 'mp3']:
-        ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a copy "{output}"'
-    else:
-        ffmpeg_command = (
-            'ffmpeg -hide_banner -y -i "{input}" -vn -c:a aac -b:a {audio_bitrate} "{output}"'
-        )
     await process_media(
         event,
-        ffmpeg_command,
+        build_convert_to_audio_command(
+            copy_audio=bool(reply_message.file and reply_message.file.ext in ['aac', 'm4a', 'mp3'])
+        ),
         '.m4a',
         reply_message=reply_message,
         get_bitrate=True,
@@ -497,10 +863,8 @@ async def _cut_media_process(
             output_file = output_file_base.with_name(
                 f'{output_file_base.stem}_cut_{idx}{reply_message.file.ext}'
             )
-            ffmpeg_command = (
-                f'ffmpeg -hide_banner -y -i "{temp_file_path}" '
-                f'-ss {format_ffmpeg_time(start_seconds)} -to {format_ffmpeg_time(end_seconds)} '
-                f'-c copy -map 0 "{output_file}"'
+            ffmpeg_command = build_cut_media_command(
+                temp_file_path, output_file, start_seconds, end_seconds
             )
             await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
             if output_file.exists() and output_file.stat().st_size:
@@ -581,31 +945,25 @@ async def _crop_out_media_process(
         if not keep_ranges:
             await status_message.edit(t('invalid_crop_out_points'))
             return
+        has_video_stream = has_real_video(output_info)
+        has_audio_stream = has_audio(output_info)
+        if not has_video_stream and not has_audio_stream:
+            await status_message.edit(t('crop_out_failed'))
+            return
 
         input_file = get_download_name(reply_message)
         output_file_base = (temp_file_path.parent / input_file).with_suffix('')
-        file_list_path = temp_file_path.parent / 'crop_out_files.txt'
-
-        with file_list_path.open('w') as file_list:
-            for idx, (start_seconds, end_seconds) in enumerate(keep_ranges, 1):
-                segment_file = output_file_base.with_name(
-                    f'{output_file_base.stem}_crop_out_{idx}{reply_message.file.ext}'
-                )
-                ffmpeg_command = (
-                    f'ffmpeg -hide_banner -y -ss {format_ffmpeg_time(start_seconds)} '
-                    f'-i "{temp_file_path}" -t {format_ffmpeg_time(end_seconds - start_seconds)} '
-                    f'-c copy -map 0 "{segment_file}"'
-                )
-                await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
-                if not segment_file.exists() or not segment_file.stat().st_size:
-                    await status_message.edit(t('crop_out_failed'))
-                    return
-                file_list.write(f"file '{segment_file.absolute()}'\n")
-
         output_file = output_file_base.with_name(
             f'{output_file_base.stem}_crop_out{reply_message.file.ext}'
         )
-        ffmpeg_command = f'ffmpeg -hide_banner -y -f concat -safe 0 -i "{file_list_path}" -c copy "{output_file}"'
+        ffmpeg_command = build_crop_out_filter_command(
+            temp_file_path,
+            output_file,
+            keep_ranges,
+            has_video_stream=has_video_stream,
+            has_audio_stream=has_audio_stream,
+            is_voice=bool(reply_message.voice),
+        )
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         if output_file.exists() and output_file.stat().st_size:
             upload_params = await build_media_upload_params(
@@ -680,9 +1038,8 @@ async def _split_media_process(
         output_file_base = (temp_file_path.parent / input_file).with_suffix('')
 
         output_pattern = f'{output_file_base.stem}_segment_%03d{input_file.suffix}'
-        ffmpeg_command = (
-            f'ffmpeg -hide_banner -y -i "{temp_file_path}" -f segment -segment_time {segment_duration} '
-            f'-c copy "{output_file_base.parent / output_pattern}"'
+        ffmpeg_command = build_split_media_command(
+            temp_file_path, output_file_base.parent / output_pattern, segment_duration
         )
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
 
@@ -742,7 +1099,7 @@ async def media_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
         progress_message,
         suffix=reply_message.file.ext,
     ) as temp_file_path:
-        output, code = await run_command(ffprobe_command.format(input=temp_file_path))
+        output, code = await run_command(ffprobe_command.format(input=shell_arg(temp_file_path)))
         if code:
             message = f'{t("failed_to_get_info")}\n<pre>{output}</pre>'
         else:
@@ -759,14 +1116,9 @@ async def _set_metadata_process(
     assert reply_message is not None
     title, artist = match.group(1), match.group(2)
 
-    ffmpeg_command = (
-        'ffmpeg -hide_banner -y -i "{input}" -c copy '
-        f'-metadata title="{title}" -metadata artist="{artist}" '
-        '"{output}"'
-    )
     await process_media(
         event,
-        ffmpeg_command,
+        build_set_metadata_command(title, artist),
         reply_message.file.ext,
         reply_message=reply_message,
         feedback_text=t('audio_metadata_set'),
@@ -919,16 +1271,49 @@ async def _merge_media_process(event: CallbackQuery.Event, files: list[int]) -> 
     file_list_path = output_dir / 'files.txt'
     message: Message
     try:
+        input_paths = []
+        output_infos = []
         with file_list_path.open('w') as file_list:
             for idx, file_id in enumerate(files, start=1):
                 message = await event.client.get_messages(event.chat_id, ids=file_id)
                 input_path = output_dir / f'input_{idx:03d}{message.file.ext}'
                 with input_path.open('wb') as temp_file:
                     await download_file(event, temp_file, message, progress_message)
-                file_list.write(f"file '{input_path.absolute()}'\n")
+                input_paths.append(input_path)
+                output_infos.append(await get_output_info(input_path))
+                file_list.write(concat_file_line(input_path))
 
         output_file_path = output_dir / f'merged{message.file.ext}'
-        ffmpeg_command = f'ffmpeg -hide_banner -y -f concat -safe 0 -i "{file_list_path}" -c copy "{output_file_path}"'
+        can_copy = (
+            len(
+                {
+                    copy_concat_signature(input_path, output_info)
+                    for input_path, output_info in zip(input_paths, output_infos, strict=True)
+                }
+            )
+            == 1
+        )
+        if can_copy:
+            ffmpeg_command = f'ffmpeg -hide_banner -y -f concat -safe 0 -i {shell_arg(file_list_path)} -c copy {shell_arg(output_file_path)}'
+        else:
+            stream_shapes = {
+                (has_real_video(output_info), has_audio(output_info))
+                for output_info in output_infos
+            }
+            if len(stream_shapes) != 1:
+                await status_message.edit(t('merge_failed'))
+                return
+            has_video_stream, has_audio_stream = next(iter(stream_shapes))
+            target_width = int(output_infos[0].get('width') or 0) // 2 * 2
+            target_height = int(output_infos[0].get('height') or 0) // 2 * 2
+            ffmpeg_command = build_filter_concat_command(
+                input_paths,
+                output_file_path,
+                has_video_stream=has_video_stream,
+                has_audio_stream=has_audio_stream,
+                target_width=target_width,
+                target_height=target_height,
+            )
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         if output_file_path.exists() and output_file_path.stat().st_size:
             upload_params = await build_media_upload_params(
@@ -1010,10 +1395,9 @@ async def trim_silence(event: NewMessage.Event) -> None:
 
 
 async def mute_video(event: NewMessage.Event) -> None:
-    ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -c copy -an "{output}"'
     await process_media(
         event,
-        ffmpeg_command,
+        build_mute_video_command(),
         '.mp4',
         feedback_text=t('audio_removed_from_video'),
     )
@@ -1031,7 +1415,7 @@ async def extract_subtitle(event: NewMessage.Event) -> None:
         suffix=reply_message.file.ext,
     ) as input_file_path:
         output, code = await run_command(
-            f'ffprobe -v quiet -print_format json -show_streams "{input_file_path}"'
+            f'ffprobe -v quiet -print_format json -show_streams {shell_arg(input_file_path)}'
         )
         if code:
             await status_message.edit(t('failed_to_get_stream_info'))
@@ -1049,8 +1433,8 @@ async def extract_subtitle(event: NewMessage.Event) -> None:
             output_file = input_file_path.with_suffix(f'.{ext}')
 
             ffmpeg_command = (
-                f'ffmpeg -hide_banner -y -i "{input_file_path}" '
-                f'-map 0:{stream["index"]} "{output_file}"'
+                f'ffmpeg -hide_banner -y -i {shell_arg(input_file_path)} '
+                f'-map 0:{stream["index"]} {shell_arg(output_file)}'
             )
             await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
 
@@ -1121,21 +1505,32 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await event.reply(t('file_already_in_target_format', target_format=target_format))
         return
 
-    if target_format in ALLOWED_AUDIO_FORMATS:
-        ffmpeg_command = 'ffmpeg -hide_banner -y -i "{input}" -b:a {audio_bitrate} "{output}"'
-    else:
-        ffmpeg_command = (
-            'ffmpeg -hide_banner -y -i "{input}" -c:v libx264 -b:v {video_bitrate} '
-            '-c:a aac -b:a {audio_bitrate} "{output}"'
-        )
+    target_is_audio = target_format in ALLOWED_AUDIO_FORMATS
+    convert_command_builder = None
+    ffmpeg_command = build_convert_media_command(target_is_audio=True) if target_is_audio else ''
+    if not target_is_audio:
+
+        async def build_convert_command(input_file: Path, output_file: Path) -> str:
+            output_info = await get_output_info(input_file)
+            return build_convert_media_command(
+                target_is_audio=False,
+                output_suffix=output_file.suffix,
+                input_audio_codec=str(output_info.get('acodec', '')),
+            ).format(
+                input=double_quoted_shell_value(input_file),
+                output=double_quoted_shell_value(output_file),
+            )
+
+        convert_command_builder = build_convert_command
 
     await process_media(
         event,
         ffmpeg_command,
         f'.{target_format}',
         reply_message=reply_message,
-        get_bitrate=True,
+        get_bitrate=target_is_audio,
         feedback_text=t('media_converted_to_target_format', target_format=target_format),
+        command_builder=convert_command_builder,
     )
     if delete_message_after_process:
         delete_callback_after(event)
@@ -1173,12 +1568,7 @@ async def resize_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return
 
     reply_message = await get_reply_message(event, previous=True)
-    ffmpeg_command = (
-        f'ffmpeg -hide_banner -y -i "{{input}}" -filter_complex '
-        f'"scale=width=-1:height={quality}:force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2" '
-        f'-c:v libx264 -b:v {{video_bitrate}} -maxrate {{video_bitrate}} -bufsize {{video_bitrate}} '
-        f'-c:a copy "{{output}}"'
-    )
+    ffmpeg_command = build_resize_video_command(quality)
     await process_media(
         event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
     )
@@ -1223,9 +1613,9 @@ async def _video_update_process(event: NewMessage.Event, file_ids: list[int]) ->
         audio_file = output_dir / audio_name
         output_file = output_dir / f'{Path(video_name).stem}_updated{Path(video_name).suffix}'
 
-        ffmpeg_command = (
-            f'ffmpeg -hide_banner -y -i "{video_file}" -i "{audio_file}" '
-            f'-map "0:v" -map "1:a" -c:v copy -c:a copy "{output_file}"'
+        audio_info = await get_output_info(audio_file)
+        ffmpeg_command = build_video_audio_update_command(
+            video_file, audio_file, output_file, str(audio_info.get('acodec', ''))
         )
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         if not output_file.exists() or not output_file.stat().st_size:
@@ -1272,21 +1662,12 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
     amplification_factor = min(amplification_factor, 3)
 
     reply_message = await get_reply_message(event, previous=True)
-    ffmpeg_command = (
-        'ffmpeg -hide_banner -y -i "{input}" '
-        f'-filter:a "volume={amplification_factor}" '
-        '-b:a {audio_bitrate}'
-    )
-
-    if bool(reply_message.video or reply_message.video_note):
-        ffmpeg_command += ' -c:v copy'
-    else:
-        ffmpeg_command += ' -vn'
-    ffmpeg_command += ' "{output}"'
-
     await process_media(
         event,
-        ffmpeg_command,
+        build_amplify_command(
+            amplification_factor,
+            has_video_stream=bool(reply_message.video or reply_message.video_note),
+        ),
         reply_message.file.ext,
         reply_message=reply_message,
         get_bitrate=True,
@@ -1322,25 +1703,27 @@ async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     reply_message = await get_reply_message(event, previous=True)
     atempo = build_atempo_filter(speed_factor)
+    speed_command_builder: Callable[[Path, Path], Awaitable[str]] | None = None
 
     if bool(reply_message.video or reply_message.video_note):
-        ffmpeg_command = (
-            'ffmpeg -hide_banner -y -i "{input}" '
-            f'-filter_complex "[0:v]setpts=PTS/{speed_factor}[v];[0:a]{atempo}[a]" '
-            '-map "[v]" -map "[a]" '
-            '-c:v libx264 -preset ultrafast -c:a aac -b:a 128k -movflags +faststart '
-            '"{output}"'
-        )
+
+        async def build_speed_command(input_file: Path, output_file: Path) -> str:
+            output_info = await get_output_info(input_file)
+            return build_speed_video_command(
+                input_file,
+                output_file,
+                speed_factor,
+                atempo,
+                has_audio_stream=has_audio(output_info),
+            )
+
+        speed_command_builder = build_speed_command
+        ffmpeg_command = ''
         output_suffix = '.mp4'
         is_voice = False
     else:
         is_voice = bool(reply_message.voice)
-        ffmpeg_command = (
-            'ffmpeg -hide_banner -y -i "{input}" '
-            f'-filter:a "{atempo}" '
-            + ('-vn -c:a libopus -b:a 48k ' if is_voice else '-vn -c:a libmp3lame -q:a 2 ')
-            + '"{output}"'
-        )
+        ffmpeg_command = build_speed_audio_command(atempo, is_voice=is_voice)
         output_suffix = '.ogg' if is_voice else '.mp3'
 
     await process_media(
@@ -1352,6 +1735,7 @@ async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         feedback_text=t(
             'media_slowed_down' if speed_factor < 1 else 'media_sped_up', factor=speed_factor
         ),
+        command_builder=speed_command_builder,
     )
     if delete_message_after_process:
         delete_callback_after(event)
@@ -1370,21 +1754,11 @@ async def video_thumbnails(event: NewMessage.Event | CallbackQuery.Event) -> Non
     ) as input_file_path:
         duration_output, _ = await run_command(
             f'ffprobe -v error -show_entries format=duration -of '
-            f'default=noprint_wrappers=1:nokey=1 "{input_file_path}"'
+            f'default=noprint_wrappers=1:nokey=1 {shell_arg(input_file_path)}'
         )
         duration = float(duration_output.strip())
-
-        # Calculate timestamps for each thumbnail
-        interval = duration / 16
-        timestamps = [i * interval for i in range(16)]
-        # Generate thumbnail grid
         output_file = input_file_path.with_suffix('.jpg')
-        select_frames = '+'.join([f'eq(n,{int(i * 25)})' for i in timestamps])  # Assuming 25 fps
-        ffmpeg_command = (
-            f'ffmpeg -hide_banner -y -i "{input_file_path}" '
-            f'-vf "select=\'{select_frames}\',scale=480:-1,tile=4x4" '
-            f'-frames:v 1 "{output_file}"'
-        )
+        ffmpeg_command = build_video_thumbnail_grid_command(input_file_path, output_file, duration)
 
         await stream_shell_output(event, ffmpeg_command, status_message, progress_message)
         if not output_file.exists() or not output_file.stat().st_size:
@@ -1426,23 +1800,10 @@ async def compress_video(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return
 
     reply_message = await get_reply_message(event, previous=True)
-    # Calculate target bitrate
-    calculated_percentage = 100 - target_percentage
-    target_size = (calculated_percentage / 100) * reply_message.file.size
-    target_bitrate = floor(target_size * 8 / reply_message.file.duration)
-    bitrate = (
-        f'{target_bitrate // 1000000}M'
-        if target_bitrate // 1000000 >= 1
-        else f'{target_bitrate // 1000}k'
+    bitrate = calculate_video_compress_bitrate(
+        reply_message.file.size, reply_message.file.duration, target_percentage
     )
-    ffmpeg_command = (
-        f'ffmpeg -hide_banner -y -i "{{input}}" '
-        f'-c:v libx264 -b:v {bitrate} -bufsize {bitrate} '
-        '-preset ultrafast '
-        '-c:a aac -b:a 48k '
-        '-movflags +faststart '
-        f'"{{output}}"'
-    )
+    ffmpeg_command = build_video_compress_command(bitrate)
     data = await process_media(
         event, ffmpeg_command, reply_message.file.ext, feedback_text=t('video_compressed')
     )
@@ -1480,18 +1841,20 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
         return
 
     reply_message = await get_reply_message(event, previous=True)
-    ffmpeg_command = (
-        'ffmpeg -hide_banner -y -i "{input}" '
-        f'-c:v libx265 -crf {crf} -preset ultrafast '
-        '-c:a aac -b:a 48k '
-        '-movflags +faststart '
-        '"{output}"'
-    )
+
+    async def build_x265_process_command(input_file: Path, output_file: Path) -> str:
+        output_info = await get_output_info(input_file)
+        return build_x265_command(crf, str(output_info.get('acodec', ''))).format(
+            input=double_quoted_shell_value(input_file),
+            output=double_quoted_shell_value(output_file),
+        )
+
     data = await process_media(
         event,
-        ffmpeg_command,
-        reply_message.file.ext,
+        '',
+        '.mp4',
         feedback_text=t('video_x265_encoded'),
+        command_builder=build_x265_process_command,
     )
 
     compression_ratio = (1 - (data['output_size'] / reply_message.file.size)) * 100
@@ -1526,12 +1889,12 @@ def build_static_image_video_command(
     input_file: Path, audio_file: Path, output_file: Path, duration: float
 ) -> str:
     return (
-        f'ffmpeg -hide_banner -y -loop 1 -framerate 1 -i "{input_file}" '
-        f'-i "{audio_file}" '
+        f'ffmpeg -hide_banner -y -loop 1 -framerate 1 -i {shell_arg(input_file)} '
+        f'-i {shell_arg(audio_file)} '
         f'-t {format_ffmpeg_time(duration)} '
         f'-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p" '
         f'-c:v libx264 -preset ultrafast -tune stillimage -r 1 '
-        f'-c:a aac -b:a 48k -movflags +faststart "{output_file}"'
+        f'-c:a aac -b:a 48k -movflags +faststart {shell_arg(output_file)}'
     )
 
 
@@ -1561,12 +1924,12 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
         ):
             ffmpeg_command = (
                 f'ffmpeg -hide_banner -y -f lavfi -i color=c=black:s=854x480:d={audio_message.file.duration} '
-                f'-i "{audio_file}" -i "{input_file}" '
-                f"-filter_complex \"[0:v]subtitles=f='{input_file}':force_style='FontSize=28,Alignment=10,MarginV=190'[v]\" "
+                f'-i {shell_arg(audio_file)} -i {shell_arg(input_file)} '
+                f"-filter_complex \"[0:v]subtitles=f='{ffmpeg_filter_value(input_file)}':force_style='FontSize=28,Alignment=10,MarginV=190'[v]\" "
                 f'-map "[v]" -map 1:a -map 2 '
                 f'-c:v libx264 -preset ultrafast -c:a aac -b:a 48k '
                 f'-c:s mov_text '
-                f'-shortest "{output_file}"'
+                f'-shortest {shell_arg(output_file)}'
             )
         elif input_message.photo:
             ffmpeg_command = build_static_image_video_command(
@@ -1652,8 +2015,8 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 return
         elif transcription_method == 'vosk':
             command = (
-                f'vosk-transcriber --log-level warning -i {input_file_path} -l ar '
-                f'-t srt -o {output_dir.name / input_file_path.with_suffix(".srt")}'
+                f'vosk-transcriber --log-level warning -i {shell_arg(input_file_path)} -l ar '
+                f'-t srt -o {shell_arg(output_dir / input_file_path.with_suffix(".srt").name)}'
             )
             await stream_shell_output(
                 event, command, status_message, progress_message, max_length=100
@@ -1664,9 +2027,10 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             if audio_file_path.suffix not in (
                 f'.{mime.split("/")[1]}' for mime in model.attachment_types
             ):
+                output_audio_path = audio_file_path.with_suffix('.ogg')
                 ffmpeg_command = (
-                    f'ffmpeg -hide_banner -y -i "{audio_file_path}" '
-                    f'-vn -c:a libopus -b:a 32k "{audio_file_path.with_suffix(".ogg")}"'
+                    f'ffmpeg -hide_banner -y -i {shell_arg(audio_file_path)} '
+                    f'-vn -c:a libopus -b:a 32k {shell_arg(output_audio_path)}'
                 )
                 output, status_code = await run_command(ffmpeg_command)
                 if status_code != 0:
@@ -1675,7 +2039,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                         t('an_error_occurred', error=f'\n<pre>{output}</pre>')
                     )
                     return
-                audio_file_path = audio_file_path.with_suffix('.ogg')
+                audio_file_path = output_audio_path
             response = model.prompt(
                 attachments=[Attachment(path=str(audio_file_path))],
                 language=language,
@@ -1689,8 +2053,10 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 file_name=audio_file_path.with_suffix('.txt').name,
             )
         elif transcription_method == 'wit':
-            command = f'tafrigh "{input_file_path}" -o "{output_dir.name}" -f txt srt'
-            command += f' -w {wit_access_tokens}'
+            command = (
+                f'tafrigh {shell_arg(input_file_path)} -o {shell_arg(output_dir.name)} -f txt srt'
+            )
+            command += f' -w {shell_arg(wit_access_tokens)}'
             await stream_shell_output(
                 event, command, status_message, progress_message, max_length=100
             )
@@ -1738,14 +2104,12 @@ async def fix_stereo_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
         channel = event.message.text.split('stereo ')[1]
     reply_message = await get_reply_message(event, previous=True)
     channel = 'FR' if channel == 'right' else 'FL'
-    ffmpeg_command = (
-        f'ffmpeg -hide_banner -y -i "{{input}}" '
-        f'-af "pan=mono|c0={channel}" '
-        f'-c:a aac -b:a {{audio_bitrate}} '
-        f'"{{output}}"'
-    )
     await process_media(
-        event, ffmpeg_command, reply_message.file.ext, reply_message=reply_message, get_bitrate=True
+        event,
+        build_fix_stereo_command(channel),
+        reply_message.file.ext,
+        reply_message=reply_message,
+        get_bitrate=True,
     )
     if delete_message_after_process:
         delete_callback_after(event)
