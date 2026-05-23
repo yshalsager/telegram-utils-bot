@@ -359,7 +359,7 @@ async def show_youtube_panel(event: NewMessage.Event | CallbackQuery.Event) -> N
         [Button.inline(t('_youtube_auth'), 'm|youtube|auth')],
         [Button.inline(t('youtube_channels'), 'm|youtube|channels')],
     ]
-    text = t('youtube_panel', count=len(channels))
+    text = t('youtube_panel', channel_count=len(channels))
     await edit_or_reply(event, text, buttons=buttons)
 
 

@@ -401,7 +401,7 @@
   "_youtube": "YouTube",
   "_youtube_description": "Open the YouTube upload panel.",
   "_youtube_auth": "YouTube auth",
-  "youtube_panel": "YouTube panel. You have {count} channel(s).",
+  "youtube_panel": "YouTube panel. You have {channel_count} channel(s).",
   "youtube_auth_panel": "Manage your YouTube channels.",
   "youtube_channels": "Channels",
   "youtube_channels_header": "Your YouTube channels:",

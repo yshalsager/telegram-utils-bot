@@ -401,7 +401,7 @@
   "_youtube": "يوتيوب",
   "_youtube_description": "فتح لوحة الرفع إلى يوتيوب.",
   "_youtube_auth": "توثيق يوتيوب",
-  "youtube_panel": "لوحة يوتيوب. لديك {count} قناة.",
+  "youtube_panel": "لوحة يوتيوب. لديك {channel_count} قناة.",
   "youtube_auth_panel": "إدارة قنوات يوتيوب الخاصة بك.",
   "youtube_channels": "القنوات",
   "youtube_channels_header": "قنوات يوتيوب الخاصة بك:",

@@ -24,6 +24,7 @@ from src.modules.plugins.youtube import (
     youtube_pending_auth_path,
     youtube_token_path,
 )
+from src.utils.i18n import t
 
 
 class YouTubeHelpersTest(TestCase):
@@ -49,6 +50,9 @@ class YouTubeHelpersTest(TestCase):
         assert match
         assert match.group(1) == 'upload'
         assert match.group(2) == 'public | Title'
+
+    def test_youtube_panel_translation_does_not_trigger_plural_formatting(self) -> None:
+        assert '2' in t('youtube_panel', channel_count=2)
 
     def test_youtube_user_state_paths_are_scoped_by_user_and_alias(self) -> None:
         assert normalize_alias(' Main_Channel ') == 'main_channel'
