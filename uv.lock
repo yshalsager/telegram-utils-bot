@@ -726,6 +726,20 @@ wheels = [
 ]
 
 [[package]]
+name = "gpapi"
+version = "0.4.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "protobuf" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/ec/aa8eeeb06d0b5d787db7cb2f6295be8fb6d7ba2c36d5c67ade348f449c75/gpapi-0.4.4.tar.gz", hash = "sha256:1c0d3a89edb99f2ec05c8ec0bd981ecefa307d9dc4c5a958f070e493b6deb72a", size = 91734, upload-time = "2019-11-27T13:01:21.322Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/26/e9/788ac8ae75f863d045d3911f293b56cdc84bfe9f1b15b45b6e767a4c2558/gpapi-0.4.4-py3-none-any.whl", hash = "sha256:7ef4921fdf01f74b97e2719feba304afa55897c41cf3cd429fa329b637d99c7d", size = 103743, upload-time = "2019-11-27T13:01:19.672Z" },
+]
+
+[[package]]
 name = "groq"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2124,6 +2138,7 @@ dependencies = [
     { name = "bgutil-ytdlp-pot-provider" },
     { name = "cryptg" },
     { name = "cryptography" },
+    { name = "gpapi" },
     { name = "hachoir" },
     { name = "humanize" },
     { name = "llm" },
@@ -2158,6 +2173,7 @@ requires-dist = [
     { name = "bgutil-ytdlp-pot-provider", specifier = ">=1.3.1" },
     { name = "cryptg", specifier = ">=0.5.1" },
     { name = "cryptography", specifier = ">=47.0.0" },
+    { name = "gpapi", specifier = ">=0.4.4" },
     { name = "hachoir", specifier = ">=3.3.0" },
     { name = "humanize", specifier = ">=4.12.3" },
     { name = "llm", specifier = ">=0.27.1" },
