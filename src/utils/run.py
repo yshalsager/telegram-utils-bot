@@ -18,6 +18,13 @@ ADMIN_TIMEOUT_SECONDS = 60 * 60 * 6  # 6 hours timeout for admin commands
 logger = logging.getLogger(__name__)
 
 
+def format_pre_block(text: str, max_length: int = MAX_MESSAGE_LENGTH, *, tail: bool = False) -> str:
+    limit = max(0, max_length - len('<pre></pre>'))
+    if len(text) > limit:
+        text = text[-limit:] if tail else text[:limit]
+    return f'<pre>{text}</pre>'
+
+
 async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str]:
     if stream is None:
         return

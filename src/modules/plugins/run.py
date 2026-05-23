@@ -19,6 +19,7 @@ from src.utils.run import (
     MAX_MESSAGE_LENGTH,
     TIMEOUT_BYPASS_SECONDS,
     TIMEOUT_SECONDS,
+    format_pre_block,
     run_subprocess_exec,
     run_subprocess_shell,
 )
@@ -62,9 +63,7 @@ async def stream_shell_output(  # noqa: C901
             current_time = datetime.now(UTC)
             if current_time - last_edit_time >= edit_interval:
                 try:
-                    await progress_message.edit(
-                        f'<pre>{buffer if len(buffer) < max_length else buffer[-max_length:]}</pre>'
-                    )
+                    await progress_message.edit(format_pre_block(buffer, max_length, tail=True))
                     last_edit_time = current_time
                     edit_interval = timedelta(seconds=SECONDS_TO_WAIT)
                 except MessageNotModifiedError:
@@ -80,9 +79,7 @@ async def stream_shell_output(  # noqa: C901
     if not buffer:
         buffer = t('empty_output')
     with suppress(MessageNotModifiedError):
-        await progress_message.edit(
-            f'<pre>{buffer if len(buffer) < MAX_MESSAGE_LENGTH else buffer[:MAX_MESSAGE_LENGTH]}</pre>'
-        )
+        await progress_message.edit(format_pre_block(buffer, max_length))
 
     status = (
         t('process_completed') if code == 0 else t('process_failed_with_return_code', code=code)
