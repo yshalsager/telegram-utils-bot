@@ -1367,6 +1367,19 @@ async def video_create_initial(event: NewMessage.Event | CallbackQuery.Event) ->
     raise StopPropagation
 
 
+def build_static_image_video_command(
+    input_file: Path, audio_file: Path, output_file: Path, duration: float
+) -> str:
+    return (
+        f'ffmpeg -hide_banner -y -loop 1 -framerate 1 -i "{input_file}" '
+        f'-i "{audio_file}" '
+        f'-t {format_ffmpeg_time(duration)} '
+        f'-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p" '
+        f'-c:v libx264 -preset ultrafast -tune stillimage -r 1 '
+        f'-c:a aac -b:a 48k -movflags +faststart "{output_file}"'
+    )
+
+
 async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) -> None:
     audio_message: Message = await event.client.get_messages(event.chat_id, ids=file_ids[0])
     input_message: Message = event.message
@@ -1401,13 +1414,8 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
                 f'-shortest "{output_file}"'
             )
         elif input_message.photo:
-            ffmpeg_command = (
-                f'ffmpeg -hide_banner -y -loop 1 -i "{input_file}" '
-                f'-i "{audio_file}" '
-                f'-vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" '
-                f'-c:v libx264 -preset ultrafast -tune stillimage '
-                f'-c:a aac -b:a 48k -shortest '
-                f'-pix_fmt yuv420p -movflags +faststart "{output_file}"'
+            ffmpeg_command = build_static_image_video_command(
+                input_file, audio_file, output_file, audio_message.file.duration
             )
         else:
             await status_message.edit(t('unsupported_input_file_format'))

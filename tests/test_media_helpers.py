@@ -1,8 +1,10 @@
+from pathlib import Path
 from unittest import TestCase
 
 from src.modules.plugins.media import (
     TIME_RANGES_PATTERN,
     Media,
+    build_static_image_video_command,
     format_ffmpeg_time,
     format_timestamp,
     invert_time_ranges,
@@ -64,6 +66,20 @@ class MediaTimeRangeHelpersTest(TestCase):
     def test_invert_time_ranges_handles_edges_overlap_and_out_of_bounds(self) -> None:
         assert invert_time_ranges([(0, 2), (2, 5), (12, 20)], 8) == [(5, 8)]
         assert invert_time_ranges([(0, 10)], 8) == []
+
+    def test_static_image_video_command_uses_low_frame_rate(self) -> None:
+        command = build_static_image_video_command(
+            input_file=Path('image.jpg'),
+            audio_file=Path('audio.ogg'),
+            output_file=Path('output.mp4'),
+            duration=3.25,
+        )
+
+        assert '-loop 1 -framerate 1 -i "image.jpg"' in command
+        assert '-t 3.25' in command
+        assert '-r 1' in command
+        assert 'format=yuv420p' in command
+        assert '-shortest' not in command
 
 
 class MediaCommandPatternsTest(TestCase):
