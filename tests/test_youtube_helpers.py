@@ -7,8 +7,10 @@ from unittest.mock import patch
 
 import orjson
 from src.modules.plugins.youtube import (
+    YOUTUBE_AUTH_PATTERN,
     build_youtube_resource,
     get_youtube_client_config,
+    get_youtube_partner_config,
     parse_credentials_expiry,
     parse_youtube_upload_args,
 )
@@ -30,6 +32,12 @@ class YouTubeHelpersTest(TestCase):
             'description': '',
             'tags': [],
         }
+
+    def test_youtube_auth_pattern_accepts_remove(self) -> None:
+        match = YOUTUBE_AUTH_PATTERN.match('/youtube auth remove')
+
+        assert match
+        assert match.group(1) == 'remove'
 
     def test_build_youtube_resource_sets_required_upload_metadata(self) -> None:
         assert build_youtube_resource(
@@ -74,6 +82,19 @@ class YouTubeHelpersTest(TestCase):
                 },
             ):
                 assert get_youtube_client_config() == ('file-client-id', 'file-secret')
+
+    def test_get_youtube_partner_config_requires_content_owner_and_channel(self) -> None:
+        with patch.dict(
+            environ,
+            {
+                'YOUTUBE_CONTENT_OWNER_ID': 'owner-id',
+                'YOUTUBE_CONTENT_OWNER_CHANNEL_ID': 'channel-id',
+            },
+        ):
+            assert get_youtube_partner_config() == {
+                'onBehalfOfContentOwner': 'owner-id',
+                'onBehalfOfContentOwnerChannel': 'channel-id',
+            }
 
     def test_parse_credentials_expiry_returns_naive_utc_datetime(self) -> None:
         assert parse_credentials_expiry('2026-05-23T10:15:30Z') == datetime(

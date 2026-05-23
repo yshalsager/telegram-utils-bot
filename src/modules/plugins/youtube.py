@@ -25,7 +25,11 @@ from src.utils.filters import has_file, is_admin_in_private
 from src.utils.i18n import t
 from src.utils.telegram import get_reply_message, send_progress_message
 
-YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.upload'
+YOUTUBE_SCOPES = [
+    'https://www.googleapis.com/auth/youtube.upload',
+    'https://www.googleapis.com/auth/youtube.readonly',
+]
+YOUTUBE_SCOPE = ' '.join(YOUTUBE_SCOPES)
 YOUTUBE_DEVICE_CODE_URL = 'https://oauth2.googleapis.com/device/code'
 YOUTUBE_TOKEN_URL = 'https://oauth2.googleapis.com/token'  # noqa: S105
 YOUTUBE_TOKEN_PATH = STATE_DIR / 'youtube_token.json'
@@ -37,7 +41,7 @@ RETRIABLE_STATUS_CODES = {
     HTTPStatus.GATEWAY_TIMEOUT,
 }
 YOUTUBE_UPLOAD_PATTERN = re.compile(r'^/youtube\s+upload(?:\s+(.+))?$')
-YOUTUBE_AUTH_PATTERN = re.compile(r'^/youtube\s+auth(?:\s+(check|reset))?$')
+YOUTUBE_AUTH_PATTERN = re.compile(r'^/youtube\s+auth(?:\s+(check|reset|remove))?$')
 YOUTUBE_STATUS_PATTERN = re.compile(r'^/youtube\s+status$')
 YOUTUBE_PRIVACY_STATUSES = {'private', 'unlisted', 'public'}
 
@@ -59,6 +63,17 @@ def get_youtube_client_config() -> tuple[str, str] | None:
     client_id = config.get('client_id')
     client_secret = config.get('client_secret')
     return (client_id, client_secret) if client_id and client_secret else None
+
+
+def get_youtube_partner_config() -> dict[str, str]:
+    content_owner = getenv('YOUTUBE_CONTENT_OWNER_ID')
+    channel = getenv('YOUTUBE_CONTENT_OWNER_CHANNEL_ID')
+    if not content_owner or not channel:
+        return {}
+    return {
+        'onBehalfOfContentOwner': content_owner,
+        'onBehalfOfContentOwnerChannel': channel,
+    }
 
 
 def save_youtube_credentials(credentials: Credentials) -> None:
@@ -84,7 +99,7 @@ def load_youtube_credentials() -> Credentials | None:
         token_uri=payload.get('token_uri') or YOUTUBE_TOKEN_URL,
         client_id=client_id,
         client_secret=client_secret,
-        scopes=payload.get('scopes') or [YOUTUBE_SCOPE],
+        scopes=payload.get('scopes') or YOUTUBE_SCOPES,
         expiry=parse_credentials_expiry(payload.get('expiry')),
     )
     if credentials.expired and credentials.refresh_token:
@@ -142,9 +157,9 @@ def upload_video(
     on_progress: Callable[[int], None] | None = None,
 ) -> str:
     youtube = build('youtube', 'v3', credentials=credentials)
-    request = youtube.videos().insert(
-        part='snippet,status',
-        body=cast(
+    request_args: dict[str, Any] = {
+        'part': 'snippet,status',
+        'body': cast(
             Any,
             build_youtube_resource(
                 title=title,
@@ -153,8 +168,10 @@ def upload_video(
                 privacy_status=privacy_status,
             ),
         ),
-        media_body=MediaFileUpload(str(video_path), chunksize=8 * 1024 * 1024, resumable=True),
-    )
+        'media_body': MediaFileUpload(str(video_path), chunksize=8 * 1024 * 1024, resumable=True),
+    }
+    request_args.update(get_youtube_partner_config())
+    request = youtube.videos().insert(**request_args)
 
     response = None
     retry = 0
@@ -175,6 +192,17 @@ def upload_video(
     return str(video_id)
 
 
+def get_authenticated_channel(credentials: Credentials) -> str | None:
+    youtube = build('youtube', 'v3', credentials=credentials)
+    response = youtube.channels().list(part='snippet', mine=True).execute()
+    items = response.get('items') or []
+    if not items:
+        return None
+    channel = items[0]
+    title = channel.get('snippet', {}).get('title') or '-'
+    return f'{title} ({channel.get("id", "-")})'
+
+
 async def reply_text(event: NewMessage.Event | CallbackQuery.Event, text: str) -> None:
     if isinstance(event, CallbackQuery.Event):
         await event.answer(text, alert=True)
@@ -189,7 +217,7 @@ async def youtube_auth(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
     match = YOUTUBE_AUTH_PATTERN.match(event.message.raw_text or '')
     action = match.group(1) if match else None
-    if action == 'reset':
+    if action in ('reset', 'remove'):
         YOUTUBE_AUTH_PATH.unlink(missing_ok=True)
         YOUTUBE_TOKEN_PATH.unlink(missing_ok=True)
         await event.reply(t('youtube_auth_reset'))
@@ -263,7 +291,7 @@ async def youtube_auth_check(event: NewMessage.Event | CallbackQuery.Event) -> N
         token_uri=YOUTUBE_TOKEN_URL,
         client_id=client_id,
         client_secret=client_secret,
-        scopes=[YOUTUBE_SCOPE],
+        scopes=YOUTUBE_SCOPES,
         expiry=(
             datetime.now(UTC) + timedelta(seconds=token_payload.get('expires_in', 3600))
         ).replace(tzinfo=None),
@@ -281,7 +309,14 @@ async def youtube_status(event: NewMessage.Event | CallbackQuery.Event) -> None:
             return
         await reply_text(event, t('youtube_not_authenticated'))
         return
-    await reply_text(event, t('youtube_authenticated', channel='-'))
+    try:
+        channel = await asyncio.to_thread(get_authenticated_channel, credentials)
+    except HttpError:
+        channel = None
+    await reply_text(
+        event,
+        t('youtube_authenticated', channel=channel or t('youtube_channel_unknown')),
+    )
 
 
 async def youtube_upload(event: NewMessage.Event | CallbackQuery.Event) -> None:
