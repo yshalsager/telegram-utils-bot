@@ -654,6 +654,18 @@ async def handle_youtube_message(event: NewMessage.Event) -> None:
         await show_youtube_panel(event)
 
 
+async def youtube_upload_entrypoint(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    input_text = ''
+    if isinstance(event, NewMessage.Event):
+        match = YOUTUBE_PATTERN.match(event.message.raw_text or '')
+        input_text = (match.group(2) if match else '') or ''
+    reply_message = await get_reply_message(event, previous=True)
+    if not reply_message or not reply_message.file:
+        await reply_text(event, t('unsupported_file_type'))
+        return
+    await show_youtube_upload_channels(event, reply_message, input_text)
+
+
 async def youtube_entrypoint(event: NewMessage.Event | CallbackQuery.Event) -> None:
     if isinstance(event, CallbackQuery.Event):
         await handle_youtube_callback(event)
@@ -668,6 +680,13 @@ class YouTube(ModuleBase):
         'youtube': Command(
             handler=youtube_entrypoint,
             description=t('_youtube_description'),
+            pattern=YOUTUBE_PATTERN,
+            condition=lambda e, _: bool(e.is_private),
+            is_applicable_for_reply=False,
+        ),
+        'youtube upload': Command(
+            handler=youtube_upload_entrypoint,
+            description=t('_youtube_upload_description'),
             pattern=YOUTUBE_PATTERN,
             condition=lambda e, _: bool(e.is_private),
             is_applicable_for_reply=True,

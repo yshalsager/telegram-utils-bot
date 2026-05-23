@@ -417,6 +417,8 @@
   "_youtube_module_description": "YouTube upload commands.",
   "_youtube": "YouTube",
   "_youtube_description": "Open the YouTube upload panel.",
+  "_youtube_upload": "Upload to YouTube",
+  "_youtube_upload_description": "Upload the replied video to YouTube.",
   "_youtube_auth": "YouTube auth",
   "youtube_panel": "YouTube panel. You have {channel_count} channel(s).",
   "youtube_auth_panel": "Manage your YouTube channels.",

@@ -417,6 +417,8 @@
   "_youtube_module_description": "أوامر الرفع إلى يوتيوب.",
   "_youtube": "يوتيوب",
   "_youtube_description": "فتح لوحة الرفع إلى يوتيوب.",
+  "_youtube_upload": "رفع إلى يوتيوب",
+  "_youtube_upload_description": "رفع الفيديو المردود عليه إلى يوتيوب.",
   "_youtube_auth": "توثيق يوتيوب",
   "youtube_panel": "لوحة يوتيوب. لديك {channel_count} قناة.",
   "youtube_auth_panel": "إدارة قنوات يوتيوب الخاصة بك.",
