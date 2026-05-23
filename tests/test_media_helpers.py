@@ -2,8 +2,10 @@ from pathlib import Path
 from unittest import TestCase
 
 from src.modules.plugins.media import (
+    ALLOWED_SPEED_FACTORS,
     TIME_RANGES_PATTERN,
     Media,
+    build_atempo_filter,
     build_static_image_video_command,
     format_ffmpeg_time,
     format_timestamp,
@@ -82,6 +84,17 @@ class MediaTimeRangeHelpersTest(TestCase):
         assert '-shortest' not in command
 
 
+class MediaSpeedHelpersTest(TestCase):
+    def test_speed_factor_buttons_put_slow_factors_first(self) -> None:
+        assert ALLOWED_SPEED_FACTORS[:3] == [0.25, 0.5, 0.75]
+        assert 1 not in ALLOWED_SPEED_FACTORS
+
+    def test_build_atempo_filter_handles_slow_and_fast_factors(self) -> None:
+        assert build_atempo_filter(0.75) == 'atempo=0.75'
+        assert build_atempo_filter(0.25) == 'atempo=0.5,atempo=0.5'
+        assert build_atempo_filter(3) == 'atempo=2,atempo=1.5'
+
+
 class MediaCommandPatternsTest(TestCase):
     def test_existing_media_cut_command_pattern_still_matches(self) -> None:
         match = Media.commands['media cut'].pattern.match(
@@ -105,3 +118,11 @@ class MediaCommandPatternsTest(TestCase):
 
     def test_media_crop_out_does_not_shadow_existing_media_cut_command(self) -> None:
         assert Media.commands['media crop'].pattern.match('/media cut 00:00:00 00:30:00') is None
+
+    def test_media_speed_command_pattern_accepts_slow_factors(self) -> None:
+        match = Media.commands['media speed'].pattern.match('/media speed 0.5')
+
+        assert match is not None
+        assert match.group(1) == 'media'
+        assert match.group(2) == 'speed'
+        assert match.group(3) == '0.5'

@@ -44,7 +44,7 @@ from src.utils.telegram import (
 
 ffprobe_command = 'ffprobe -v quiet -print_format json -show_format -show_streams "{input}"'
 
-ALLOWED_SPEED_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
+ALLOWED_SPEED_FACTORS = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
 ALLOWED_AUDIO_COMPRESS_BITRATES = [16, 32, 48, 64, 96, 128]
 ALLOWED_AMPLIFY_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
 ALLOWED_VIDEO_COMPRESS_PERCENTAGES = list(range(20, 100, 10))
@@ -77,6 +77,19 @@ def format_ffmpeg_time(seconds: float) -> str:
     if seconds == floor(seconds):
         return str(floor(seconds))
     return f'{seconds:.3f}'.rstrip('0').rstrip('.')
+
+
+def build_atempo_filter(speed_factor: float) -> str:
+    atempo_filters = []
+    remaining = float(speed_factor)
+    while remaining < 0.5:
+        atempo_filters.append('atempo=0.5')
+        remaining /= 0.5
+    while remaining > 2:
+        atempo_filters.append('atempo=2')
+        remaining /= 2
+    atempo_filters.append(f'atempo={remaining:.5f}'.rstrip('0').rstrip('.'))
+    return ','.join(atempo_filters)
 
 
 def parse_time_ranges(time_ranges_text: str) -> list[tuple[int, int]]:
@@ -1147,7 +1160,7 @@ async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             prefix='m|media_speed|',
             prompt_text=f'{t("choose_speed_factor")}:',
             pairs=[(f'{factor}x', f'm|media_speed|{factor}') for factor in ALLOWED_SPEED_FACTORS],
-            cols=4,
+            cols=3,
             cast=float,
         )
         if speed_factor is None:
@@ -1157,18 +1170,12 @@ async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         match = Media.commands['media speed'].pattern.match(event.message.text)
         speed_factor = float(match.group(3)) if match else 1.0
 
-    if speed_factor <= 1 or speed_factor > 3:
-        await event.reply(t('speed_factor_must_be_between_1_and_3'))
+    if speed_factor < 0.25 or speed_factor == 1 or speed_factor > 3:
+        await event.reply(t('speed_factor_must_be_between_0_25_and_3'))
         return
 
     reply_message = await get_reply_message(event, previous=True)
-    atempo_filters = []
-    remaining = float(speed_factor)
-    while remaining > 2:
-        atempo_filters.append('atempo=2')
-        remaining /= 2
-    atempo_filters.append(f'atempo={remaining:.5f}'.rstrip('0').rstrip('.'))
-    atempo = ','.join(atempo_filters)
+    atempo = build_atempo_filter(speed_factor)
 
     if bool(reply_message.video or reply_message.video_note):
         ffmpeg_command = (
@@ -1196,7 +1203,9 @@ async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         output_suffix,
         reply_message=reply_message,
         is_voice=is_voice,
-        feedback_text=t('media_sped_up', factor=speed_factor),
+        feedback_text=t(
+            'media_slowed_down' if speed_factor < 1 else 'media_sped_up', factor=speed_factor
+        ),
     )
     if delete_message_after_process:
         delete_callback_after(event)
