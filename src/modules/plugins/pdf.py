@@ -176,10 +176,13 @@ def parse_page_numbers(input_string: str) -> list[int]:
         if '-' in part:
             with suppress(ValueError):
                 start, end = map(int, part.split('-'))
-                pages.update(range(start - 1, end))
+                if start > 0 and end >= start:
+                    pages.update(range(start - 1, end))
         else:
             with suppress(ValueError):
-                pages.add(int(part))
+                page = int(part)
+                if page > 0:
+                    pages.add(page - 1)
     return sorted(pages)
 
 
@@ -272,7 +275,8 @@ async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> No
             ):
                 for page in doc:
                     zip_file.writestr(
-                        f'page-{page.number}.jpg', page.get_pixmap().tobytes('jpg', jpg_quality=75)
+                        f'page-{page.number + 1}.jpg',
+                        page.get_pixmap().tobytes('jpg', jpg_quality=75),
                     )
             zip_buffer.seek(0)
             output_file = temp_file_path.with_name(
