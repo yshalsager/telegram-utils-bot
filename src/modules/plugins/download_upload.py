@@ -1,18 +1,15 @@
-from dataclasses import dataclass
 from pathlib import Path
+from shlex import join as shell_join
 from shlex import quote
-from shutil import which
-from tempfile import NamedTemporaryFile, TemporaryDirectory
+from tempfile import TemporaryDirectory
 from typing import ClassVar
-from urllib.parse import quote as url_quote
-from urllib.parse import unquote, urlparse
 
 import aiohttp
 import regex as re
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
-from src import DOWNLOADS_DIR, PARENT_DIR, STATE_DIR
+from src import DOWNLOADS_DIR, PARENT_DIR
 from src.modules.base import ModuleBase
 from src.modules.plugins.media import build_media_upload_params
 from src.modules.plugins.run import stream_shell_output
@@ -32,136 +29,22 @@ from src.utils.filters import (
     is_admin_in_private,
     is_file,
 )
+from src.utils.google_drive import (
+    GDL_PATH,
+    collect_downloaded_files,
+    ensure_gdrive_downloader,
+    extract_gdrive_input,
+    missing_gdl_dependencies,
+)
 from src.utils.i18n import t
 from src.utils.patterns import HTTP_URL_PATTERN
+from src.utils.remote_files import ExternalDownload, RemoteFile, resolve_download_plan
 from src.utils.telegram import get_reply_message, send_progress_message
-
-GDL_DOWNLOAD_URL = (
-    'https://raw.githubusercontent.com/Akianonymus/gdrive-downloader/master/release/gdl'
-)
-GDL_PATH = STATE_DIR / 'bin' / 'gdl'
-GDL_REQUIRED_PROGRAMS = ('bash', 'curl', 'jq', 'xargs')
-GDRIVE_ID_PATTERN = re.compile(r'^[A-Za-z0-9_-]{10,}$')
-GDRIVE_URL_PATTERN = re.compile(
-    r'https?://(?:'
-    r'drive\.google\.com/[^\s<>"\']*id=[A-Za-z0-9_-]+'
-    r'|drive\.google\.com/[^\s<>"\']*file/d/[A-Za-z0-9_-]+'
-    r'|drive\.google\.com/[^\s<>"\']*drive[^\s<>"\']*folders/[A-Za-z0-9_-]+'
-    r'|docs\.google\.com/[^\s<>"\']*/d/[A-Za-z0-9_-]+'
-    r')[^\s<>"\']*'
-)
-ARCHIVE_IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$')
-ARCHIVE_URL_PATTERN = re.compile(
-    r'https?://(?:www\.)?archive\.org/(?:details|download)/[^\s<>"\']+'
-)
-ARCHIVE_IGNORED_SUFFIXES = (
-    '_archive.torrent',
-    '_files.xml',
-    '_meta.sqlite',
-    '_meta.xml',
-)
-
-
-@dataclass(frozen=True)
-class ArchiveInput:
-    identifier: str
-    selected_path: str = ''
-
-
-@dataclass(frozen=True)
-class ArchiveFile:
-    name: str
-    source: str = ''
-
-    @classmethod
-    def from_payload(cls, payload: dict) -> ArchiveFile:
-        return cls(name=str(payload.get('name') or ''), source=str(payload.get('source') or ''))
-
-    @property
-    def is_original(self) -> bool:
-        return self.source == 'original'
-
-    @property
-    def is_metadata(self) -> bool:
-        return self.name.startswith('__ia_') or self.name.endswith(ARCHIVE_IGNORED_SUFFIXES)
-
-    def download_url(self, identifier: str) -> str:
-        return (
-            f'https://archive.org/download/{url_quote(identifier)}/{url_quote(self.name, safe="/")}'
-        )
-
-
-def extract_gdrive_input(text: str) -> str | None:
-    if match := re.search(GDRIVE_URL_PATTERN, text):
-        return match.group(0).rstrip('.,،)')
-
-    text = text.strip()
-    if re.fullmatch(GDRIVE_ID_PATTERN, text):
-        return text
-    return None
 
 
 def extract_gdrive_command_input(text: str) -> str:
     match = DownloadUpload.commands['gdrive'].pattern.match(text)
     return (match.group(1) if match else '') or ''
-
-
-def extract_archive_input(text: str) -> ArchiveInput | None:
-    if match := re.search(ARCHIVE_URL_PATTERN, text):
-        url = match.group(0).rstrip('.,،)')
-        parsed = urlparse(url)
-        parts = [unquote(part) for part in parsed.path.strip('/').split('/')]
-        if len(parts) >= 2 and re.fullmatch(ARCHIVE_IDENTIFIER_PATTERN, parts[1]):
-            return ArchiveInput(parts[1], '/'.join(parts[2:]).strip('/'))
-
-    text = text.strip()
-    if re.fullmatch(ARCHIVE_IDENTIFIER_PATTERN, text):
-        return ArchiveInput(text)
-    return None
-
-
-def extract_archive_command_input(text: str) -> str:
-    match = DownloadUpload.commands['archive'].pattern.match(text)
-    return (match.group(1) if match else '') or ''
-
-
-def select_archive_files(files: list[ArchiveFile], selected_path: str = '') -> list[ArchiveFile]:
-    selected_path = selected_path.strip('/')
-    if not selected_path:
-        return sorted(
-            [file for file in files if file.is_original and not file.is_metadata],
-            key=lambda file: file.name,
-        )
-
-    exact_matches = [file for file in files if file.name == selected_path]
-    if exact_matches:
-        return exact_matches
-
-    path_matches = [file for file in files if file.name.startswith(selected_path)]
-    original_matches = [file for file in path_matches if file.is_original and not file.is_metadata]
-    return sorted(original_matches or path_matches, key=lambda file: file.name)
-
-
-def collect_downloaded_files(download_dir: Path) -> list[Path]:
-    return sorted(path for path in download_dir.rglob('*') if path.is_file())
-
-
-def missing_gdl_dependencies() -> list[str]:
-    return [program for program in GDL_REQUIRED_PROGRAMS if which(program) is None]
-
-
-async def ensure_gdrive_downloader() -> Path:
-    if GDL_PATH.exists():
-        return GDL_PATH
-
-    GDL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = GDL_PATH.with_suffix('.tmp')
-    async with aiohttp.ClientSession() as session, session.get(GDL_DOWNLOAD_URL) as response:
-        response.raise_for_status()
-        temp_path.write_bytes(await response.read())
-    temp_path.chmod(0o755)
-    temp_path.replace(GDL_PATH)
-    return GDL_PATH
 
 
 async def download_from_url(
@@ -170,27 +53,20 @@ async def download_from_url(
     download_dir: Path,
     progress_message: Message | None = None,
     filename: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> Path:
     filename = filename or get_filename_from_url(url)
     download_to = download_dir / filename
+    header_args = ' '.join(
+        f'--header={quote(f"{header}: {value}")}' for header, value in (headers or {}).items()
+    )
     cmd = (
         f'aria2c -x 16 -d {quote(str(download_dir))} -o {quote(filename)} '
+        f'{header_args} '
         f'{quote(url)} --allow-overwrite=true'
     )
     await stream_shell_output(event, cmd, progress_message=progress_message)
     return download_to
-
-
-async def fetch_archive_files(identifier: str) -> list[ArchiveFile]:
-    async with (
-        aiohttp.ClientSession() as session,
-        session.get(
-            f'https://archive.org/metadata/{identifier}', params={'extended_err': '1'}
-        ) as response,
-    ):
-        response.raise_for_status()
-        payload = await response.json()
-    return [ArchiveFile.from_payload(file) for file in payload.get('files', []) if file.get('name')]
 
 
 async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -211,6 +87,90 @@ async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -
             temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
             temp_file_path.rename(download_to)
     await progress_message.edit(f'{t("file_downloaded")}: <code>{download_to}</code>')
+
+
+async def upload_file_command(event: NewMessage.Event) -> None:
+    progress_message = await event.reply(t('starting_file_upload'))
+    for file_path in PARENT_DIR.glob(event.message.text.split(maxsplit=1)[1].strip()):
+        if file_path.exists():
+            await upload_file(event, file_path, progress_message)
+            await progress_message.edit(f'{t("file_uploaded")}: <code>{file_path.name}</code>')
+            return
+    await progress_message.edit(t('no_files_found'))
+
+
+async def download_remote_files(
+    event: NewMessage.Event | CallbackQuery.Event,
+    remote_files: list[RemoteFile],
+    download_dir: Path,
+    progress_message: Message,
+    custom_name: str = '',
+) -> list[Path]:
+    output_files = []
+    for idx, remote_file in enumerate(remote_files, start=1):
+        if len(remote_files) > 1:
+            await progress_message.edit(f'{t("downloading")} {idx}/{len(remote_files)}')
+        filename = (
+            custom_name if custom_name and len(remote_files) == 1 else Path(remote_file.name).name
+        )
+        output_file = await download_from_url(
+            event,
+            remote_file.url,
+            download_dir,
+            progress_message=progress_message,
+            filename=filename,
+            headers=remote_file.headers,
+        )
+        if not output_file.exists():
+            return []
+        output_files.append(output_file)
+    return output_files
+
+
+async def upload_output_files(
+    event: NewMessage.Event | CallbackQuery.Event,
+    output_files: list[Path],
+    progress_message: Message,
+) -> None:
+    for idx, output_file in enumerate(output_files, start=1):
+        if len(output_files) > 1:
+            await progress_message.edit(f'{t("uploading")} {idx}/{len(output_files)}')
+        await upload_file_and_cleanup(event, output_file, progress_message)
+
+
+async def collect_download_plan_files(
+    event: NewMessage.Event | CallbackQuery.Event,
+    plan: ExternalDownload | list[RemoteFile],
+    download_dir: Path,
+    progress_message: Message,
+    custom_name: str = '',
+) -> list[Path]:
+    if isinstance(plan, ExternalDownload):
+        await stream_shell_output(
+            event, shell_join(plan.command), progress_message=progress_message
+        )
+        return collect_downloaded_files(plan.output_dir)
+    return await download_remote_files(event, plan, download_dir, progress_message, custom_name)
+
+
+async def upload_files_from_plan(
+    event: NewMessage.Event | CallbackQuery.Event,
+    plan: ExternalDownload | list[RemoteFile],
+    download_dir: Path,
+    progress_message: Message,
+    custom_name: str = '',
+) -> None:
+    output_files = await collect_download_plan_files(
+        event, plan, download_dir, progress_message, custom_name
+    )
+    if not output_files:
+        await progress_message.edit(t('download_failed'))
+        return
+
+    await progress_message.edit(t('download_complete_starting_upload'))
+    await upload_output_files(event, output_files, progress_message)
+    uploaded = output_files[0].name if len(output_files) == 1 else str(len(output_files))
+    await progress_message.edit(f'{t("file_uploaded")}: <code>{uploaded}</code>')
 
 
 async def download_from_gdrive(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -245,113 +205,61 @@ async def download_from_gdrive(event: NewMessage.Event | CallbackQuery.Event) ->
 
     with TemporaryDirectory(dir=DOWNLOADS_DIR) as download_dir_name:
         download_dir = Path(download_dir_name)
-        command = (
-            f'{quote(str(gdl_path))} {quote(gdrive_input)} '
-            f'-d {quote(str(download_dir))} --skip-internet-check'
+        await upload_files_from_plan(
+            event,
+            ExternalDownload(
+                name='google-drive',
+                command=(
+                    str(gdl_path),
+                    gdrive_input,
+                    '-d',
+                    str(download_dir),
+                    '--skip-internet-check',
+                ),
+                output_dir=download_dir,
+            ),
+            download_dir,
+            progress_message,
         )
-        await stream_shell_output(event, command, progress_message=progress_message)
-        output_files = collect_downloaded_files(download_dir)
-        if not output_files:
-            await progress_message.edit(t('download_failed'))
-            return
-
-        await progress_message.edit(t('download_complete_starting_upload'))
-        for idx, output_file in enumerate(output_files, start=1):
-            await progress_message.edit(f'{t("uploading")} {idx}/{len(output_files)}')
-            await upload_file_and_cleanup(event, output_file, progress_message)
-
-    await progress_message.edit(f'{t("file_uploaded")}: <code>{len(output_files)}</code>')
 
 
-async def download_from_archive(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    input_text = (
-        extract_archive_command_input(event.message.raw_text or '')
-        if isinstance(event, NewMessage.Event)
-        else ''
-    )
-    if not input_text:
-        reply_message = await get_reply_message(event, previous=True)
-        input_text = reply_message.raw_text if reply_message else ''
-
-    archive_input = extract_archive_input(input_text)
-    if not archive_input:
-        await event.reply(t('no_valid_url_found'))
-        return
-
-    progress_message = await send_progress_message(event, t('starting_file_download'))
-    try:
-        files = await fetch_archive_files(archive_input.identifier)
-    except aiohttp.ClientError as e:
-        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e}</pre>'))
-        return
-
-    archive_files = select_archive_files(files, archive_input.selected_path)
-    if not archive_files:
-        await progress_message.edit(t('no_files_found'))
-        return
-
-    with TemporaryDirectory(dir=DOWNLOADS_DIR) as download_dir_name:
-        download_dir = Path(download_dir_name)
-        await progress_message.edit(t('download_complete_starting_upload'))
-        for idx, archive_file in enumerate(archive_files, start=1):
-            await progress_message.edit(f'{t("downloading")} {idx}/{len(archive_files)}')
-            output_file = await download_from_url(
-                event,
-                archive_file.download_url(archive_input.identifier),
-                download_dir,
-                progress_message=progress_message,
-                filename=Path(archive_file.name).name,
-            )
-            if not output_file.exists():
-                await progress_message.edit(t('download_failed'))
-                return
-            await progress_message.edit(f'{t("uploading")} {idx}/{len(archive_files)}')
-            await upload_file_and_cleanup(event, output_file, progress_message)
-
-    await progress_message.edit(f'{t("file_uploaded")}: <code>{len(archive_files)}</code>')
-
-
-async def upload_file_command(event: NewMessage.Event) -> None:
-    progress_message = await event.reply(t('starting_file_upload'))
-    for file_path in PARENT_DIR.glob(event.message.text.split(maxsplit=1)[1].strip()):
-        if file_path.exists():
-            await upload_file(event, file_path, progress_message)
-            await progress_message.edit(f'{t("file_uploaded")}: <code>{file_path.name}</code>')
-            return
-    await progress_message.edit(t('no_files_found'))
-
-
-async def upload_from_url_command(event: NewMessage.Event) -> None:
+async def upload_from_url_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
-    message = reply_message or event.message
+    message = reply_message or (
+        await event.get_message() if isinstance(event, CallbackQuery.Event) else event.message
+    )
+    if message is None:
+        await event.answer(t('no_valid_url_found'), alert=True)
+        return
     custom_name = ''
     url_match = re.search(HTTP_URL_PATTERN, message.raw_text)
     if url_match:
         url = url_match.group(0)
     else:
-        await event.reply(t('no_valid_url_found'))
+        if isinstance(event, CallbackQuery.Event):
+            await event.answer(t('no_valid_url_found'), alert=True)
+        else:
+            await event.reply(t('no_valid_url_found'))
         return
     if custom := (message.raw_text or '').split('|', 1):
         custom_name = custom[1].strip() if len(custom) > 1 else ''
     progress_message = await send_progress_message(event, t('starting_file_download'))
 
-    with NamedTemporaryFile(dir=DOWNLOADS_DIR, delete=False) as temp_file:
-        download_to = await download_from_url(
-            event, url, Path(temp_file.name).parent, progress_message=progress_message
+    try:
+        plan = await resolve_download_plan(url)
+    except aiohttp.ClientError as e:
+        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e}</pre>'))
+        return
+
+    with TemporaryDirectory(dir=DOWNLOADS_DIR) as download_dir_name:
+        download_dir = Path(download_dir_name)
+        await upload_files_from_plan(
+            event,
+            plan or [RemoteFile(name=custom_name or get_filename_from_url(url), url=url)],
+            download_dir,
+            progress_message,
+            custom_name,
         )
-        if not download_to.exists():
-            await progress_message.edit(t('download_failed'))
-            return
-
-        if custom_name:
-            new_download_to = download_to.with_name(custom_name)
-            download_to.rename(new_download_to)
-            download_to = new_download_to
-
-        await progress_message.edit(t('download_complete_starting_upload'))
-        await upload_file_and_cleanup(event, download_to, progress_message, unlink=False)
-        await progress_message.edit(f'{t("file_uploaded")}: <code>{download_to.name}</code>')
-        Path(temp_file.name).unlink(missing_ok=True)
 
 
 async def upload_as_file_or_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -416,13 +324,6 @@ class DownloadUpload(ModuleBase):
             handler=download_from_gdrive,
             description=t('_gdrive_description'),
             pattern=re.compile(r'^/gdrive(?:\s+(.+))?$'),
-            condition=is_admin_in_private,
-            is_applicable_for_reply=True,
-        ),
-        'archive': Command(
-            handler=download_from_archive,
-            description=t('_archive_description'),
-            pattern=re.compile(r'^/archive(?:\s+(.+))?$'),
             condition=is_admin_in_private,
             is_applicable_for_reply=True,
         ),

@@ -3,15 +3,15 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from src.modules.plugins.download_upload import (
-    ArchiveFile,
     DownloadUpload,
-    collect_downloaded_files,
-    extract_archive_command_input,
-    extract_archive_input,
     extract_gdrive_command_input,
-    extract_gdrive_input,
+)
+from src.utils.archive_org import (
+    ArchiveFile,
+    extract_archive_input,
     select_archive_files,
 )
+from src.utils.google_drive import collect_downloaded_files, extract_gdrive_input
 
 
 class GDriveInputTest(TestCase):
@@ -91,6 +91,9 @@ class ArchiveInputTest(TestCase):
 
 
 class ArchiveDownloadHelpersTest(TestCase):
+    def test_archive_command_is_not_registered(self) -> None:
+        assert 'archive' not in DownloadUpload.commands
+
     def test_select_archive_files_uses_original_non_metadata_files_by_default(self) -> None:
         files = [
             ArchiveFile('item_meta.xml', 'original'),
@@ -121,16 +124,3 @@ class ArchiveDownloadHelpersTest(TestCase):
         assert select_archive_files(files, 'sample-book') == [
             ArchiveFile('sample-book.pdf', 'original')
         ]
-
-    def test_archive_command_pattern_accepts_direct_and_reply_forms(self) -> None:
-        pattern = DownloadUpload.commands['archive'].pattern
-
-        assert pattern.match('/archive')
-        assert pattern.match('/archive https://archive.org/details/example_item')
-
-    def test_extract_archive_command_input_allows_empty_callback_reply_flow(self) -> None:
-        assert extract_archive_command_input('/archive') == ''
-        assert (
-            extract_archive_command_input('/archive https://archive.org/details/example_item')
-            == 'https://archive.org/details/example_item'
-        )
