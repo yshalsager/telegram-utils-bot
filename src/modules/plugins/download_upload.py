@@ -31,6 +31,7 @@ from src.utils.filters import (
 )
 from src.utils.google_drive import (
     GDL_PATH,
+    GDRIVE_URL_PATTERN,
     collect_downloaded_files,
     ensure_gdrive_downloader,
     extract_gdrive_input,
@@ -45,6 +46,15 @@ from src.utils.telegram import get_reply_message, send_progress_message
 def extract_gdrive_command_input(text: str) -> str:
     match = DownloadUpload.commands['gdrive'].pattern.match(text)
     return (match.group(1) if match else '') or ''
+
+
+def has_gdrive_download_input(event: NewMessage.Event, message: Message | None) -> bool:
+    if not is_admin_in_private(event, message or event.message):
+        return False
+    if DownloadUpload.commands['gdrive'].pattern.match(event.message.raw_text or ''):
+        return True
+    target = message or event.message
+    return bool(re.search(GDRIVE_URL_PATTERN, target.raw_text or ''))
 
 
 async def download_from_url(
@@ -324,7 +334,7 @@ class DownloadUpload(ModuleBase):
             handler=download_from_gdrive,
             description=t('_gdrive_description'),
             pattern=re.compile(r'^/gdrive(?:\s+(.+))?$'),
-            condition=is_admin_in_private,
+            condition=has_gdrive_download_input,
             is_applicable_for_reply=True,
         ),
         'upload file': Command(

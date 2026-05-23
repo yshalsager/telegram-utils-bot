@@ -1,16 +1,20 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from typing import Any
 from unittest import TestCase
 
 from src.modules.plugins.download_upload import (
     DownloadUpload,
     extract_gdrive_command_input,
+    has_gdrive_download_input,
 )
 from src.utils.archive_org import (
     ArchiveFile,
     extract_archive_input,
     select_archive_files,
 )
+from src.utils.filters import BOT_ADMINS
 from src.utils.google_drive import collect_downloaded_files, extract_gdrive_input
 
 
@@ -34,6 +38,20 @@ class GDriveInputTest(TestCase):
 
 
 class GDriveDownloadHelpersTest(TestCase):
+    def setUp(self) -> None:
+        self.bot_admins = list(BOT_ADMINS)
+        BOT_ADMINS[:] = [123]
+
+    def tearDown(self) -> None:
+        BOT_ADMINS[:] = self.bot_admins
+
+    def make_event(self, text: str) -> Any:
+        return SimpleNamespace(
+            is_private=True,
+            sender_id=123,
+            message=SimpleNamespace(raw_text=text, file=None, is_reply=False),
+        )
+
     def test_collect_downloaded_files_returns_files_recursively(self) -> None:
         with TemporaryDirectory() as temp_dir_name:
             temp_dir = Path(temp_dir_name)
@@ -57,6 +75,15 @@ class GDriveDownloadHelpersTest(TestCase):
             extract_gdrive_command_input('/gdrive https://drive.google.com/open?id=abc_123-DEF456')
             == 'https://drive.google.com/open?id=abc_123-DEF456'
         )
+
+    def test_gdrive_button_condition_only_accepts_drive_urls(self) -> None:
+        assert has_gdrive_download_input(
+            self.make_event('https://drive.google.com/open?id=abc_123-DEF456'), None
+        )
+        assert not has_gdrive_download_input(self.make_event('https://example.com/file.pdf'), None)
+
+    def test_gdrive_button_condition_still_allows_explicit_command_validation(self) -> None:
+        assert has_gdrive_download_input(self.make_event('/gdrive'), None)
 
 
 class ArchiveInputTest(TestCase):
