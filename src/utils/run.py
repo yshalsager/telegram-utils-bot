@@ -29,10 +29,10 @@ async def read_stream(stream: asyncio.StreamReader | None) -> AsyncGenerator[str
     if stream is None:
         return
     while True:
-        _line = await stream.readline()
-        if not _line:
+        data = await stream.read(4096)
+        if not data:
             break
-        yield f'{_line.decode("utf-8", errors="replace").strip()}\n'
+        yield data.decode('utf-8', errors='replace')
 
 
 async def run_subprocess_shell(

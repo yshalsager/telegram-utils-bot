@@ -1,6 +1,7 @@
-from unittest import TestCase
+from asyncio import StreamReader
+from unittest import IsolatedAsyncioTestCase, TestCase
 
-from src.utils.run import format_pre_block
+from src.utils.run import format_pre_block, read_stream
 
 
 class RunHelpersTest(TestCase):
@@ -15,3 +16,14 @@ class RunHelpersTest(TestCase):
 
         assert message == '<pre>f</pre>'
         assert len(message) <= 12
+
+
+class ReadStreamTest(IsolatedAsyncioTestCase):
+    async def test_read_stream_handles_long_output_without_separator(self) -> None:
+        reader = StreamReader(limit=8)
+        reader.feed_data(b'a' * 32)
+        reader.feed_eof()
+
+        chunks = [chunk async for chunk in read_stream(reader)]
+
+        assert ''.join(chunks) == 'a' * 32
