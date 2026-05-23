@@ -6,13 +6,23 @@ from unittest import TestCase
 from unittest.mock import patch
 
 import orjson
+from cryptography.fernet import Fernet
+from google.oauth2.credentials import Credentials
 from src.modules.plugins.youtube import (
-    YOUTUBE_AUTH_PATTERN,
+    YOUTUBE_PATTERN,
+    YOUTUBE_TOKEN_URL,
     build_youtube_resource,
+    generate_channel_alias,
     get_youtube_client_config,
     get_youtube_partner_config,
+    load_youtube_credentials,
+    normalize_alias,
     parse_credentials_expiry,
     parse_youtube_upload_args,
+    save_youtube_credentials,
+    youtube_auth_path,
+    youtube_pending_auth_path,
+    youtube_token_path,
 )
 
 
@@ -33,11 +43,36 @@ class YouTubeHelpersTest(TestCase):
             'tags': [],
         }
 
-    def test_youtube_auth_pattern_accepts_remove(self) -> None:
-        match = YOUTUBE_AUTH_PATTERN.match('/youtube auth remove')
+    def test_youtube_pattern_accepts_upload_panel_command(self) -> None:
+        match = YOUTUBE_PATTERN.match('/youtube upload public | Title')
 
         assert match
-        assert match.group(1) == 'remove'
+        assert match.group(1) == 'upload'
+        assert match.group(2) == 'public | Title'
+
+    def test_youtube_user_state_paths_are_scoped_by_user_and_alias(self) -> None:
+        assert normalize_alias(' Main_Channel ') == 'main_channel'
+        assert (
+            youtube_token_path(123, 'Main')
+            .as_posix()
+            .endswith('state/youtube/users/123/tokens/main.json')
+        )
+        assert (
+            youtube_auth_path(123, 'Main')
+            .as_posix()
+            .endswith('state/youtube/users/123/auth/main.json')
+        )
+        assert (
+            youtube_pending_auth_path(123)
+            .as_posix()
+            .endswith('state/youtube/users/123/auth/pending.json')
+        )
+
+    def test_generate_channel_alias_uses_channel_title_and_deduplicates(self) -> None:
+        channels = {'my-channel': {'channel_id': 'UC1'}}
+
+        assert generate_channel_alias(channels, 'My Channel', 'UC2') == 'my-channel-2'
+        assert generate_channel_alias(channels, 'Other', 'UC1') == 'my-channel'
 
     def test_build_youtube_resource_sets_required_upload_metadata(self) -> None:
         assert build_youtube_resource(
@@ -100,3 +135,37 @@ class YouTubeHelpersTest(TestCase):
         assert parse_credentials_expiry('2026-05-23T10:15:30Z') == datetime(
             2026, 5, 23, 10, 15, 30, tzinfo=UTC
         ).replace(tzinfo=None)
+
+    def test_save_youtube_credentials_encrypts_token_file(self) -> None:
+        with (
+            TemporaryDirectory() as temp_dir,
+            patch.dict(
+                environ,
+                {
+                    'STATE_ENCRYPTION_KEY': Fernet.generate_key().decode(),
+                    'YOUTUBE_CLIENT_ID': 'client-id',
+                    'YOUTUBE_CLIENT_SECRET': 'client-secret',
+                },
+            ),
+            patch('src.modules.plugins.youtube.YOUTUBE_USERS_DIR', Path(temp_dir)),
+        ):
+            access_value = 'access-value'
+            refresh_value = 'refresh-value'
+            client_value = 'client-value'
+            token_path = youtube_token_path(123, 'main')
+            credentials = Credentials(
+                token=access_value,
+                refresh_token=refresh_value,
+                token_uri=YOUTUBE_TOKEN_URL,
+                client_id='client-id',
+                client_secret=client_value,
+                scopes=['scope'],
+            )
+
+            save_youtube_credentials(credentials, token_path)
+
+            encrypted = token_path.read_text()
+            assert access_value not in encrypted
+            loaded_credentials = load_youtube_credentials(123, 'main')
+            assert loaded_credentials is not None
+            assert loaded_credentials.token == access_value

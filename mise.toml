@@ -9,6 +9,9 @@ run = 'uv run -m src'
 [tasks.dev]
 run = 'uv run jurigged -v -m src'
 
+[tasks.generate-encryption-key]
+run = 'uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+
 [tasks.plugins-sync]
 run = 'uv run python scripts/sync_plugin_deps.py'
 

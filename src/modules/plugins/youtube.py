@@ -15,15 +15,26 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
+from telethon import Button
 from telethon.events import CallbackQuery, NewMessage
+from telethon.tl.custom import Message
 
 from src import STATE_DIR
 from src.modules.base import ModuleBase
 from src.utils.command import Command
+from src.utils.cryptography import (
+    decrypt_state_secret,
+    encrypt_state_secret,
+    has_state_encryption_key,
+)
 from src.utils.downloads import download_to_temp_file, get_download_name
-from src.utils.filters import has_file, is_admin_in_private
 from src.utils.i18n import t
-from src.utils.telegram import get_reply_message, send_progress_message
+from src.utils.telegram import (
+    buttons_grid,
+    get_reply_message,
+    safe_event_edit,
+    send_progress_message,
+)
 
 YOUTUBE_SCOPES = [
     'https://www.googleapis.com/auth/youtube.upload',
@@ -32,18 +43,17 @@ YOUTUBE_SCOPES = [
 YOUTUBE_SCOPE = ' '.join(YOUTUBE_SCOPES)
 YOUTUBE_DEVICE_CODE_URL = 'https://oauth2.googleapis.com/device/code'
 YOUTUBE_TOKEN_URL = 'https://oauth2.googleapis.com/token'  # noqa: S105
-YOUTUBE_TOKEN_PATH = STATE_DIR / 'youtube_token.json'
-YOUTUBE_AUTH_PATH = STATE_DIR / 'youtube_auth.json'
+YOUTUBE_DIR = STATE_DIR / 'youtube'
+YOUTUBE_USERS_DIR = YOUTUBE_DIR / 'users'
 RETRIABLE_STATUS_CODES = {
     HTTPStatus.INTERNAL_SERVER_ERROR,
     HTTPStatus.BAD_GATEWAY,
     HTTPStatus.SERVICE_UNAVAILABLE,
     HTTPStatus.GATEWAY_TIMEOUT,
 }
-YOUTUBE_UPLOAD_PATTERN = re.compile(r'^/youtube\s+upload(?:\s+(.+))?$')
-YOUTUBE_AUTH_PATTERN = re.compile(r'^/youtube\s+auth(?:\s+(check|reset|remove))?$')
-YOUTUBE_STATUS_PATTERN = re.compile(r'^/youtube\s+status$')
+YOUTUBE_PATTERN = re.compile(r'^/youtube(?:\s+(auth|channels|status|upload))?(?:\s+(.+))?$')
 YOUTUBE_PRIVACY_STATUSES = {'private', 'unlisted', 'public'}
+YOUTUBE_PENDING_AUTH = 'pending'
 
 
 def get_youtube_client_config() -> tuple[str, str] | None:
@@ -76,8 +86,100 @@ def get_youtube_partner_config() -> dict[str, str]:
     }
 
 
-def save_youtube_credentials(credentials: Credentials) -> None:
-    YOUTUBE_TOKEN_PATH.write_text(credentials.to_json(strip=['client_secret']))
+def normalize_alias(alias: str) -> str:
+    return alias.strip().lower()
+
+
+def slugify_alias(text: str, fallback: str) -> str:
+    alias = re.sub(r'[^a-z0-9_-]+', '-', text.lower()).strip('-_')
+    return (alias or fallback.lower())[:32].strip('-_')
+
+
+def generate_channel_alias(channels: dict[str, dict[str, Any]], title: str, channel_id: str) -> str:
+    for alias, channel in channels.items():
+        if channel.get('channel_id') == channel_id:
+            return alias
+
+    base = slugify_alias(title, channel_id)
+    alias = base
+    counter = 2
+    while alias in channels:
+        suffix = f'-{counter}'
+        alias = f'{base[: 32 - len(suffix)]}{suffix}'
+        counter += 1
+    return alias
+
+
+def youtube_user_dir(user_id: int) -> Path:
+    return YOUTUBE_USERS_DIR / str(user_id)
+
+
+def youtube_channels_path(user_id: int) -> Path:
+    return youtube_user_dir(user_id) / 'channels.json'
+
+
+def youtube_token_path(user_id: int, alias: str) -> Path:
+    return youtube_user_dir(user_id) / 'tokens' / f'{normalize_alias(alias)}.json'
+
+
+def youtube_auth_path(user_id: int, alias: str) -> Path:
+    return youtube_user_dir(user_id) / 'auth' / f'{normalize_alias(alias)}.json'
+
+
+def youtube_pending_auth_path(user_id: int) -> Path:
+    return youtube_auth_path(user_id, YOUTUBE_PENDING_AUTH)
+
+
+def load_youtube_channels(user_id: int) -> dict[str, dict[str, Any]]:
+    path = youtube_channels_path(user_id)
+    if not path.exists():
+        return {}
+    return cast(dict[str, dict[str, Any]], orjson.loads(path.read_text()))
+
+
+def save_youtube_channels(user_id: int, channels: dict[str, dict[str, Any]]) -> None:
+    path = youtube_channels_path(user_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(orjson.dumps(channels, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS))
+
+
+def remove_youtube_channel(user_id: int, alias: str) -> bool:
+    alias = normalize_alias(alias)
+    channels = load_youtube_channels(user_id)
+    existed = (
+        alias in channels
+        or youtube_token_path(user_id, alias).exists()
+        or youtube_auth_path(user_id, alias).exists()
+    )
+    channels.pop(alias, None)
+    youtube_token_path(user_id, alias).unlink(missing_ok=True)
+    youtube_auth_path(user_id, alias).unlink(missing_ok=True)
+    save_youtube_channels(user_id, channels)
+    return existed
+
+
+def set_default_youtube_channel(user_id: int, alias: str) -> bool:
+    alias = normalize_alias(alias)
+    channels = load_youtube_channels(user_id)
+    if alias not in channels:
+        return False
+    for channel_alias, channel in channels.items():
+        channel['default'] = channel_alias == alias
+    save_youtube_channels(user_id, channels)
+    return True
+
+
+def get_default_youtube_alias(user_id: int) -> str | None:
+    channels = load_youtube_channels(user_id)
+    for alias, channel in channels.items():
+        if channel.get('default'):
+            return alias
+    return next(iter(channels), None)
+
+
+def save_youtube_credentials(credentials: Credentials, token_path: Path) -> None:
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.write_text(encrypt_state_secret(credentials.to_json(strip=['client_secret'])))
 
 
 def parse_credentials_expiry(value: str | None) -> datetime | None:
@@ -86,13 +188,14 @@ def parse_credentials_expiry(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone(UTC).replace(tzinfo=None)
 
 
-def load_youtube_credentials() -> Credentials | None:
+def load_youtube_credentials(user_id: int, alias: str) -> Credentials | None:
     client_config = get_youtube_client_config()
-    if not client_config or not YOUTUBE_TOKEN_PATH.exists():
+    token_path = youtube_token_path(user_id, alias)
+    if not client_config or not token_path.exists():
         return None
 
     client_id, client_secret = client_config
-    payload = orjson.loads(YOUTUBE_TOKEN_PATH.read_text())
+    payload = orjson.loads(decrypt_state_secret(token_path.read_text()))
     credentials = Credentials(
         token=payload.get('token'),
         refresh_token=payload.get('refresh_token'),
@@ -104,7 +207,7 @@ def load_youtube_credentials() -> Credentials | None:
     )
     if credentials.expired and credentials.refresh_token:
         credentials.refresh(Request())
-        save_youtube_credentials(credentials)
+        save_youtube_credentials(credentials, token_path)
     return credentials if credentials.valid else None
 
 
@@ -192,15 +295,21 @@ def upload_video(
     return str(video_id)
 
 
-def get_authenticated_channel(credentials: Credentials) -> str | None:
+def get_authenticated_channel(credentials: Credentials) -> dict[str, str] | None:
     youtube = build('youtube', 'v3', credentials=credentials)
     response = youtube.channels().list(part='snippet', mine=True).execute()
     items = response.get('items') or []
     if not items:
         return None
     channel = items[0]
-    title = channel.get('snippet', {}).get('title') or '-'
-    return f'{title} ({channel.get("id", "-")})'
+    return {
+        'id': str(channel.get('id', '-')),
+        'title': str(channel.get('snippet', {}).get('title') or '-'),
+    }
+
+
+def get_event_user_id(event: NewMessage.Event | CallbackQuery.Event) -> int:
+    return int(event.sender_id or event.chat_id)
 
 
 async def reply_text(event: NewMessage.Event | CallbackQuery.Event, text: str) -> None:
@@ -210,28 +319,103 @@ async def reply_text(event: NewMessage.Event | CallbackQuery.Event, text: str) -
         await event.reply(text)
 
 
-async def youtube_auth(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    if not isinstance(event, NewMessage.Event):
-        await event.answer(t('use_direct_command'), alert=True)
+async def has_youtube_state_encryption(event: NewMessage.Event | CallbackQuery.Event) -> bool:
+    if has_state_encryption_key():
+        return True
+    await reply_text(event, t('youtube_missing_state_encryption_key'))
+    return False
+
+
+async def edit_or_reply(
+    event: NewMessage.Event | CallbackQuery.Event,
+    text: str,
+    *,
+    buttons: list[list[Button]] | None = None,
+) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        await safe_event_edit(event, text, buttons=buttons)
+    else:
+        await event.reply(text, buttons=buttons)
+
+
+def youtube_channel_buttons(
+    user_id: int, *, prefix: str, media_message_id: int | None = None
+) -> list[list[Button]]:
+    buttons = []
+    for alias, channel in sorted(load_youtube_channels(user_id).items()):
+        title = channel.get('title') or alias
+        default_marker = ' *' if channel.get('default') else ''
+        data = f'm|youtube|{prefix}|{alias}'
+        if media_message_id is not None:
+            data = f'{data}|{media_message_id}'
+        buttons.append(Button.inline(f'{title}{default_marker}', data))
+    return buttons_grid(buttons, cols=1)
+
+
+async def show_youtube_panel(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    user_id = get_event_user_id(event)
+    channels = load_youtube_channels(user_id)
+    buttons = [
+        [Button.inline(t('_youtube_auth'), 'm|youtube|auth')],
+        [Button.inline(t('youtube_channels'), 'm|youtube|channels')],
+    ]
+    text = t('youtube_panel', count=len(channels))
+    await edit_or_reply(event, text, buttons=buttons)
+
+
+async def show_youtube_auth_panel(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    user_id = get_event_user_id(event)
+    buttons: list[list[Button]] = [[Button.inline(t('youtube_add_channel'), 'm|youtube|auth_add')]]
+    if youtube_pending_auth_path(user_id).exists():
+        buttons.append([Button.inline(t('youtube_check_auth'), 'm|youtube|auth_check')])
+    channels = load_youtube_channels(user_id)
+    for alias, channel in sorted(channels.items()):
+        title = channel.get('title') or alias
+        buttons.extend(
+            [
+                [Button.inline(f'{title} ({alias})', f'm|youtube|status|{alias}')],
+                [
+                    Button.inline(t('youtube_set_default'), f'm|youtube|default|{alias}'),
+                    Button.inline(t('youtube_remove'), f'm|youtube|auth_remove|{alias}'),
+                ],
+            ]
+        )
+    await edit_or_reply(event, t('youtube_auth_panel'), buttons=buttons)
+
+
+async def show_youtube_channels(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    user_id = get_event_user_id(event)
+    channels = load_youtube_channels(user_id)
+    if not channels:
+        await edit_or_reply(
+            event,
+            t('youtube_no_channels'),
+            buttons=[[Button.inline(t('youtube_add_channel'), 'm|youtube|auth_add')]],
+        )
         return
 
-    match = YOUTUBE_AUTH_PATTERN.match(event.message.raw_text or '')
-    action = match.group(1) if match else None
-    if action in ('reset', 'remove'):
-        YOUTUBE_AUTH_PATH.unlink(missing_ok=True)
-        YOUTUBE_TOKEN_PATH.unlink(missing_ok=True)
-        await event.reply(t('youtube_auth_reset'))
-        return
-    if action == 'check':
-        await youtube_auth_check(event)
-        return
+    lines = [t('youtube_channels_header')]
+    for alias, channel in sorted(channels.items()):
+        default_marker = f' {t("youtube_default_marker")}' if channel.get('default') else ''
+        lines.append(
+            f'- <b>{alias}</b>: {channel.get("title", "-")} ({channel.get("channel_id", "-")}){default_marker}'
+        )
+    await edit_or_reply(
+        event, '\n'.join(lines), buttons=youtube_channel_buttons(user_id, prefix='status')
+    )
+
+
+async def start_youtube_auth(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    user_id = get_event_user_id(event)
 
     client_config = get_youtube_client_config()
     if not client_config:
-        await event.reply(t('youtube_missing_client_config'))
+        await reply_text(event, t('youtube_missing_client_config'))
+        return
+    if not await has_youtube_state_encryption(event):
         return
 
-    client_id, _ = client_config
+    client_id, _client_secret = client_config
     async with (
         aiohttp.ClientSession() as session,
         session.post(
@@ -242,28 +426,37 @@ async def youtube_auth(event: NewMessage.Event | CallbackQuery.Event) -> None:
         response.raise_for_status()
         payload = await response.json()
 
-    YOUTUBE_AUTH_PATH.write_bytes(orjson.dumps(payload))
-    await event.reply(
+    auth_path = youtube_pending_auth_path(user_id)
+    auth_path.parent.mkdir(parents=True, exist_ok=True)
+    auth_path.write_text(encrypt_state_secret(orjson.dumps(payload).decode()))
+    await edit_or_reply(
+        event,
         t(
             'youtube_auth_started',
             url=payload['verification_url'],
             code=payload['user_code'],
             expires_in=payload['expires_in'],
-        )
+        ),
+        buttons=[[Button.inline(t('youtube_check_auth'), 'm|youtube|auth_check')]],
     )
 
 
-async def youtube_auth_check(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def check_youtube_auth(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    user_id = get_event_user_id(event)
     client_config = get_youtube_client_config()
     if not client_config:
         await reply_text(event, t('youtube_missing_client_config'))
         return
-    if not YOUTUBE_AUTH_PATH.exists():
+    if not await has_youtube_state_encryption(event):
+        return
+
+    auth_path = youtube_pending_auth_path(user_id)
+    if not auth_path.exists():
         await reply_text(event, t('youtube_auth_not_started'))
         return
 
     client_id, client_secret = client_config
-    payload = orjson.loads(YOUTUBE_AUTH_PATH.read_text())
+    payload = orjson.loads(decrypt_state_secret(auth_path.read_text()))
     async with (
         aiohttp.ClientSession() as session,
         session.post(
@@ -296,44 +489,102 @@ async def youtube_auth_check(event: NewMessage.Event | CallbackQuery.Event) -> N
             datetime.now(UTC) + timedelta(seconds=token_payload.get('expires_in', 3600))
         ).replace(tzinfo=None),
     )
-    save_youtube_credentials(credentials)
-    YOUTUBE_AUTH_PATH.unlink(missing_ok=True)
-    await reply_text(event, t('youtube_auth_completed'))
-
-
-async def youtube_status(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    credentials = load_youtube_credentials()
-    if not credentials:
-        if YOUTUBE_AUTH_PATH.exists():
-            await reply_text(event, t('youtube_auth_not_checked'))
-            return
-        await reply_text(event, t('youtube_not_authenticated'))
+    channel = await asyncio.to_thread(get_authenticated_channel, credentials)
+    if not channel:
+        await reply_text(event, t('youtube_channel_unknown'))
         return
+
+    channels = load_youtube_channels(user_id)
+    alias = generate_channel_alias(channels, channel['title'], channel['id'])
+    is_default = channels.get(alias, {}).get('default') or not any(
+        item.get('default') for channel_alias, item in channels.items() if channel_alias != alias
+    )
+    save_youtube_credentials(credentials, youtube_token_path(user_id, alias))
+    auth_path.unlink(missing_ok=True)
+    channels[alias] = {
+        'title': channel['title'],
+        'channel_id': channel['id'],
+        'default': is_default,
+    }
+    save_youtube_channels(user_id, channels)
+    await edit_or_reply(
+        event,
+        t(
+            'youtube_auth_completed_for_alias',
+            alias=alias,
+            channel=f'{channel["title"]} ({channel["id"]})',
+        ),
+    )
+
+
+async def show_youtube_status(
+    event: NewMessage.Event | CallbackQuery.Event, alias: str | None = None
+) -> None:
+    user_id = get_event_user_id(event)
+    alias = normalize_alias(alias or get_default_youtube_alias(user_id) or '')
+    if not alias:
+        await edit_or_reply(event, t('youtube_no_channels'))
+        return
+
+    channels = load_youtube_channels(user_id)
+    if alias not in channels:
+        await edit_or_reply(event, t('youtube_channel_not_found', alias=alias))
+        return
+    if not await has_youtube_state_encryption(event):
+        return
+
+    credentials = load_youtube_credentials(user_id, alias)
+    if not credentials:
+        await edit_or_reply(event, t('youtube_not_authenticated'))
+        return
+
     try:
         channel = await asyncio.to_thread(get_authenticated_channel, credentials)
     except HttpError:
         channel = None
-    await reply_text(
+    configured = channels[alias]
+    await edit_or_reply(
         event,
-        t('youtube_authenticated', channel=channel or t('youtube_channel_unknown')),
+        t(
+            'youtube_status',
+            alias=alias,
+            channel=(
+                f'{channel["title"]} ({channel["id"]})' if channel else t('youtube_channel_unknown')
+            ),
+            saved=f'{configured.get("title", "-")} ({configured.get("channel_id", "-")})',
+        ),
     )
 
 
-async def youtube_upload(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    credentials = load_youtube_credentials()
+async def show_youtube_upload_channels(
+    event: NewMessage.Event | CallbackQuery.Event, media_message_id: int
+) -> None:
+    user_id = get_event_user_id(event)
+    buttons = youtube_channel_buttons(user_id, prefix='upload', media_message_id=media_message_id)
+    if not buttons:
+        await edit_or_reply(
+            event,
+            t('youtube_no_channels'),
+            buttons=[[Button.inline(t('youtube_add_channel'), 'm|youtube|auth_add')]],
+        )
+        return
+    await edit_or_reply(event, t('youtube_choose_upload_channel'), buttons=buttons)
+
+
+async def upload_to_youtube_alias(
+    event: NewMessage.Event | CallbackQuery.Event,
+    alias: str,
+    reply_message: Message,
+    input_text: str = '',
+) -> None:
+    user_id = get_event_user_id(event)
+    if not await has_youtube_state_encryption(event):
+        return
+
+    credentials = load_youtube_credentials(user_id, alias)
     if not credentials:
         await reply_text(event, t('youtube_not_authenticated'))
         return
-
-    reply_message = await get_reply_message(event, previous=True)
-    if not reply_message or not reply_message.file:
-        await reply_text(event, t('unsupported_file_type'))
-        return
-
-    input_text = ''
-    if isinstance(event, NewMessage.Event):
-        match = YOUTUBE_UPLOAD_PATTERN.match(event.message.raw_text or '')
-        input_text = (match.group(1) if match else '') or ''
 
     args = parse_youtube_upload_args(input_text)
     title = args['title'] or get_download_name(reply_message).stem
@@ -359,27 +610,82 @@ async def youtube_upload(event: NewMessage.Event | CallbackQuery.Event) -> None:
     await progress_message.edit(t('youtube_upload_completed', url=f'https://youtu.be/{video_id}'))
 
 
+async def handle_youtube_callback(event: CallbackQuery.Event) -> None:
+    parts = event.data.decode('utf-8').split('|')
+    action = parts[2] if len(parts) > 2 else 'panel'
+    alias = parts[3] if len(parts) > 3 else None
+    simple_actions = {
+        'panel': show_youtube_panel,
+        'auth': show_youtube_auth_panel,
+        'auth_add': start_youtube_auth,
+        'auth_check': check_youtube_auth,
+        'channels': show_youtube_channels,
+    }
+    if action in simple_actions:
+        await simple_actions[action](event)
+    elif alias:
+        await handle_youtube_alias_callback(event, action, alias, parts)
+
+
+async def handle_youtube_alias_callback(
+    event: CallbackQuery.Event, action: str, alias: str, parts: list[str]
+) -> None:
+    if action == 'auth_remove':
+        removed = remove_youtube_channel(get_event_user_id(event), alias)
+        key = 'youtube_channel_removed' if removed else 'youtube_channel_not_found'
+        await edit_or_reply(event, t(key, alias=alias))
+    elif action == 'default':
+        if set_default_youtube_channel(get_event_user_id(event), alias):
+            await show_youtube_auth_panel(event)
+        else:
+            await reply_text(event, t('youtube_channel_not_found', alias=alias))
+    elif action == 'status':
+        await show_youtube_status(event, alias)
+    elif action == 'upload' and len(parts) > 4:
+        media_message = await event.client.get_messages(event.chat_id, ids=int(parts[4]))
+        command_message = await (await event.get_message()).get_reply_message()
+        match = YOUTUBE_PATTERN.match(command_message.raw_text or '') if command_message else None
+        await upload_to_youtube_alias(
+            event, alias, media_message, (match.group(2) if match else '') or ''
+        )
+
+
+async def handle_youtube_message(event: NewMessage.Event) -> None:
+    match = YOUTUBE_PATTERN.match(event.message.raw_text or '')
+    action = match.group(1) if match else None
+    input_text = (match.group(2) if match else '') or ''
+    if action == 'auth':
+        await show_youtube_auth_panel(event)
+    elif action == 'channels':
+        await show_youtube_channels(event)
+    elif action == 'status':
+        await show_youtube_status(event, input_text or None)
+    elif action == 'upload':
+        reply_message = await get_reply_message(event, previous=True)
+        if not reply_message or not reply_message.file:
+            await event.reply(t('unsupported_file_type'))
+            return
+        await show_youtube_upload_channels(event, reply_message.id)
+    else:
+        await show_youtube_panel(event)
+
+
+async def youtube_entrypoint(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        await handle_youtube_callback(event)
+    else:
+        await handle_youtube_message(event)
+
+
 class YouTube(ModuleBase):
     name = 'YouTube'
     description = t('_youtube_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
-        'youtube auth': Command(
-            handler=youtube_auth,
-            description=t('_youtube_auth_description'),
-            pattern=YOUTUBE_AUTH_PATTERN,
-            condition=is_admin_in_private,
-        ),
-        'youtube status': Command(
-            handler=youtube_status,
-            description=t('_youtube_status_description'),
-            pattern=YOUTUBE_STATUS_PATTERN,
-            condition=is_admin_in_private,
-        ),
-        'youtube upload': Command(
-            handler=youtube_upload,
-            description=t('_youtube_upload_description'),
-            pattern=YOUTUBE_UPLOAD_PATTERN,
-            condition=lambda e, m: is_admin_in_private(e, m) and has_file(e, m),
+        'youtube': Command(
+            handler=youtube_entrypoint,
+            description=t('_youtube_description'),
+            pattern=YOUTUBE_PATTERN,
+            condition=lambda e, _: bool(e.is_private),
             is_applicable_for_reply=True,
         ),
     }
