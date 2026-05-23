@@ -158,25 +158,6 @@ def remove_youtube_channel(user_id: int, alias: str) -> bool:
     return existed
 
 
-def set_default_youtube_channel(user_id: int, alias: str) -> bool:
-    alias = normalize_alias(alias)
-    channels = load_youtube_channels(user_id)
-    if alias not in channels:
-        return False
-    for channel_alias, channel in channels.items():
-        channel['default'] = channel_alias == alias
-    save_youtube_channels(user_id, channels)
-    return True
-
-
-def get_default_youtube_alias(user_id: int) -> str | None:
-    channels = load_youtube_channels(user_id)
-    for alias, channel in channels.items():
-        if channel.get('default'):
-            return alias
-    return next(iter(channels), None)
-
-
 def save_youtube_credentials(credentials: Credentials, token_path: Path) -> None:
     token_path.parent.mkdir(parents=True, exist_ok=True)
     token_path.write_text(encrypt_state_secret(credentials.to_json(strip=['client_secret'])))
@@ -344,11 +325,10 @@ def youtube_channel_buttons(
     buttons = []
     for alias, channel in sorted(load_youtube_channels(user_id).items()):
         title = channel.get('title') or alias
-        default_marker = ' *' if channel.get('default') else ''
         data = f'm|youtube|{prefix}|{alias}'
         if media_message_id is not None:
             data = f'{data}|{media_message_id}'
-        buttons.append(Button.inline(f'{title}{default_marker}', data))
+        buttons.append(Button.inline(title, data))
     return buttons_grid(buttons, cols=1)
 
 
@@ -374,10 +354,7 @@ async def show_youtube_auth_panel(event: NewMessage.Event | CallbackQuery.Event)
         buttons.extend(
             [
                 [Button.inline(f'{title} ({alias})', f'm|youtube|status|{alias}')],
-                [
-                    Button.inline(t('youtube_set_default'), f'm|youtube|default|{alias}'),
-                    Button.inline(t('youtube_remove'), f'm|youtube|auth_remove|{alias}'),
-                ],
+                [Button.inline(t('youtube_remove'), f'm|youtube|auth_remove|{alias}')],
             ]
         )
     await edit_or_reply(event, t('youtube_auth_panel'), buttons=buttons)
@@ -397,8 +374,7 @@ async def show_youtube_channels(event: NewMessage.Event | CallbackQuery.Event) -
     lines = [t('youtube_channels_header')]
     for alias, channel in sorted(channels.items()):
         title = channel.get('title') or alias
-        default_marker = f' {t("youtube_default_marker")}' if channel.get('default') else ''
-        lines.append(f'- <b>{title}</b> ({channel.get("channel_id", "-")}){default_marker}')
+        lines.append(f'- <b>{title}</b> ({channel.get("channel_id", "-")})')
     await edit_or_reply(
         event, '\n'.join(lines), buttons=youtube_channel_buttons(user_id, prefix='status')
     )
@@ -495,15 +471,11 @@ async def check_youtube_auth(event: NewMessage.Event | CallbackQuery.Event) -> N
 
     channels = load_youtube_channels(user_id)
     alias = generate_channel_alias(channels, channel['title'], channel['id'])
-    is_default = channels.get(alias, {}).get('default') or not any(
-        item.get('default') for channel_alias, item in channels.items() if channel_alias != alias
-    )
     save_youtube_credentials(credentials, youtube_token_path(user_id, alias))
     auth_path.unlink(missing_ok=True)
     channels[alias] = {
         'title': channel['title'],
         'channel_id': channel['id'],
-        'default': is_default,
     }
     save_youtube_channels(user_id, channels)
     await edit_or_reply(
@@ -520,12 +492,24 @@ async def show_youtube_status(
     event: NewMessage.Event | CallbackQuery.Event, alias: str | None = None
 ) -> None:
     user_id = get_event_user_id(event)
-    alias = normalize_alias(alias or get_default_youtube_alias(user_id) or '')
+    channels = load_youtube_channels(user_id)
+    if not alias:
+        if not channels:
+            await edit_or_reply(event, t('youtube_no_channels'))
+            return
+        if len(channels) > 1:
+            await edit_or_reply(
+                event,
+                t('youtube_channels_header'),
+                buttons=youtube_channel_buttons(user_id, prefix='status'),
+            )
+            return
+        alias = next(iter(channels))
+    alias = normalize_alias(alias)
     if not alias:
         await edit_or_reply(event, t('youtube_no_channels'))
         return
 
-    channels = load_youtube_channels(user_id)
     if alias not in channels:
         await edit_or_reply(event, t('youtube_channel_not_found', alias=alias))
         return
@@ -556,17 +540,21 @@ async def show_youtube_status(
 
 
 async def show_youtube_upload_channels(
-    event: NewMessage.Event | CallbackQuery.Event, media_message_id: int
+    event: NewMessage.Event | CallbackQuery.Event, reply_message: Message, input_text: str
 ) -> None:
     user_id = get_event_user_id(event)
-    buttons = youtube_channel_buttons(user_id, prefix='upload', media_message_id=media_message_id)
-    if not buttons:
+    channels = load_youtube_channels(user_id)
+    if not channels:
         await edit_or_reply(
             event,
             t('youtube_no_channels'),
             buttons=[[Button.inline(t('youtube_add_channel'), 'm|youtube|auth_add')]],
         )
         return
+    if len(channels) == 1:
+        await upload_to_youtube_alias(event, next(iter(channels)), reply_message, input_text)
+        return
+    buttons = youtube_channel_buttons(user_id, prefix='upload', media_message_id=reply_message.id)
     await edit_or_reply(event, t('youtube_choose_upload_channel'), buttons=buttons)
 
 
@@ -633,11 +621,6 @@ async def handle_youtube_alias_callback(
         removed = remove_youtube_channel(get_event_user_id(event), alias)
         key = 'youtube_channel_removed' if removed else 'youtube_channel_not_found'
         await edit_or_reply(event, t(key, alias=alias))
-    elif action == 'default':
-        if set_default_youtube_channel(get_event_user_id(event), alias):
-            await show_youtube_auth_panel(event)
-        else:
-            await reply_text(event, t('youtube_channel_not_found', alias=alias))
     elif action == 'status':
         await show_youtube_status(event, alias)
     elif action == 'upload' and len(parts) > 4:
@@ -664,7 +647,7 @@ async def handle_youtube_message(event: NewMessage.Event) -> None:
         if not reply_message or not reply_message.file:
             await event.reply(t('unsupported_file_type'))
             return
-        await show_youtube_upload_channels(event, reply_message.id)
+        await show_youtube_upload_channels(event, reply_message, input_text)
     else:
         await show_youtube_panel(event)
 
