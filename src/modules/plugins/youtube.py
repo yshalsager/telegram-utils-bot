@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from html import escape
 from http import HTTPStatus
 from os import getenv
 from pathlib import Path
@@ -297,7 +298,7 @@ async def reply_text(event: NewMessage.Event | CallbackQuery.Event, text: str) -
     if isinstance(event, CallbackQuery.Event):
         await event.answer(text, alert=True)
     else:
-        await event.reply(text)
+        await event.reply(text, parse_mode='html')
 
 
 async def has_youtube_state_encryption(event: NewMessage.Event | CallbackQuery.Event) -> bool:
@@ -314,9 +315,9 @@ async def edit_or_reply(
     buttons: list[list[Button]] | None = None,
 ) -> None:
     if isinstance(event, CallbackQuery.Event):
-        await safe_event_edit(event, text, buttons=buttons)
+        await safe_event_edit(event, text, buttons=buttons, parse_mode='html')
     else:
-        await event.reply(text, buttons=buttons)
+        await event.reply(text, buttons=buttons, parse_mode='html')
 
 
 def youtube_channel_buttons(
@@ -374,7 +375,8 @@ async def show_youtube_channels(event: NewMessage.Event | CallbackQuery.Event) -
     lines = [t('youtube_channels_header')]
     for alias, channel in sorted(channels.items()):
         title = channel.get('title') or alias
-        lines.append(f'- <b>{title}</b> ({channel.get("channel_id", "-")})')
+        channel_id = channel.get('channel_id', '-')
+        lines.append(f'- <a href="https://youtube.com/channel/{channel_id}">{escape(title)}</a>')
     await edit_or_reply(
         event, '\n'.join(lines), buttons=youtube_channel_buttons(user_id, prefix='status')
     )
