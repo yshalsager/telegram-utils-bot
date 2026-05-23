@@ -85,6 +85,8 @@ restart.json
 permissions.json
 modules.json
 state/plugins/
+state/youtube_auth.json
+state/youtube_token.json
 service_account.json
 update.sh
 
