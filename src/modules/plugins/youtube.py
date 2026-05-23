@@ -396,10 +396,9 @@ async def show_youtube_channels(event: NewMessage.Event | CallbackQuery.Event) -
 
     lines = [t('youtube_channels_header')]
     for alias, channel in sorted(channels.items()):
+        title = channel.get('title') or alias
         default_marker = f' {t("youtube_default_marker")}' if channel.get('default') else ''
-        lines.append(
-            f'- <b>{alias}</b>: {channel.get("title", "-")} ({channel.get("channel_id", "-")}){default_marker}'
-        )
+        lines.append(f'- <b>{title}</b> ({channel.get("channel_id", "-")}){default_marker}')
     await edit_or_reply(
         event, '\n'.join(lines), buttons=youtube_channel_buttons(user_id, prefix='status')
     )
