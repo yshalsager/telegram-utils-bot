@@ -1,7 +1,9 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest import TestCase
+from unittest.mock import AsyncMock, patch
 
 from src.modules.plugins.media import (
     ALLOWED_SPEED_FACTORS,
@@ -17,6 +19,7 @@ from src.modules.plugins.media import (
     build_cut_media_command,
     build_filter_concat_command,
     build_fix_stereo_command,
+    build_media_upload_params,
     build_mute_video_command,
     build_resize_video_command,
     build_set_metadata_command,
@@ -281,6 +284,64 @@ class MediaTimeRangeHelpersTest(TestCase):
         assert '-c:a libmp3lame -q:a 2' in build_speed_audio_command('atempo=2', is_voice=False)
         assert '-c:a libopus -b:a 48k' in build_speed_audio_command('atempo=2', is_voice=True)
         assert 'pan=mono|c0=FR' in build_fix_stereo_command('FR')
+
+    def test_video_upload_params_include_generated_thumbnail(self) -> None:
+        async def run_test() -> None:
+            with (
+                patch(
+                    'src.modules.plugins.media.get_output_info',
+                    AsyncMock(
+                        return_value={
+                            'vcodec': 'h264',
+                            'attached_pic': False,
+                            'duration': 10,
+                            'width': 640,
+                            'height': 360,
+                        }
+                    ),
+                ),
+                patch(
+                    'src.modules.plugins.media.prepare_telegram_thumbnail',
+                    AsyncMock(return_value=True),
+                ) as prepare_thumbnail,
+            ):
+                params = await build_media_upload_params(
+                    Path('video.mp4'),
+                    thumbnail_source=Path('cover.jpg'),
+                    thumbnail_file=Path('thumb.jpg'),
+                )
+
+            assert params['thumb'] == 'thumb.jpg'
+            prepare_thumbnail.assert_awaited_once_with(Path('cover.jpg'), Path('thumb.jpg'))
+
+        asyncio.run(run_test())
+
+    def test_audio_upload_params_do_not_generate_thumbnail(self) -> None:
+        async def run_test() -> None:
+            with (
+                patch(
+                    'src.modules.plugins.media.get_output_info',
+                    AsyncMock(
+                        return_value={
+                            'vcodec': 'none',
+                            'attached_pic': False,
+                            'duration': 10,
+                            'title': 'Title',
+                            'uploader': 'Artist',
+                        }
+                    ),
+                ),
+                patch(
+                    'src.modules.plugins.media.prepare_telegram_thumbnail',
+                    AsyncMock(return_value=True),
+                ) as prepare_thumbnail,
+            ):
+                params = await build_media_upload_params(Path('audio.mp3'))
+
+            assert 'thumb' not in params
+            prepare_thumbnail.assert_not_awaited()
+
+        asyncio.run(run_test())
 
 
 class MediaSpeedHelpersTest(TestCase):

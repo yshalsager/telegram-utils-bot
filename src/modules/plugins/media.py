@@ -601,8 +601,12 @@ async def build_media_upload_params(
     output_file: Path,
     *,
     is_voice: bool = False,
+    thumbnail_source: Path | None = None,
+    thumbnail_file: Path | None = None,
 ) -> dict[str, Any]:
     output_info = await get_output_info(output_file)
+    thumbnail_file = thumbnail_file or output_file.with_suffix('.jpg')
+    thumb = None
     if output_info.get('vcodec') == 'none' or output_info.get('attached_pic'):
         attributes = [
             DocumentAttributeAudio(
@@ -625,12 +629,17 @@ async def build_media_upload_params(
         ]
         supports_streaming = True
         mime_type = 'video/mp4' if output_file.suffix.lower() == '.mp4' else None
+        if await prepare_telegram_thumbnail(thumbnail_source or output_file, thumbnail_file):
+            thumb = str(thumbnail_file)
 
-    return {
+    upload_params = {
         'attributes': attributes,
         'supports_streaming': supports_streaming,
         'mime_type': mime_type,
     }
+    if thumb:
+        upload_params['thumb'] = thumb
+    return upload_params
 
 
 async def get_media_bitrate(file_path: str) -> tuple[int, int]:
@@ -772,6 +781,8 @@ async def process_media(
         data['output_size'] = output_file.stat().st_size
 
         output_file.unlink(missing_ok=True)
+        if thumb := upload_params.get('thumb'):
+            Path(thumb).unlink(missing_ok=True)
 
     await status_message.edit(feedback_text)
     data['status_message'] = status_message
@@ -1943,7 +1954,12 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
         if not output_file.exists() or not output_file.stat().st_size:
             await status_message.edit(t('video_creation_failed'))
         else:
-            upload_params = await build_media_upload_params(output_file, is_voice=False)
+            upload_params = await build_media_upload_params(
+                output_file,
+                is_voice=False,
+                thumbnail_source=input_file if input_message.photo else None,
+                thumbnail_file=output_dir / 'thumbnail.jpg',
+            )
             await upload_file_and_cleanup(
                 event,
                 output_file,

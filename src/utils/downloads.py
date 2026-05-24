@@ -139,6 +139,9 @@ async def upload_file_and_cleanup(
     await upload_file(event, output_file, progress_message, **kwargs)
     if unlink:
         output_file.unlink(missing_ok=True)
+        thumb = kwargs.get('thumb')
+        if isinstance(thumb, str | Path):
+            Path(thumb).unlink(missing_ok=True)
 
 
 def get_filename_from_url(url: str) -> str:
