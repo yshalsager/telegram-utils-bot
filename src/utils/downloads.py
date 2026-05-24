@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from io import BufferedRandom, BufferedWriter
 from os import fsync
@@ -9,6 +9,7 @@ from typing import Any
 from urllib import parse
 from uuid import uuid4
 
+import pymupdf
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 from telethon.tl.types import DocumentAttributeFilename
@@ -19,9 +20,33 @@ from src.utils.fast_telethon import upload_file as fast_upload_file
 from src.utils.i18n import t
 from src.utils.progress import progress_callback
 
+PDF_THUMBNAIL_MAX_SIDE = 320
+PDF_THUMBNAIL_MAX_SIZE = 200_000
+
 
 def get_default_filename() -> str:
     return f'{datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")}'
+
+
+def prepare_pdf_thumbnail(input_file: Path, output_file: Path) -> bool:
+    if input_file.suffix.lower() != '.pdf':
+        return False
+
+    with suppress(Exception), pymupdf.open(input_file) as doc:
+        if not doc.page_count:
+            return False
+        page = doc[0]
+        scale = min(
+            PDF_THUMBNAIL_MAX_SIDE / page.rect.width, PDF_THUMBNAIL_MAX_SIDE / page.rect.height, 1
+        )
+        pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+        for quality in (85, 75, 65, 55, 45, 35, 25):
+            output_file.write_bytes(pixmap.tobytes('jpg', jpg_quality=quality))
+            if 0 < output_file.stat().st_size <= PDF_THUMBNAIL_MAX_SIZE:
+                return True
+
+    output_file.unlink(missing_ok=True)
+    return False
 
 
 def get_download_name(message: Message, new_filename: str = '') -> Path:
@@ -108,6 +133,13 @@ async def upload_file(
     caption: str = '',
     **kwargs: Any,
 ) -> None:
+    temp_thumb = (
+        output_file.with_name(f'{output_file.stem}_thumb_{uuid4().hex}.jpg')
+        if 'thumb' not in kwargs
+        else None
+    )
+    if temp_thumb and prepare_pdf_thumbnail(output_file, temp_thumb):
+        kwargs['thumb'] = str(temp_thumb)
     with output_file.open('rb') as file_to_upload:
         uploaded_file = await fast_upload_file(
             event.client,
@@ -117,15 +149,19 @@ async def upload_file(
                 current, total, progress_message, t('uploading')
             ),
         )
-    await event.client.send_file(
-        event.chat_id,
-        file=uploaded_file,
-        force_document=force_document,
-        caption=caption if caption else None,
-        voice_note=is_voice,
-        reply_to=event.message.id if isinstance(event, NewMessage.Event) else None,
-        **kwargs,
-    )
+    try:
+        await event.client.send_file(
+            event.chat_id,
+            file=uploaded_file,
+            force_document=force_document,
+            caption=caption if caption else None,
+            voice_note=is_voice,
+            reply_to=event.message.id if isinstance(event, NewMessage.Event) else None,
+            **kwargs,
+        )
+    finally:
+        if temp_thumb:
+            temp_thumb.unlink(missing_ok=True)
 
 
 async def upload_file_and_cleanup(
