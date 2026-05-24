@@ -2,7 +2,7 @@ from pathlib import Path
 from shlex import join as shell_join
 from shlex import quote
 from tempfile import TemporaryDirectory
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import aiohttp
 import regex as re
@@ -11,7 +11,11 @@ from telethon.tl.custom import Message
 
 from src import DOWNLOADS_DIR, PARENT_DIR
 from src.modules.base import ModuleBase
-from src.modules.plugins.media import build_media_upload_params
+from src.modules.plugins.media import (
+    ALLOWED_AUDIO_FORMATS,
+    ALLOWED_VIDEO_FORMATS,
+    build_media_upload_params,
+)
 from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import (
@@ -41,6 +45,8 @@ from src.utils.i18n import t
 from src.utils.patterns import HTTP_URL_PATTERN
 from src.utils.remote_files import ExternalDownload, RemoteFile, resolve_download_plan
 from src.utils.telegram import get_reply_message, send_progress_message
+
+MEDIA_UPLOAD_EXTS = {f'.{ext}' for ext in ALLOWED_AUDIO_FORMATS | ALLOWED_VIDEO_FORMATS}
 
 
 def extract_gdrive_command_input(text: str) -> str:
@@ -145,7 +151,21 @@ async def upload_output_files(
     for idx, output_file in enumerate(output_files, start=1):
         if len(output_files) > 1:
             await progress_message.edit(f'{t("uploading")} {idx}/{len(output_files)}')
-        await upload_file_and_cleanup(event, output_file, progress_message)
+        await upload_file_and_cleanup(
+            event,
+            output_file,
+            progress_message,
+            **await build_download_upload_params(output_file),
+        )
+
+
+async def build_download_upload_params(output_file: Path) -> dict[str, Any]:
+    if output_file.suffix.lower() not in MEDIA_UPLOAD_EXTS:
+        return {}
+    try:
+        return await build_media_upload_params(output_file)
+    except IndexError, KeyError, ValueError:
+        return {}
 
 
 async def collect_download_plan_files(

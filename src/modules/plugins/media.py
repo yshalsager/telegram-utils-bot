@@ -200,6 +200,13 @@ def build_audio_thumbnail_command(input_file: Path, thumbnail_file: Path, output
     )
 
 
+def build_audio_cover_extract_command(input_file: Path, output_file: Path) -> str:
+    return (
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} '
+        f'-map 0:v:0 -frames:v 1 {shell_arg(output_file)}'
+    )
+
+
 def parse_time_ranges(time_ranges_text: str) -> list[tuple[int, int]]:
     ranges = []
     for start_time, end_time in TIME_RANGE_PATTERN.findall(time_ranges_text):
@@ -618,6 +625,12 @@ async def build_media_upload_params(
         ]
         supports_streaming = False
         mime_type = None
+        if (
+            not is_voice
+            and output_info.get('attached_pic')
+            and await prepare_audio_thumbnail(output_file, thumbnail_file)
+        ):
+            thumb = str(thumbnail_file)
     else:
         attributes = [
             DocumentAttributeVideo(
@@ -1174,6 +1187,19 @@ async def prepare_telegram_thumbnail(input_file: Path, output_file: Path) -> boo
     return output_file.exists() and output_file.stat().st_size > 0
 
 
+async def prepare_audio_thumbnail(input_file: Path, output_file: Path) -> bool:
+    raw_thumbnail = output_file.with_name(f'{output_file.stem}_raw{output_file.suffix}')
+    try:
+        _, status_code = await run_command(
+            build_audio_cover_extract_command(input_file, raw_thumbnail)
+        )
+        if status_code != 0 or not raw_thumbnail.exists() or not raw_thumbnail.stat().st_size:
+            return False
+        return await prepare_telegram_thumbnail(raw_thumbnail, output_file)
+    finally:
+        raw_thumbnail.unlink(missing_ok=True)
+
+
 async def set_audio_thumbnail(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     if not supports_audio_thumbnail_message(reply_message):
@@ -1239,12 +1265,12 @@ async def _set_audio_thumbnail_process(event: NewMessage.Event, files: list[int]
             await status_message.edit(t('audio_thumbnail_update_failed'))
             return
 
-        upload_params = await build_media_upload_params(output_file)
+        upload_params = await build_media_upload_params(output_file, thumbnail_file=thumbnail_file)
+        upload_params.setdefault('thumb', str(thumbnail_file))
         await upload_file_and_cleanup(
             event,
             output_file,
             progress_message,
-            thumb=str(thumbnail_file),
             **upload_params,
         )
         await status_message.edit(t('audio_thumbnail_updated'))

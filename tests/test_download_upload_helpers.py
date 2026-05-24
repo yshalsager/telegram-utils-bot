@@ -1,11 +1,14 @@
+import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from typing import Any
 from unittest import TestCase
+from unittest.mock import AsyncMock, patch
 
 from src.modules.plugins.download_upload import (
     DownloadUpload,
+    build_download_upload_params,
     extract_gdrive_command_input,
     has_gdrive_download_input,
 )
@@ -151,3 +154,31 @@ class ArchiveDownloadHelpersTest(TestCase):
         assert select_archive_files(files, 'sample-book') == [
             ArchiveFile('sample-book.pdf', 'original')
         ]
+
+
+class DownloadUploadParamsTest(TestCase):
+    def test_download_upload_params_reuse_media_upload_params_for_media_files(self) -> None:
+        async def run_test() -> None:
+            with patch(
+                'src.modules.plugins.download_upload.build_media_upload_params',
+                AsyncMock(return_value={'thumb': 'cover.jpg'}),
+            ) as build_media_params:
+                params = await build_download_upload_params(Path('song.mp3'))
+
+            assert params == {'thumb': 'cover.jpg'}
+            build_media_params.assert_awaited_once_with(Path('song.mp3'))
+
+        asyncio.run(run_test())
+
+    def test_download_upload_params_skip_non_media_files(self) -> None:
+        async def run_test() -> None:
+            with patch(
+                'src.modules.plugins.download_upload.build_media_upload_params',
+                AsyncMock(return_value={'thumb': 'cover.jpg'}),
+            ) as build_media_params:
+                params = await build_download_upload_params(Path('book.pdf'))
+
+            assert params == {}
+            build_media_params.assert_not_awaited()
+
+        asyncio.run(run_test())

@@ -12,6 +12,7 @@ from src.modules.plugins.media import (
     build_amplify_command,
     build_atempo_filter,
     build_audio_compress_command,
+    build_audio_cover_extract_command,
     build_audio_thumbnail_command,
     build_convert_media_command,
     build_convert_to_audio_command,
@@ -343,6 +344,64 @@ class MediaTimeRangeHelpersTest(TestCase):
 
         asyncio.run(run_test())
 
+    def test_audio_upload_params_include_existing_cover_thumbnail(self) -> None:
+        async def run_test() -> None:
+            with (
+                patch(
+                    'src.modules.plugins.media.get_output_info',
+                    AsyncMock(
+                        return_value={
+                            'vcodec': 'mjpeg',
+                            'attached_pic': True,
+                            'duration': 10,
+                            'title': 'Title',
+                            'uploader': 'Artist',
+                        }
+                    ),
+                ),
+                patch(
+                    'src.modules.plugins.media.prepare_audio_thumbnail',
+                    AsyncMock(return_value=True),
+                ) as prepare_thumbnail,
+            ):
+                params = await build_media_upload_params(
+                    Path('audio.mp3'), thumbnail_file=Path('thumb.jpg')
+                )
+
+            assert params['thumb'] == 'thumb.jpg'
+            prepare_thumbnail.assert_awaited_once_with(Path('audio.mp3'), Path('thumb.jpg'))
+
+        asyncio.run(run_test())
+
+    def test_voice_upload_params_do_not_generate_cover_thumbnail(self) -> None:
+        async def run_test() -> None:
+            with (
+                patch(
+                    'src.modules.plugins.media.get_output_info',
+                    AsyncMock(
+                        return_value={
+                            'vcodec': 'mjpeg',
+                            'attached_pic': True,
+                            'duration': 10,
+                            'title': 'Title',
+                            'uploader': 'Artist',
+                        }
+                    ),
+                ),
+                patch(
+                    'src.modules.plugins.media.prepare_audio_thumbnail',
+                    AsyncMock(return_value=True),
+                ) as prepare_thumbnail,
+            ):
+                params = await build_media_upload_params(
+                    Path('voice.ogg'), is_voice=True, thumbnail_file=Path('thumb.jpg')
+                )
+
+            assert 'thumb' not in params
+            prepare_thumbnail.assert_not_awaited()
+
+        asyncio.run(run_test())
+
 
 class MediaSpeedHelpersTest(TestCase):
     def test_speed_factor_buttons_put_slow_factors_first(self) -> None:
@@ -411,6 +470,13 @@ class AudioThumbnailHelpersTest(TestCase):
         assert 'comment="Cover (front)"' in mp3_command
         assert '-disposition:v attached_pic' in m4a_command
         assert '-map 0:a -map 1:v' in m4a_command
+
+    def test_build_audio_cover_extract_command_maps_attached_picture(self) -> None:
+        command = build_audio_cover_extract_command(Path('input.mp3'), Path('cover.jpg'))
+
+        assert '-map 0:v:0' in command
+        assert '-frames:v 1' in command
+        assert command.endswith('cover.jpg')
 
 
 class MediaCommandPatternsTest(TestCase):

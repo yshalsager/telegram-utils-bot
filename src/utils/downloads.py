@@ -40,7 +40,11 @@ def prepare_pdf_thumbnail(input_file: Path, output_file: Path) -> bool:
             PDF_THUMBNAIL_MAX_SIDE / page.rect.width, PDF_THUMBNAIL_MAX_SIDE / page.rect.height, 1
         )
         pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
-        for quality in (85, 75, 65, 55, 45, 35, 25):
+        output_file.write_bytes(pixmap.tobytes('jpg'))
+        if 0 < output_file.stat().st_size <= PDF_THUMBNAIL_MAX_SIZE:
+            return True
+
+        for quality in (95, 85, 75, 65, 55, 45, 35, 25):
             output_file.write_bytes(pixmap.tobytes('jpg', jpg_quality=quality))
             if 0 < output_file.stat().st_size <= PDF_THUMBNAIL_MAX_SIZE:
                 return True
