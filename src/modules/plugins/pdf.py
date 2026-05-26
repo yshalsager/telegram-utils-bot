@@ -10,6 +10,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import pymupdf
 import regex as re
+from humanize import naturalsize
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 
@@ -26,6 +27,7 @@ from src.utils.filters import has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
 from src.utils.telegram import (
     delete_callback_after,
+    edit_or_send_as_file,
     get_reply_message,
     inline_choice_grid,
     send_progress_message,
@@ -38,6 +40,250 @@ PDF_SAVE_KWARGS = {
     'deflate_fonts': False,
     'use_objstms': True,
 }
+
+PDF_PERMISSION_FLAGS = [
+    ('pdf_permission_print', 4),
+    ('pdf_permission_copy', 16),
+    ('pdf_permission_modify', 8),
+    ('pdf_permission_annotate', 32),
+    ('pdf_permission_forms', 256),
+    ('pdf_permission_accessibility', 512),
+    ('pdf_permission_assemble', 1024),
+    ('pdf_permission_print_hq', 2048),
+]
+
+
+def clean_pdf_value(value: Any) -> str:
+    return str(value or '').strip()
+
+
+def safe_archive_name(name: str, fallback: str) -> str:
+    safe_name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', '_', clean_pdf_value(name)).strip(' ._')
+    return safe_name or fallback
+
+
+def unique_archive_name(name: str, used_names: set[str]) -> str:
+    path = Path(name)
+    candidate = name
+    idx = 2
+    while candidate in used_names:
+        candidate = f'{path.stem}_{idx}{path.suffix}'
+        idx += 1
+    used_names.add(candidate)
+    return candidate
+
+
+def format_pdf_permissions(permissions: int) -> str:
+    allowed = [t(name) for name, flag in PDF_PERMISSION_FLAGS if permissions & flag]
+    return ', '.join(allowed) if allowed else t('pdf_info_none')
+
+
+def collect_pdf_fonts(doc: pymupdf.Document) -> list[dict[str, Any]]:
+    fonts: dict[int, dict[str, Any]] = {}
+    for page_number in range(doc.page_count):
+        for font in doc.get_page_fonts(page_number, full=True):
+            xref, ext, font_type, basefont, name, encoding, referencer = font
+            item = fonts.setdefault(
+                xref,
+                {
+                    'xref': xref,
+                    'ext': ext,
+                    'type': font_type,
+                    'basefont': basefont,
+                    'name': name,
+                    'encoding': encoding,
+                    'referencer': referencer,
+                    'pages': set(),
+                },
+            )
+            item['pages'].add(page_number + 1)
+    return sorted(fonts.values(), key=lambda item: (str(item['basefont']).lower(), item['xref']))
+
+
+def collect_pdf_image_summary(doc: pymupdf.Document) -> dict[str, Any]:
+    total = 0
+    total_size = 0
+    digests: set[bytes] = set()
+    dimensions: set[tuple[int, int]] = set()
+    colorspaces: set[str] = set()
+    largest = (0, 0, '')
+    for page in doc:
+        for image in page.get_image_info(hashes=True):
+            total += 1
+            total_size += int(image.get('size') or 0)
+            if digest := image.get('digest'):
+                digests.add(digest)
+            width = int(image.get('width') or 0)
+            height = int(image.get('height') or 0)
+            dimensions.add((width, height))
+            colorspace = clean_pdf_value(image.get('cs-name'))
+            if colorspace:
+                colorspaces.add(colorspace)
+            if width * height > largest[0] * largest[1]:
+                largest = (width, height, colorspace)
+    return {
+        'total': total,
+        'unique': len(digests) if digests else len(dimensions),
+        'dimensions': len(dimensions),
+        'colorspaces': sorted(colorspaces),
+        'largest': largest,
+        'total_size': total_size,
+    }
+
+
+def summarize_page_sizes(doc: pymupdf.Document) -> list[str]:
+    sizes: dict[tuple[float, float, int], int] = {}
+    for page in doc:
+        key = (round(page.rect.width, 2), round(page.rect.height, 2), page.rotation)
+        sizes[key] = sizes.get(key, 0) + 1
+    return [
+        t(
+            'pdf_info_page_size_item',
+            width=f'{width:g}',
+            height=f'{height:g}',
+            rotation=rotation,
+            value=count,
+        )
+        for (width, height, rotation), count in sorted(sizes.items())
+    ]
+
+
+def pdf_info_bool(value: bool) -> str:
+    return t('yes') if value else t('no')
+
+
+def format_pdf_info(doc: pymupdf.Document, file_name: str, file_size: int) -> str:
+    lines = [
+        t('pdf_info_title', file_name=file_name),
+        t('pdf_info_size', size=naturalsize(file_size, binary=True)),
+        t('pdf_info_pages', pages=doc.page_count),
+        t('pdf_info_encrypted', value=pdf_info_bool(doc.is_encrypted)),
+        t('pdf_info_password_required', value=pdf_info_bool(doc.needs_pass)),
+    ]
+    if doc.needs_pass:
+        return '\n'.join(lines)
+
+    metadata = doc.metadata or {}
+    fonts = collect_pdf_fonts(doc)
+    images = collect_pdf_image_summary(doc)
+    toc_count = len(doc.get_toc())
+    embedded_files = doc.embfile_count()
+    lines.extend(
+        [
+            t('pdf_info_format', value=metadata.get('format') or t('pdf_info_unknown')),
+            t('pdf_info_permissions', value=format_pdf_permissions(doc.permissions)),
+            t('pdf_info_linearized', value=pdf_info_bool(doc.is_fast_webaccess)),
+            t('pdf_info_repaired', value=pdf_info_bool(doc.is_repaired)),
+            t('pdf_info_form_pdf', value=pdf_info_bool(doc.is_form_pdf)),
+            t('pdf_info_layout', value=doc.pagelayout or t('pdf_info_unknown')),
+            t('pdf_info_mode', value=doc.pagemode or t('pdf_info_unknown')),
+            t('pdf_info_versions', value=doc.version_count),
+            t('pdf_info_toc_entries', value=toc_count),
+            t('pdf_info_embedded_files', value=embedded_files),
+            '',
+            t('pdf_info_metadata'),
+        ]
+    )
+    for key in (
+        'title',
+        'author',
+        'subject',
+        'keywords',
+        'creator',
+        'producer',
+        'creationDate',
+        'modDate',
+    ):
+        if value := clean_pdf_value(metadata.get(key)):
+            lines.append(t('pdf_info_item', label=t(f'pdf_metadata_{key}'), value=value))
+    if lines[-1] == t('pdf_info_metadata'):
+        lines.append(t('pdf_info_empty_item'))
+
+    lines.extend(
+        ['', t('pdf_info_page_sizes'), *[f'- {line}' for line in summarize_page_sizes(doc)]]
+    )
+    lines.extend(['', t('pdf_info_fonts', value=len(fonts))])
+    for font in fonts[:20]:
+        pages = ','.join(map(str, sorted(font['pages'])))
+        lines.append(
+            t(
+                'pdf_info_font_item',
+                basefont=font['basefont'],
+                type=font['type'],
+                encoding=font['encoding'] or t('pdf_info_unknown'),
+                pages=pages,
+            )
+        )
+    if len(fonts) > 20:
+        lines.append(t('pdf_info_more_items', value=len(fonts) - 20))
+
+    largest_width, largest_height, largest_colorspace = images['largest']
+    lines.extend(
+        [
+            '',
+            t('pdf_info_images'),
+            t('pdf_info_images_displayed', value=images['total']),
+            t('pdf_info_images_unique', value=images['unique']),
+            t('pdf_info_images_unique_dimensions', value=images['dimensions']),
+            t(
+                'pdf_info_images_colorspaces',
+                value=', '.join(images['colorspaces'])
+                if images['colorspaces']
+                else t('pdf_info_none'),
+            ),
+            t(
+                'pdf_info_images_largest',
+                width=largest_width,
+                height=largest_height,
+                colorspace=largest_colorspace or t('pdf_info_unknown'),
+            ),
+            t('pdf_info_images_storage', size=naturalsize(images['total_size'], binary=True)),
+        ]
+    )
+    return '\n'.join(lines)
+
+
+def collect_pdf_attachments(doc: pymupdf.Document) -> list[tuple[str, bytes]]:
+    used_names: set[str] = set()
+    entries = []
+    for idx, name in enumerate(doc.embfile_names(), start=1):
+        info = doc.embfile_info(name)
+        filename = info.get('ufilename') or info.get('filename') or name
+        archive_name = unique_archive_name(
+            safe_archive_name(str(filename), f'attachment_{idx}'), used_names
+        )
+        entries.append((archive_name, doc.embfile_get(name)))
+    return entries
+
+
+def collect_pdf_font_files(doc: pymupdf.Document) -> list[tuple[str, bytes]]:
+    used_xrefs = set()
+    used_names: set[str] = set()
+    entries = []
+    for font in collect_pdf_fonts(doc):
+        xref = int(font['xref'])
+        if xref in used_xrefs:
+            continue
+        used_xrefs.add(xref)
+        with suppress(RuntimeError, ValueError):
+            name, ext, _font_type, content = doc.extract_font(xref)
+            if not content:
+                continue
+            suffix = f'.{ext}' if ext and ext != 'n/a' else ''
+            archive_name = unique_archive_name(
+                safe_archive_name(
+                    f'{name or font["basefont"]}_{xref}{suffix}', f'font_{xref}{suffix}'
+                ),
+                used_names,
+            )
+            entries.append((archive_name, content))
+    return entries
+
+
+def write_zip_entries(output_file: Path, entries: list[tuple[str, bytes]]) -> None:
+    with ZipFile(output_file, 'w', ZIP_DEFLATED) as archive:
+        for name, content in entries:
+            archive.writestr(name, content)
 
 
 async def extract_pdf_text(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -62,6 +308,84 @@ async def extract_pdf_text(event: NewMessage.Event | CallbackQuery.Event) -> Non
         )
         await upload_file_and_cleanup(event, output_file, progress_message)
         await progress_message.delete()
+
+
+async def pdf_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await send_progress_message(event, t('fetching_pdf_info'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix='.pdf',
+    ) as temp_file_path:
+        with pymupdf.open(temp_file_path) as doc:
+            report = format_pdf_info(
+                doc,
+                get_download_name(reply_message).name,
+                reply_message.file.size or temp_file_path.stat().st_size,
+            )
+        await edit_or_send_as_file(
+            event,
+            progress_message,
+            report,
+            file_name=f'{get_download_name(reply_message).stem}_pdf_info.txt',
+            parse_mode=None,
+        )
+
+
+async def extract_pdf_attachments(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await send_progress_message(event, t('extracting_pdf_attachments'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix='.pdf',
+    ) as temp_file_path:
+        with pymupdf.open(temp_file_path) as doc:
+            entries = collect_pdf_attachments(doc)
+        if not entries:
+            await progress_message.edit(t('pdf_no_attachments'))
+            return
+
+        if len(entries) == 1:
+            output_file = temp_file_path.with_name(entries[0][0])
+            output_file.write_bytes(entries[0][1])
+        else:
+            output_file = temp_file_path.with_name(
+                f'{get_download_name(reply_message).stem}_attachments.zip'
+            )
+            write_zip_entries(output_file, entries)
+        await upload_file_and_cleanup(event, output_file, progress_message, force_document=True)
+        await progress_message.edit(t('pdf_attachments_extracted'))
+
+
+async def extract_pdf_fonts(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await send_progress_message(event, t('extracting_pdf_fonts'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix='.pdf',
+    ) as temp_file_path:
+        with pymupdf.open(temp_file_path) as doc:
+            entries = collect_pdf_font_files(doc)
+        if not entries:
+            await progress_message.edit(t('pdf_no_extractable_fonts'))
+            return
+
+        for idx, (name, content) in enumerate(entries, start=1):
+            if len(entries) > 1:
+                await progress_message.edit(f'{t("uploading")} {idx}/{len(entries)}')
+            output_file = temp_file_path.with_name(name)
+            output_file.write_bytes(content)
+            await upload_file_and_cleanup(event, output_file, progress_message, force_document=True)
+        await progress_message.edit(t('pdf_fonts_extracted'))
 
 
 async def merge_pdf_initial(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -613,10 +937,31 @@ class PDF(ModuleBase):
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),
+        'pdf attachments': Command(
+            handler=extract_pdf_attachments,
+            description=t('_pdf_attachments_description'),
+            pattern=re.compile(r'^/(pdf)\s+(attachments)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf fonts': Command(
+            handler=extract_pdf_fonts,
+            description=t('_pdf_fonts_description'),
+            pattern=re.compile(r'^/(pdf)\s+(fonts)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
         'pdf images': Command(
             handler=convert_to_images,
             description=t('_pdf_images_description'),
             pattern=re.compile(r'^/(pdf)\s+(images)\s+?(ZIP|PDF)?$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf info': Command(
+            handler=pdf_info,
+            description=t('_pdf_info_description'),
+            pattern=re.compile(r'^/(pdf)\s+(info)$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),

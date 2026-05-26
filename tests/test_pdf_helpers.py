@@ -6,7 +6,14 @@ from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, patch
 
 import pymupdf
-from src.modules.plugins.pdf import parse_page_numbers
+from src.modules.plugins.pdf import (
+    PDF,
+    collect_pdf_attachments,
+    collect_pdf_font_files,
+    collect_pdf_fonts,
+    format_pdf_info,
+    parse_page_numbers,
+)
 from src.utils.downloads import PDF_THUMBNAIL_MAX_SIZE, prepare_pdf_thumbnail, upload_file
 
 
@@ -56,3 +63,55 @@ class PdfThumbnailTest(IsolatedAsyncioTestCase):
             assert thumb.name.startswith('book_thumb_')
             assert thumb.suffix == '.jpg'
             assert not thumb.exists()
+
+
+class PdfInfoHelpersTest(TestCase):
+    def make_pdf(self, path: Path) -> None:
+        with pymupdf.open() as doc:
+            doc.set_metadata({'title': 'Sample PDF', 'author': 'Tester'})
+            page = doc.new_page(width=300, height=400)
+            page.insert_text((72, 72), 'PDF info test')
+            doc.embfile_add('note.txt', b'attachment body', filename='note.txt')
+            doc.save(path)
+
+    def test_format_pdf_info_includes_document_font_and_attachment_summary(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            pdf_file = Path(temp_dir_name) / 'sample.pdf'
+            self.make_pdf(pdf_file)
+
+            with pymupdf.open(pdf_file) as doc:
+                report = format_pdf_info(doc, pdf_file.name, pdf_file.stat().st_size)
+
+            assert 'sample.pdf' in report
+            assert 'Sample PDF' in report
+            assert 'Tester' in report
+            assert 'Helvetica' in report
+
+    def test_collect_pdf_attachments_returns_embedded_files(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            pdf_file = Path(temp_dir_name) / 'sample.pdf'
+            self.make_pdf(pdf_file)
+
+            with pymupdf.open(pdf_file) as doc:
+                attachments = collect_pdf_attachments(doc)
+
+            assert attachments == [('note.txt', b'attachment body')]
+
+    def test_collect_pdf_fonts_skips_base_fonts_without_embedded_data(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            pdf_file = Path(temp_dir_name) / 'sample.pdf'
+            self.make_pdf(pdf_file)
+
+            with pymupdf.open(pdf_file) as doc:
+                fonts = collect_pdf_fonts(doc)
+                font_files = collect_pdf_font_files(doc)
+
+            assert fonts[0]['basefont'] == 'Helvetica'
+            assert font_files == []
+
+
+class PdfCommandPatternTest(TestCase):
+    def test_pdf_info_attachments_and_fonts_commands_match(self) -> None:
+        assert PDF.commands['pdf info'].pattern.match('/pdf info')
+        assert PDF.commands['pdf attachments'].pattern.match('/pdf attachments')
+        assert PDF.commands['pdf fonts'].pattern.match('/pdf fonts')
