@@ -2,6 +2,7 @@ from contextlib import suppress
 from io import BytesIO
 from os import getenv
 from pathlib import Path
+from shlex import quote
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from typing import Any, ClassVar
@@ -286,6 +287,35 @@ def write_zip_entries(output_file: Path, entries: list[tuple[str, bytes]]) -> No
             archive.writestr(name, content)
 
 
+def remaining_pdf_pages(total_pages: int, pages_to_delete: list[int]) -> list[int]:
+    delete_set = set(pages_to_delete)
+    return [page for page in range(total_pages) if page not in delete_set]
+
+
+def save_selected_pdf_pages(input_file: Path, output_file: Path, selected_pages: list[int]) -> None:
+    with pymupdf.open(input_file) as doc:
+        doc.select(selected_pages)
+        doc.save(output_file, **PDF_SAVE_KWARGS)
+
+
+def save_reversed_pdf(input_file: Path, output_file: Path) -> None:
+    with pymupdf.open(input_file) as doc:
+        doc.select(list(reversed(range(doc.page_count))))
+        doc.save(output_file, **PDF_SAVE_KWARGS)
+
+
+def save_sanitized_pdf(input_file: Path, output_file: Path) -> None:
+    with pymupdf.open(input_file) as doc:
+        doc.scrub()
+        doc.set_metadata({})
+        doc.save(output_file, **PDF_SAVE_KWARGS)
+
+
+def save_repaired_pdf(input_file: Path, output_file: Path) -> None:
+    with pymupdf.open(input_file) as doc:
+        doc.save(output_file, **PDF_SAVE_KWARGS)
+
+
 async def extract_pdf_text(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     progress_message = await send_progress_message(event, t('extracting_text_from_pdf'))
@@ -562,6 +592,152 @@ async def extract_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> No
 
     await _extract_pdf_pages_process(event, reply_message, match)
     return
+
+
+async def _delete_pdf_pages_process(
+    event: NewMessage.Event,
+    reply_message: Message | None,
+    match: Any,
+) -> None:
+    assert reply_message is not None
+    pages_to_delete = parse_page_numbers(match.group(1))
+    if not pages_to_delete:
+        await event.reply(t('invalid_pdf_delete_pages'))
+        return
+
+    progress_message = await send_progress_message(event, t('deleting_pdf_pages'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix='.pdf',
+    ) as temp_file_path:
+        with pymupdf.open(temp_file_path) as doc:
+            selected_pages = remaining_pdf_pages(doc.page_count, pages_to_delete)
+        if not selected_pages:
+            await progress_message.edit(t('pdf_delete_pages_would_empty'))
+            return
+
+        output_file = temp_file_path.with_name(f'{Path(reply_message.file.name).stem}_deleted.pdf')
+        save_selected_pdf_pages(temp_file_path, output_file, selected_pages)
+        await upload_file_and_cleanup(event, output_file, progress_message)
+
+    await progress_message.edit(t('pdf_pages_deleted'))
+    raise StopPropagation
+
+
+async def delete_pdf_pages(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        await event.client.reply_prompts.ask(
+            event,
+            f'{t("pdf_delete_pages")}:',
+            pattern=re.compile(r'^(?=.*\d)([\d,\-\s]+)$'),
+            handler=_delete_pdf_pages_process,
+            invalid_reply_text=t('invalid_pdf_delete_pages'),
+        )
+        return
+
+    reply_message = await get_reply_message(event, previous=True)
+    pages_input = event.message.text.split(' ', 2)[-1]
+    match = re.match(r'^(?=.*\d)([\d,\-\s]+)$', pages_input)
+    if not match:
+        await event.reply(t('invalid_pdf_delete_pages'))
+        raise StopPropagation
+
+    await _delete_pdf_pages_process(event, reply_message, match)
+
+
+async def reverse_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await send_progress_message(event, t('reversing_pdf_pages'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix='.pdf',
+    ) as temp_file_path:
+        output_file = temp_file_path.with_name(f'{Path(reply_message.file.name).stem}_reversed.pdf')
+        save_reversed_pdf(temp_file_path, output_file)
+        await upload_file_and_cleanup(event, output_file, progress_message)
+
+    await progress_message.edit(t('pdf_pages_reversed'))
+
+
+async def sanitize_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await send_progress_message(event, t('sanitizing_pdf'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix='.pdf',
+    ) as temp_file_path:
+        output_file = temp_file_path.with_name(
+            f'{Path(reply_message.file.name).stem}_sanitized.pdf'
+        )
+        save_sanitized_pdf(temp_file_path, output_file)
+        await upload_file_and_cleanup(event, output_file, progress_message)
+
+    await progress_message.edit(t('pdf_sanitized'))
+
+
+async def repair_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('repairing_pdf'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix='.pdf',
+    ) as temp_file_path:
+        output_file = temp_file_path.with_name(f'{Path(reply_message.file.name).stem}_repaired.pdf')
+        with suppress(Exception):
+            save_repaired_pdf(temp_file_path, output_file)
+        if not output_file.exists() or not output_file.stat().st_size:
+            command = f'gs -sDEVICE=pdfwrite -dNOPAUSE -dQUIET -dBATCH -sOutputFile={quote(str(output_file))} {quote(str(temp_file_path))}'
+            await stream_shell_output(event, command, status_message, progress_message)
+        if not output_file.exists() or not output_file.stat().st_size:
+            await status_message.edit(t('pdf_repair_failed'))
+            return
+
+        await upload_file_and_cleanup(event, output_file, progress_message)
+
+    await progress_message.edit(t('pdf_repaired'))
+
+
+async def linearize_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('linearizing_pdf'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix='.pdf',
+    ) as temp_file_path:
+        output_file = temp_file_path.with_name(
+            f'{Path(reply_message.file.name).stem}_linearized.pdf'
+        )
+        command = (
+            f'gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.7 -dFastWebView=true -dNOPAUSE '
+            f'-dQUIET -dBATCH -sOutputFile={quote(str(output_file))} {quote(str(temp_file_path))}'
+        )
+        await stream_shell_output(event, command, status_message, progress_message)
+        if not output_file.exists() or not output_file.stat().st_size:
+            await status_message.edit(
+                t('process_failed_for_file', file_name=reply_message.file.name)
+            )
+            return
+
+        await upload_file_and_cleanup(event, output_file, progress_message)
+
+    await progress_message.edit(t('pdf_linearized'))
 
 
 async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -937,6 +1113,13 @@ class PDF(ModuleBase):
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),
+        'pdf delete': Command(
+            handler=delete_pdf_pages,
+            description=t('_pdf_delete_description'),
+            pattern=re.compile(r'^/(pdf)\s+(delete)\s+([\d,\-\s]+)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
         'pdf attachments': Command(
             handler=extract_pdf_attachments,
             description=t('_pdf_attachments_description'),
@@ -962,6 +1145,34 @@ class PDF(ModuleBase):
             handler=pdf_info,
             description=t('_pdf_info_description'),
             pattern=re.compile(r'^/(pdf)\s+(info)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf reverse': Command(
+            handler=reverse_pdf,
+            description=t('_pdf_reverse_description'),
+            pattern=re.compile(r'^/(pdf)\s+(reverse)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf sanitize': Command(
+            handler=sanitize_pdf,
+            description=t('_pdf_sanitize_description'),
+            pattern=re.compile(r'^/(pdf)\s+(sanitize)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf repair': Command(
+            handler=repair_pdf,
+            description=t('_pdf_repair_description'),
+            pattern=re.compile(r'^/(pdf)\s+(repair)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf linearize': Command(
+            handler=linearize_pdf,
+            description=t('_pdf_linearize_description'),
+            pattern=re.compile(r'^/(pdf)\s+(linearize)$'),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),
