@@ -41,6 +41,7 @@ PDF_SAVE_KWARGS = {
     'deflate_fonts': False,
     'use_objstms': True,
 }
+PDF_FONT_ZIP_THRESHOLD = 5
 
 PDF_PERMISSION_FLAGS = [
     ('pdf_permission_print', 4),
@@ -407,6 +408,15 @@ async def extract_pdf_fonts(event: NewMessage.Event | CallbackQuery.Event) -> No
             entries = collect_pdf_font_files(doc)
         if not entries:
             await progress_message.edit(t('pdf_no_extractable_fonts'))
+            return
+
+        if len(entries) > PDF_FONT_ZIP_THRESHOLD:
+            output_file = temp_file_path.with_name(
+                f'{get_download_name(reply_message).stem}_fonts.zip'
+            )
+            write_zip_entries(output_file, entries)
+            await upload_file_and_cleanup(event, output_file, progress_message, force_document=True)
+            await progress_message.edit(t('pdf_fonts_extracted'))
             return
 
         for idx, (name, content) in enumerate(entries, start=1):
