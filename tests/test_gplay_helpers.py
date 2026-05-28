@@ -1,10 +1,12 @@
 from unittest import TestCase
+from unittest.mock import patch
 
 from src.modules.plugins.gplay import GPLAY_COMMAND_PATTERN, extract_gplay_command_input
 from src.utils.gplay import (
     arch_label,
     cookie_header,
     extract_gplay_package,
+    get_dispenser_url,
     normalize_arch,
 )
 
@@ -74,3 +76,11 @@ class GPlayHelpersTest(TestCase):
             'Cookie': 'MarketDA=abc; Token=xyz'
         }
         assert cookie_header({}) == {}
+
+    def test_dispenser_url_is_opt_in(self) -> None:
+        with patch.dict('os.environ', {}, clear=True):
+            assert get_dispenser_url() == ''
+
+    def test_dispenser_url_is_read_from_environment(self) -> None:
+        with patch.dict('os.environ', {'GPLAY_DISPENSER_URL': ' https://example.com/api/auth/ '}):
+            assert get_dispenser_url() == 'https://example.com/api/auth'

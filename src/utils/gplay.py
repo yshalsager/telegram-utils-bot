@@ -18,7 +18,7 @@ os.environ.setdefault('PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION', 'python')
 
 from gpapi import googleplay_pb2
 
-DISPENSER_URL = 'https://auroraoss.com/api/auth'
+DISPENSER_URL_ENV = 'GPLAY_DISPENSER_URL'
 FDFE_URL = 'https://android.clients.google.com/fdfe'
 PURCHASE_URL = f'{FDFE_URL}/purchase'
 DELIVERY_URL = f'{FDFE_URL}/delivery'
@@ -234,6 +234,10 @@ def has_gplay_link(text: str) -> bool:
     return bool(extract_gplay_package(text))
 
 
+def get_dispenser_url() -> str:
+    return os.getenv(DISPENSER_URL_ENV, '').strip().rstrip('/')
+
+
 def auth_cache_path(arch: str) -> Path:
     return GPLAY_STATE_DIR / f'auth-{normalize_arch(arch)}.json'
 
@@ -302,8 +306,12 @@ def cookie_header(cookies: dict[str, str]) -> dict[str, str]:
 async def request_anonymous_auth(
     session: aiohttp.ClientSession, profile: dict[str, str]
 ) -> dict[str, Any]:
+    dispenser_url = get_dispenser_url()
+    if not dispenser_url:
+        raise GPlayError(f'{DISPENSER_URL_ENV} is not configured')
+
     async with session.post(
-        DISPENSER_URL,
+        dispenser_url,
         json=profile,
         headers={
             'User-Agent': 'com.aurora.store-4.6.1-70',

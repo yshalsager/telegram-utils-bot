@@ -125,6 +125,10 @@ Before setting up the bot:
    GROQ_API_KEY="..."
    # Optional (tafrigh wit)
    WIT_CLIENT_ACCESS_TOKENS="..."
+   # Optional (Google Play APK downloads)
+   # Configure your own Aurora-compatible dispenser. Anonymous Google Play auth is disabled when unset.
+   # Example opt-in value: GPLAY_DISPENSER_URL="https://auroraoss.com/api/auth"
+   GPLAY_DISPENSER_URL="..."
 ```
 
 ### Using Docker (Recommended)
