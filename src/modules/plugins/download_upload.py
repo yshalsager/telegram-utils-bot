@@ -49,6 +49,15 @@ from src.utils.telegram import get_reply_message, send_progress_message
 MEDIA_UPLOAD_EXTS = {f'.{ext}' for ext in ALLOWED_AUDIO_FORMATS | ALLOWED_VIDEO_FORMATS}
 
 
+def collect_upload_paths(pattern: str, base_dir: Path = PARENT_DIR) -> list[Path]:
+    pattern_path = Path(pattern)
+    if pattern_path.is_absolute():
+        paths = Path('/').glob(pattern_path.as_posix().lstrip('/'))
+    else:
+        paths = base_dir.glob(pattern)
+    return sorted((path for path in paths if path.is_file()), key=lambda path: path.as_posix())
+
+
 def extract_gdrive_command_input(text: str) -> str:
     match = DownloadUpload.commands['gdrive'].pattern.match(text)
     return (match.group(1) if match else '') or ''
@@ -107,11 +116,15 @@ async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -
 
 async def upload_file_command(event: NewMessage.Event) -> None:
     progress_message = await event.reply(t('starting_file_upload'))
-    for file_path in PARENT_DIR.glob(event.message.text.split(maxsplit=1)[1].strip()):
-        if file_path.exists():
-            await upload_file(event, file_path, progress_message)
-            await progress_message.edit(f'{t("file_uploaded")}: <code>{file_path.name}</code>')
-            return
+    upload_paths = collect_upload_paths(event.message.text.split(maxsplit=1)[1].strip())
+    for idx, file_path in enumerate(upload_paths, start=1):
+        if len(upload_paths) > 1:
+            await progress_message.edit(f'{t("uploading")} {idx}/{len(upload_paths)}')
+        await upload_file(event, file_path, progress_message)
+    if upload_paths:
+        uploaded = upload_paths[0].name if len(upload_paths) == 1 else str(len(upload_paths))
+        await progress_message.edit(f'{t("file_uploaded")}: <code>{uploaded}</code>')
+        return
     await progress_message.edit(t('no_files_found'))
 
 

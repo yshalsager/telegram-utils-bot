@@ -9,8 +9,10 @@ from unittest.mock import AsyncMock, patch
 from src.modules.plugins.download_upload import (
     DownloadUpload,
     build_download_upload_params,
+    collect_upload_paths,
     extract_gdrive_command_input,
     has_gdrive_download_input,
+    upload_file_command,
 )
 from src.utils.archive_org import (
     ArchiveFile,
@@ -157,6 +159,44 @@ class ArchiveDownloadHelpersTest(TestCase):
 
 
 class DownloadUploadParamsTest(TestCase):
+    def test_collect_upload_paths_returns_sorted_file_matches(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            temp_dir = Path(temp_dir_name)
+            (temp_dir / 'downloads' / 'saadi' / 'epubs').mkdir(parents=True)
+            (temp_dir / 'downloads' / 'saadi' / 'epubs' / '002.epub').write_text('2')
+            (temp_dir / 'downloads' / 'saadi' / 'epubs' / '001.epub').write_text('1')
+            (temp_dir / 'downloads' / 'saadi' / 'epubs' / 'nested').mkdir()
+
+            paths = collect_upload_paths('downloads/saadi/epubs/*.epub', temp_dir)
+
+            assert [path.name for path in paths] == ['001.epub', '002.epub']
+
+    def test_upload_file_command_uploads_all_matches(self) -> None:
+        async def run_test() -> None:
+            event: Any = SimpleNamespace(
+                message=SimpleNamespace(text='/upload downloads/saadi/epubs/*.epub'),
+                reply=AsyncMock(),
+            )
+            progress_message = SimpleNamespace(edit=AsyncMock())
+            event.reply.return_value = progress_message
+            paths = [Path('001.epub'), Path('002.epub')]
+
+            with (
+                patch(
+                    'src.modules.plugins.download_upload.collect_upload_paths', return_value=paths
+                ),
+                patch(
+                    'src.modules.plugins.download_upload.upload_file', AsyncMock()
+                ) as upload_file,
+            ):
+                await upload_file_command(event)
+
+            assert [call.args[1] for call in upload_file.await_args_list] == paths
+            assert progress_message.edit.await_args_list[0].args[0].endswith('1/2')
+            assert progress_message.edit.await_args.args[0].endswith('<code>2</code>')
+
+        asyncio.run(run_test())
+
     def test_download_upload_params_reuse_media_upload_params_for_media_files(self) -> None:
         async def run_test() -> None:
             with patch(
