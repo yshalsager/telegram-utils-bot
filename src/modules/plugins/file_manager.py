@@ -2,6 +2,7 @@ import shlex
 import shutil
 import time
 import zipfile
+from html import escape as html_escape
 from pathlib import Path
 from typing import ClassVar
 
@@ -17,6 +18,42 @@ from src.utils.filters import has_file, is_admin_in_private
 from src.utils.i18n import t
 from src.utils.run import run_command
 from src.utils.telegram import edit_or_send_as_file, get_reply_message, send_progress_message
+
+
+def archive_suffixes(file_name: str) -> list[str]:
+    return [suffix.lower() for suffix in Path(file_name).suffixes]
+
+
+def is_brotli_tar(file_name: str) -> bool:
+    return archive_suffixes(file_name)[-2:] == ['.tar', '.br']
+
+
+def is_brotli_file(file_name: str) -> bool:
+    return archive_suffixes(file_name)[-1:] == ['.br']
+
+
+def format_archive_output(status: str, output: str) -> str:
+    return f'{status}\n<pre>{html_escape(output or t("empty_output"))}</pre>'
+
+
+def archive_list_command(archive_path: Path, file_name: str) -> str:
+    quoted_path = shlex.quote(str(archive_path))
+    if is_brotli_tar(file_name):
+        return f'tar --warning=no-unknown-keyword --use-compress-program=brotli -tf {quoted_path}'
+    if is_brotli_file(file_name):
+        return f'brotli -t -v {quoted_path}'
+    return f'7z l -ba {quoted_path}'
+
+
+def archive_extract_command(archive_path: Path, file_name: str, output_dir: Path) -> str:
+    quoted_path = shlex.quote(str(archive_path))
+    quoted_output_dir = shlex.quote(str(output_dir))
+    if is_brotli_tar(file_name):
+        return f'tar --warning=no-unknown-keyword --use-compress-program=brotli -xf {quoted_path} -C {quoted_output_dir}'
+    if is_brotli_file(file_name):
+        output_path = output_dir / Path(file_name).with_suffix('').name
+        return f'brotli -d -f -o {shlex.quote(str(output_path))} {quoted_path}'
+    return f'7z x -y -o{quoted_output_dir} {quoted_path}'
 
 
 async def get_target_message(event: NewMessage.Event | CallbackQuery.Event) -> Message:
@@ -43,11 +80,14 @@ async def zip_file_command(event: NewMessage.Event | CallbackQuery.Event) -> Non
 async def list_archive_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
     message = await get_target_message(event)
     progress_message = await send_progress_message(event, t('starting_file_download'))
+    input_name = get_download_name(message).name
 
-    async with download_to_temp_file(event, message, progress_message) as temp_file_path:
+    async with download_to_temp_file(
+        event, message, progress_message, suffix=Path(input_name).suffix
+    ) as temp_file_path:
         await progress_message.edit(t('starting_process'))
         output, code = await run_command(
-            f'7z l -ba {shlex.quote(str(temp_file_path))}', timeout=60 * 30
+            archive_list_command(temp_file_path, input_name), timeout=60 * 30
         )
         status = (
             t('process_completed') if code == 0 else t('process_failed_with_return_code', code=code)
@@ -55,30 +95,38 @@ async def list_archive_command(event: NewMessage.Event | CallbackQuery.Event) ->
         await edit_or_send_as_file(
             event,
             progress_message,
-            f'{status}\n<pre>{output or t("empty_output")}</pre>',
-            file_name=f'{Path(get_download_name(message).name).stem}_list.txt',
+            format_archive_output(status, output),
+            file_name=f'{Path(input_name).stem}_list.txt',
+            file_text=f'{status}\n{output or t("empty_output")}',
+            parse_mode='html',
         )
 
 
 async def unzip_archive_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
     message = await get_target_message(event)
     progress_message = await send_progress_message(event, t('starting_file_download'))
-    archive_stem = Path(get_download_name(message).name).stem
+    input_name = get_download_name(message).name
+    archive_stem = Path(input_name).stem
     output_dir = TMP_DIR / f'{archive_stem}_unzipped_{int(time.time() * 1000)}'
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    async with download_to_temp_file(event, message, progress_message) as temp_file_path:
+    async with download_to_temp_file(
+        event, message, progress_message, suffix=Path(input_name).suffix
+    ) as temp_file_path:
         await progress_message.edit(t('starting_process'))
         output, code = await run_command(
-            f'7z x -y -o{shlex.quote(str(output_dir))} {shlex.quote(str(temp_file_path))}',
+            archive_extract_command(temp_file_path, input_name, output_dir),
             timeout=60 * 60,
         )
         if code != 0:
+            status = t('process_failed_with_return_code', code=code)
             await edit_or_send_as_file(
                 event,
                 progress_message,
-                f'{t("process_failed_with_return_code", code=code)}\n<pre>{output or t("empty_output")}</pre>',
+                format_archive_output(status, output),
                 file_name=f'{archive_stem}_unzip_error.txt',
+                file_text=f'{status}\n{output or t("empty_output")}',
+                parse_mode='html',
             )
             shutil.rmtree(output_dir, ignore_errors=True)
             return
