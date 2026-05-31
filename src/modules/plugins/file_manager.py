@@ -1,7 +1,6 @@
 import shlex
 import shutil
 import time
-import zipfile
 from html import escape as html_escape
 from pathlib import Path
 from typing import ClassVar
@@ -17,7 +16,49 @@ from src.utils.downloads import download_to_temp_file, get_download_name, upload
 from src.utils.filters import has_file, is_admin_in_private
 from src.utils.i18n import t
 from src.utils.run import run_command
-from src.utils.telegram import edit_or_send_as_file, get_reply_message, send_progress_message
+from src.utils.telegram import (
+    edit_or_send_as_file,
+    get_reply_message,
+    inline_choice_grid,
+    send_progress_message,
+)
+
+ALLOWED_ARCHIVE_FORMATS = ('zip', '7z', 'tar', 'tar.gz', 'tar.xz', 'tar.br', 'br')
+ARCHIVE_FORMAT_ALIASES = (
+    {target_format: target_format for target_format in ALLOWED_ARCHIVE_FORMATS}
+    | {f'.{target_format}': target_format for target_format in ALLOWED_ARCHIVE_FORMATS}
+    | {'tgz': 'tar.gz', '.tgz': 'tar.gz', 'txz': 'tar.xz', '.txz': 'tar.xz'}
+)
+ARCHIVE_SUFFIXES = [
+    ['.tar', '.br'],
+    ['.tar', '.gz'],
+    ['.tar', '.xz'],
+    ['.tar', '.bz2'],
+    ['.tgz'],
+    ['.txz'],
+    ['.tbz2'],
+    ['.tbz'],
+    ['.zip'],
+    ['.7z'],
+    ['.rar'],
+    ['.cbz'],
+    ['.cbr'],
+    ['.tar'],
+    ['.gz'],
+    ['.bz2'],
+    ['.xz'],
+    ['.br'],
+]
+TAR_ARCHIVE_SUFFIX_FLAGS = {
+    ('.tar', '.gz'): 'z',
+    ('.tgz',): 'z',
+    ('.tar', '.xz'): 'J',
+    ('.txz',): 'J',
+    ('.tar', '.bz2'): 'j',
+    ('.tbz2',): 'j',
+    ('.tbz',): 'j',
+    ('.tar',): '',
+}
 
 
 def archive_suffixes(file_name: str) -> list[str]:
@@ -32,14 +73,98 @@ def is_brotli_file(file_name: str) -> bool:
     return archive_suffixes(file_name)[-1:] == ['.br']
 
 
+def is_archive_file(file_name: str) -> bool:
+    suffixes = archive_suffixes(file_name)
+    return any(suffixes[-len(suffix_group) :] == suffix_group for suffix_group in ARCHIVE_SUFFIXES)
+
+
+def tar_archive_flag(file_name: str) -> str | None:
+    suffixes = archive_suffixes(file_name)
+    for suffix_group, flag in TAR_ARCHIVE_SUFFIX_FLAGS.items():
+        if suffixes[-len(suffix_group) :] == list(suffix_group):
+            return flag
+    return None
+
+
 def format_archive_output(status: str, output: str) -> str:
     return f'{status}\n<pre>{html_escape(output or t("empty_output"))}</pre>'
+
+
+def normalize_archive_format(target_format: str) -> str:
+    return ARCHIVE_FORMAT_ALIASES[target_format.strip().lower()]
+
+
+def archive_output_name(
+    input_name: str, target_format: str, *, collision_marker: str = 'compressed'
+) -> str:
+    target_format = normalize_archive_format(target_format)
+    input_name = Path(input_name).name
+    stem = input_name if target_format == 'br' else strip_archive_suffix(input_name)
+    suffix = f'.{target_format}'
+    output_name = f'{stem}{suffix}'
+    return f'{stem}_{collision_marker}{suffix}' if output_name == input_name else output_name
+
+
+async def select_archive_format(event: NewMessage.Event | CallbackQuery.Event) -> str | None:
+    prefix = 'm|archive|'
+    if isinstance(event, CallbackQuery.Event):
+        return await inline_choice_grid(
+            event,
+            prefix=prefix,
+            prompt_text=f'{t("choose_target_format")}:',
+            pairs=[
+                (target_format, f'{prefix}{target_format}')
+                for target_format in ALLOWED_ARCHIVE_FORMATS
+            ],
+            cols=3,
+            cast=str,
+        )
+    target_format = event.message.raw_text.rsplit(maxsplit=1)[-1]
+    try:
+        normalized_format = normalize_archive_format(target_format)
+    except KeyError:
+        await event.reply(
+            f'{t("unsupported_archive_format")}\n{t("allowed_formats")}: <code>{", ".join(ALLOWED_ARCHIVE_FORMATS)}</code>',
+            parse_mode='html',
+        )
+        return None
+    return normalized_format
+
+
+def strip_archive_suffix(file_name: str) -> str:
+    name = Path(file_name).name
+    suffixes = archive_suffixes(name)
+    for suffix_group in ARCHIVE_SUFFIXES:
+        if suffixes[-len(suffix_group) :] == suffix_group:
+            suffix_length = sum(len(suffix) for suffix in Path(name).suffixes[-len(suffix_group) :])
+            return name[:-suffix_length]
+    return Path(name).stem
+
+
+def archive_compress_command(
+    source_item: str,
+    output_path: Path,
+    target_format: str,
+) -> str:
+    target_format = normalize_archive_format(target_format)
+    command = {
+        'zip': '7z a -tzip {output} {source}',
+        '7z': '7z a -t7z {output} {source}',
+        'tar': 'tar -cf {output} {source}',
+        'tar.gz': 'tar -czf {output} {source}',
+        'tar.xz': 'tar -cJf {output} {source}',
+        'tar.br': 'tar --warning=no-unknown-keyword --use-compress-program=brotli -cf {output} {source}',
+        'br': 'brotli -f -o {output} {source}',
+    }[target_format]
+    return command.format(output=shlex.quote(str(output_path)), source=shlex.quote(source_item))
 
 
 def archive_list_command(archive_path: Path, file_name: str) -> str:
     quoted_path = shlex.quote(str(archive_path))
     if is_brotli_tar(file_name):
         return f'tar --warning=no-unknown-keyword --use-compress-program=brotli -tf {quoted_path}'
+    if (flag := tar_archive_flag(file_name)) is not None:
+        return f'tar -t{flag}f {quoted_path}'
     if is_brotli_file(file_name):
         return f'brotli -t -v {quoted_path}'
     return f'7z l -ba {quoted_path}'
@@ -50,10 +175,36 @@ def archive_extract_command(archive_path: Path, file_name: str, output_dir: Path
     quoted_output_dir = shlex.quote(str(output_dir))
     if is_brotli_tar(file_name):
         return f'tar --warning=no-unknown-keyword --use-compress-program=brotli -xf {quoted_path} -C {quoted_output_dir}'
+    if (flag := tar_archive_flag(file_name)) is not None:
+        return f'tar -x{flag}f {quoted_path} -C {quoted_output_dir}'
     if is_brotli_file(file_name):
         output_path = output_dir / Path(file_name).with_suffix('').name
         return f'brotli -d -f -o {shlex.quote(str(output_path))} {quoted_path}'
     return f'7z x -y -o{quoted_output_dir} {quoted_path}'
+
+
+async def run_archive_step(
+    event: NewMessage.Event | CallbackQuery.Event,
+    progress_message: Message,
+    command: str,
+    *,
+    cwd: Path,
+    error_file_name: str,
+) -> bool:
+    await progress_message.edit(t('starting_process'))
+    output, code = await run_command(command, timeout=60 * 60, cwd=cwd)
+    if code == 0:
+        return True
+    status = t('process_failed_with_return_code', code=code)
+    await edit_or_send_as_file(
+        event,
+        progress_message,
+        format_archive_output(status, output),
+        file_name=error_file_name,
+        file_text=f'{status}\n{output or t("empty_output")}',
+        parse_mode='html',
+    )
+    return False
 
 
 async def get_target_message(event: NewMessage.Event | CallbackQuery.Event) -> Message:
@@ -62,19 +213,68 @@ async def get_target_message(event: NewMessage.Event | CallbackQuery.Event) -> M
     return event.message
 
 
-async def zip_file_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def compress_file_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
     message = await get_target_message(event)
-    progress_message = await send_progress_message(event, t('starting_file_download'))
-    input_name = get_download_name(message).name
-    zip_name = f'{Path(input_name).stem}.zip'
+    target_format = await select_archive_format(event)
+    if target_format is None:
+        return
 
-    async with download_to_temp_file(event, message, progress_message) as temp_file_path:
-        zip_path = temp_file_path.with_name(zip_name)
-        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.write(temp_file_path, arcname=input_name)
-        await progress_message.edit(t('download_complete_starting_upload'))
-        await upload_file_and_cleanup(event, zip_path, progress_message, force_document=True)
-    await progress_message.edit(f'{t("file_uploaded")}: <code>{zip_name}</code>')
+    progress_message = await send_progress_message(event, t('starting_file_download'))
+    input_name = Path(get_download_name(message).name).name
+    output_name = archive_output_name(input_name, target_format)
+    archive_stem = strip_archive_suffix(input_name)
+    is_conversion = is_archive_file(input_name)
+    work_dir = TMP_DIR / f'{archive_stem}_archived_{int(time.time() * 1000)}'
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        async with download_to_temp_file(
+            event, message, progress_message, suffix=Path(input_name).suffix, temp_dir=work_dir
+        ) as temp_file_path:
+            source_item = input_name
+            cwd = work_dir
+            output_file = work_dir / output_name
+            if is_conversion:
+                output_dir = work_dir / 'contents'
+                output_dir.mkdir()
+                if not await run_archive_step(
+                    event,
+                    progress_message,
+                    archive_extract_command(temp_file_path, input_name, output_dir),
+                    cwd=work_dir,
+                    error_file_name=f'{archive_stem}_archive_error.txt',
+                ):
+                    return
+                source_item = '.'
+                cwd = output_dir
+                output_file = work_dir / archive_output_name(
+                    input_name, target_format, collision_marker='converted'
+                )
+                if target_format == 'br':
+                    files = sorted(path for path in output_dir.rglob('*') if path.is_file())
+                    if len(files) != 1:
+                        await progress_message.edit(t('plain_brotli_requires_single_file_archive'))
+                        return
+                    source_item = str(files[0].relative_to(output_dir))
+                    output_file = work_dir / f'{files[0].name}.br'
+            else:
+                temp_file_path.with_name(input_name).hardlink_to(temp_file_path)
+
+            if not await run_archive_step(
+                event,
+                progress_message,
+                archive_compress_command(source_item, output_file, target_format),
+                cwd=cwd,
+                error_file_name=f'{archive_stem}_archive_error.txt',
+            ):
+                return
+            await upload_file_and_cleanup(event, output_file, progress_message, force_document=True)
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+    result_key = (
+        'archive_conversion_completed' if is_conversion else 'archive_compression_completed'
+    )
+    await progress_message.edit(t(result_key, target_format=target_format))
 
 
 async def list_archive_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -102,12 +302,12 @@ async def list_archive_command(event: NewMessage.Event | CallbackQuery.Event) ->
         )
 
 
-async def unzip_archive_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def unarchive_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
     message = await get_target_message(event)
     progress_message = await send_progress_message(event, t('starting_file_download'))
     input_name = get_download_name(message).name
-    archive_stem = Path(input_name).stem
-    output_dir = TMP_DIR / f'{archive_stem}_unzipped_{int(time.time() * 1000)}'
+    archive_stem = strip_archive_suffix(input_name)
+    output_dir = TMP_DIR / f'{archive_stem}_unarchived_{int(time.time() * 1000)}'
     output_dir.mkdir(parents=True, exist_ok=True)
 
     async with download_to_temp_file(
@@ -124,7 +324,7 @@ async def unzip_archive_command(event: NewMessage.Event | CallbackQuery.Event) -
                 event,
                 progress_message,
                 format_archive_output(status, output),
-                file_name=f'{archive_stem}_unzip_error.txt',
+                file_name=f'{archive_stem}_unarchive_error.txt',
                 file_text=f'{status}\n{output or t("empty_output")}',
                 parse_mode='html',
             )
@@ -149,17 +349,17 @@ class FileManager(ModuleBase):
     name = 'File Manager'
     description = t('_file_manager_module_description')
     commands: ClassVar[ModuleBase.CommandsT] = {
-        'zip': Command(
-            handler=zip_file_command,
-            description=t('_zip_description'),
-            pattern=re.compile(r'^/zip$'),
+        'archive': Command(
+            handler=compress_file_command,
+            description=t('_archive_description'),
+            pattern=re.compile(r'^/archive\s+([\w.]+)$'),
             condition=has_file,
             is_applicable_for_reply=True,
         ),
-        'unzip': Command(
-            handler=unzip_archive_command,
-            description=t('_unzip_description'),
-            pattern=re.compile(r'^/unzip$'),
+        'unarchive': Command(
+            handler=unarchive_command,
+            description=t('_unarchive_description'),
+            pattern=re.compile(r'^/unarchive$'),
             condition=lambda event, message: (
                 is_admin_in_private(event, message) and has_file(event, message)
             ),
@@ -168,10 +368,10 @@ class FileManager(ModuleBase):
         'archive list': Command(
             handler=list_archive_command,
             description=t('_archive_list_description'),
-            pattern=re.compile(r'^/list\s+archive$'),
+            pattern=re.compile(r'^/archive\s+list$'),
             condition=lambda event, message: (
                 is_admin_in_private(event, message) and has_file(event, message)
             ),
-            is_applicable_for_reply=True,
+            is_applicable_for_reply=False,
         ),
     }
