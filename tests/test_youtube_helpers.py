@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import orjson
 from cryptography.fernet import Fernet
+from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from src.modules.plugins.youtube import (
     YOUTUBE_PATTERN,
@@ -173,3 +174,35 @@ class YouTubeHelpersTest(TestCase):
             loaded_credentials = load_youtube_credentials(123, 'main')
             assert loaded_credentials is not None
             assert loaded_credentials.token == access_value
+
+    def test_load_youtube_credentials_removes_revoked_refresh_token(self) -> None:
+        with (
+            TemporaryDirectory() as temp_dir,
+            patch.dict(
+                environ,
+                {
+                    'STATE_ENCRYPTION_KEY': Fernet.generate_key().decode(),
+                    'YOUTUBE_CLIENT_ID': 'client-id',
+                    'YOUTUBE_CLIENT_SECRET': 'client-secret',
+                },
+            ),
+            patch('src.modules.plugins.youtube.YOUTUBE_USERS_DIR', Path(temp_dir)),
+            patch.object(Credentials, 'refresh', side_effect=RefreshError('invalid_grant')),
+        ):
+            token_path = youtube_token_path(123, 'main')
+            access_value = 'access-value'
+            refresh_value = 'refresh-value'
+            client_value = 'client-secret'
+            credentials = Credentials(
+                token=access_value,
+                refresh_token=refresh_value,
+                token_uri=YOUTUBE_TOKEN_URL,
+                client_id='client-id',
+                client_secret=client_value,
+                scopes=['scope'],
+                expiry=datetime(2000, 1, 1, tzinfo=UTC).replace(tzinfo=None),
+            )
+            save_youtube_credentials(credentials, token_path)
+
+            assert load_youtube_credentials(123, 'main') is None
+            assert not token_path.exists()

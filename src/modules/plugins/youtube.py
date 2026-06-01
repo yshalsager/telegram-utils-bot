@@ -11,6 +11,7 @@ from typing import Any, ClassVar, cast
 import aiohttp
 import orjson
 import regex as re
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -189,7 +190,11 @@ def load_youtube_credentials(user_id: int, alias: str) -> Credentials | None:
         expiry=parse_credentials_expiry(payload.get('expiry')),
     )
     if credentials.expired and credentials.refresh_token:
-        credentials.refresh(Request())
+        try:
+            credentials.refresh(Request())
+        except RefreshError:
+            token_path.unlink(missing_ok=True)
+            return None
         save_youtube_credentials(credentials, token_path)
     return credentials if credentials.valid else None
 
