@@ -1,11 +1,13 @@
 import shlex
 import shutil
 import time
+from contextlib import suppress
 from html import escape as html_escape
 from pathlib import Path
 from typing import ClassVar
 
 import regex as re
+from telethon.errors import MessageNotModifiedError
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
@@ -191,7 +193,8 @@ async def run_archive_step(
     cwd: Path,
     error_file_name: str,
 ) -> bool:
-    await progress_message.edit(t('starting_process'))
+    with suppress(MessageNotModifiedError):
+        await progress_message.edit(t('starting_process'))
     output, code = await run_command(command, timeout=60 * 60, cwd=cwd)
     if code == 0:
         return True

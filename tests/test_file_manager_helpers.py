@@ -1,5 +1,7 @@
 from pathlib import Path
-from unittest import TestCase
+from typing import Any, cast
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, patch
 
 from src.modules.plugins.file_manager import (
     ALLOWED_ARCHIVE_FORMATS,
@@ -14,8 +16,10 @@ from src.modules.plugins.file_manager import (
     is_brotli_file,
     is_brotli_tar,
     normalize_archive_format,
+    run_archive_step,
     strip_archive_suffix,
 )
+from telethon.errors import MessageNotModifiedError
 
 
 class FileManagerHelpersTest(TestCase):
@@ -152,3 +156,18 @@ class FileManagerHelpersTest(TestCase):
         assert archive_compress_command('book.epub', Path('book.epub.br'), 'br') == (
             'brotli -f -o book.epub.br book.epub'
         )
+
+
+class FileManagerAsyncHelpersTest(IsolatedAsyncioTestCase):
+    async def test_run_archive_step_ignores_duplicate_progress_text(self) -> None:
+        progress_message = AsyncMock()
+        progress_message.edit.side_effect = MessageNotModifiedError(request=None)
+
+        with patch('src.modules.plugins.file_manager.run_command', AsyncMock(return_value=('', 0))):
+            assert await run_archive_step(
+                cast(Any, object()),
+                progress_message,
+                'true',
+                cwd=Path(),
+                error_file_name='archive_error.txt',
+            )
