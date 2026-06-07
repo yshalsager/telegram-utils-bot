@@ -1,4 +1,5 @@
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, cast
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, patch
@@ -16,6 +17,7 @@ from src.modules.plugins.file_manager import (
     is_brotli_file,
     is_brotli_tar,
     normalize_archive_format,
+    rename_single_file_compression_output,
     run_archive_step,
     strip_archive_suffix,
 )
@@ -111,6 +113,17 @@ class FileManagerHelpersTest(TestCase):
         assert archive_extract_command(archive, 'book.epub.br', output_dir) == (
             'brotli -d -f -o out/book.epub book.epub.br'
         )
+
+    def test_single_file_compression_outputs_are_renamed_to_original_name(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            extracted_file = output_dir / 'tmp123'
+            extracted_file.write_text('content')
+
+            assert rename_single_file_compression_output(
+                [extracted_file], 'book.epub', output_dir, 'application/x-xz'
+            ) == [output_dir / 'book.epub']
+            assert (output_dir / 'book.epub').read_text() == 'content'
 
     def test_format_archive_output_escapes_html(self) -> None:
         assert format_archive_output('failed', '<tag>') == 'failed\n<pre>&lt;tag&gt;</pre>'

@@ -51,6 +51,13 @@ ARCHIVE_SUFFIXES = [
     ['.xz'],
     ['.br'],
 ]
+SINGLE_FILE_COMPRESSION_SUFFIXES = {'.gz', '.bz2', '.xz'}
+SINGLE_FILE_COMPRESSION_MIME_TYPES = {
+    'application/gzip',
+    'application/x-gzip',
+    'application/x-bzip2',
+    'application/x-xz',
+}
 TAR_ARCHIVE_SUFFIX_FLAGS = {
     ('.tar', '.gz'): 'z',
     ('.tgz',): 'z',
@@ -78,6 +85,25 @@ def is_brotli_file(file_name: str) -> bool:
 def is_archive_file(file_name: str) -> bool:
     suffixes = archive_suffixes(file_name)
     return any(suffixes[-len(suffix_group) :] == suffix_group for suffix_group in ARCHIVE_SUFFIXES)
+
+
+def single_file_compression_output_name(file_name: str, mime_type: str = '') -> str:
+    if Path(file_name).suffix.lower() in SINGLE_FILE_COMPRESSION_SUFFIXES:
+        return Path(file_name).with_suffix('').name
+    return Path(file_name).name if mime_type in SINGLE_FILE_COMPRESSION_MIME_TYPES else ''
+
+
+def rename_single_file_compression_output(
+    files: list[Path], file_name: str, output_dir: Path, mime_type: str = ''
+) -> list[Path]:
+    output_name = single_file_compression_output_name(file_name, mime_type)
+    if not output_name or len(files) != 1:
+        return files
+    output_path = output_dir / output_name
+    if files[0] != output_path:
+        output_path.unlink(missing_ok=True)
+        files[0].rename(output_path)
+    return [output_path]
 
 
 def tar_archive_flag(file_name: str) -> str | None:
@@ -172,7 +198,9 @@ def archive_list_command(archive_path: Path, file_name: str) -> str:
     return f'7z l -ba {quoted_path}'
 
 
-def archive_extract_command(archive_path: Path, file_name: str, output_dir: Path) -> str:
+def archive_extract_command(
+    archive_path: Path, file_name: str, output_dir: Path, mime_type: str = ''
+) -> str:
     quoted_path = shlex.quote(str(archive_path))
     quoted_output_dir = shlex.quote(str(output_dir))
     if is_brotli_tar(file_name):
@@ -318,7 +346,12 @@ async def unarchive_command(event: NewMessage.Event | CallbackQuery.Event) -> No
     ) as temp_file_path:
         await progress_message.edit(t('starting_process'))
         output, code = await run_command(
-            archive_extract_command(temp_file_path, input_name, output_dir),
+            archive_extract_command(
+                temp_file_path,
+                input_name,
+                output_dir,
+                message.document.mime_type if message.document else '',
+            ),
             timeout=60 * 60,
         )
         if code != 0:
@@ -334,7 +367,12 @@ async def unarchive_command(event: NewMessage.Event | CallbackQuery.Event) -> No
             shutil.rmtree(output_dir, ignore_errors=True)
             return
 
-    files = sorted(p for p in output_dir.rglob('*') if p.is_file())
+    files = rename_single_file_compression_output(
+        sorted(p for p in output_dir.rglob('*') if p.is_file()),
+        input_name,
+        output_dir,
+        message.document.mime_type if message.document else '',
+    )
     if not files:
         await progress_message.edit(t('process_completed'))
         shutil.rmtree(output_dir, ignore_errors=True)
