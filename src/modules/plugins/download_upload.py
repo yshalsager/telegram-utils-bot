@@ -99,19 +99,34 @@ async def download_from_url(
 async def download_file_command(event: NewMessage.Event | CallbackQuery.Event) -> None:
     progress_message = await send_progress_message(event, t('starting_file_download'))
     reply_message = await get_reply_message(event, previous=True)
-    if url_match := re.search(HTTP_URL_PATTERN, reply_message.raw_text):
+    message = reply_message or (
+        await event.get_message() if isinstance(event, CallbackQuery.Event) else event.message
+    )
+    if message is None:
+        await progress_message.edit(t('no_valid_url_found'))
+        return
+    if url_match := re.search(HTTP_URL_PATTERN, message.raw_text or ''):
         url = url_match.group(0)
-        download_to = await download_from_url(
-            event, url, DOWNLOADS_DIR, progress_message=progress_message
-        )
-        if not download_to.exists():
-            await event.reply(t('download_failed'))
+        try:
+            plan = await resolve_download_plan(url)
+        except aiohttp.ClientError as e:
+            await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e}</pre>'))
             return
+
+        output_files = await collect_download_plan_files(
+            event,
+            plan or [RemoteFile(name=get_filename_from_url(url), url=url)],
+            DOWNLOADS_DIR,
+            progress_message,
+        )
+        if not output_files:
+            await progress_message.edit(t('download_failed'))
+            return
+        download_to = output_files[0]
     else:
-        reply_message = await get_reply_message(event, previous=True)
-        download_to = DOWNLOADS_DIR / get_download_name(reply_message)
+        download_to = DOWNLOADS_DIR / get_download_name(message)
         with download_to.open('wb') as temp_file:
-            temp_file_path = await download_file(event, temp_file, reply_message, progress_message)
+            temp_file_path = await download_file(event, temp_file, message, progress_message)
             temp_file_path.rename(download_to)
     await progress_message.edit(f'{t("file_downloaded")}: <code>{download_to}</code>')
 

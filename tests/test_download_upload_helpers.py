@@ -10,6 +10,7 @@ from src.modules.plugins.download_upload import (
     DownloadUpload,
     build_download_upload_params,
     collect_upload_paths,
+    download_file_command,
     download_from_url,
     extract_gdrive_command_input,
     has_gdrive_download_input,
@@ -22,6 +23,7 @@ from src.utils.archive_org import (
 )
 from src.utils.filters import BOT_ADMINS
 from src.utils.google_drive import collect_downloaded_files, extract_gdrive_input
+from src.utils.remote_files import RemoteFile
 
 
 class GDriveInputTest(TestCase):
@@ -97,6 +99,7 @@ class DownloadFromUrlTest(TestCase):
         with TemporaryDirectory() as temp_dir_name:
             temp_dir = Path(temp_dir_name)
             cookie_file = temp_dir / 'cookies.txt'
+            cookie_file.write_text('# Netscape HTTP Cookie File\n')
             with patch(
                 'src.modules.plugins.download_upload.stream_shell_output', new=AsyncMock()
             ) as stream:
@@ -113,6 +116,44 @@ class DownloadFromUrlTest(TestCase):
             command = stream.await_args.args[1]
             assert output == temp_dir / 'usbdeview.zip'
             assert f'--load-cookies={cookie_file}' in command
+
+    def test_download_command_uses_command_url_when_no_reply(self) -> None:
+        event = SimpleNamespace(
+            message=SimpleNamespace(
+                raw_text='/download https://4pda.to/forum/dl/post/29739893/usbdeview.zip'
+            )
+        )
+        progress_message = SimpleNamespace(edit=AsyncMock())
+        with TemporaryDirectory() as temp_dir_name:
+            output_file = Path(temp_dir_name) / 'usbdeview.zip'
+            with (
+                patch(
+                    'src.modules.plugins.download_upload.get_reply_message',
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    'src.modules.plugins.download_upload.send_progress_message',
+                    new=AsyncMock(return_value=progress_message),
+                ),
+                patch(
+                    'src.modules.plugins.download_upload.resolve_download_plan',
+                    new=AsyncMock(
+                        return_value=[
+                            RemoteFile(name='usbdeview.zip', url='https://example.com/file')
+                        ]
+                    ),
+                ) as resolve_plan,
+                patch(
+                    'src.modules.plugins.download_upload.collect_download_plan_files',
+                    new=AsyncMock(return_value=[output_file]),
+                ),
+            ):
+                asyncio.run(download_file_command(event))
+
+            resolve_plan.assert_awaited_once_with(
+                'https://4pda.to/forum/dl/post/29739893/usbdeview.zip'
+            )
+            assert str(output_file) in progress_message.edit.await_args.args[0]
 
 
 class ArchiveInputTest(TestCase):
