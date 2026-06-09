@@ -14,6 +14,7 @@ from src.utils.remote_files.providers import (
     APTOIDE_URL_PATTERN,
     DROPBOX_URL_PATTERN,
     FDROID_URL_PATTERN,
+    FOURPDA_ATTACHMENT_URL_PATTERN,
     GITHUB_RELEASE_URL_PATTERN,
     HUAWEI_APPGALLERY_URL_PATTERN,
     IZZYONDROID_URL_PATTERN,
@@ -22,6 +23,7 @@ from src.utils.remote_files.providers import (
     PIXELDRAIN_URL_PATTERN,
     SOURCEFORGE_URL_PATTERN,
     YANDEX_DISK_URL_PATTERN,
+    resolve_4pda_attachment,
     resolve_apkcombo,
     resolve_apkpure,
     resolve_aptoide,
@@ -60,6 +62,7 @@ PROVIDERS = [
     SourceProvider('pixeldrain', (PIXELDRAIN_URL_PATTERN,), resolve_pixeldrain),
     SourceProvider('github-release', (GITHUB_RELEASE_URL_PATTERN,), resolve_github_release),
     SourceProvider('archive-org', (ARCHIVE_URL_PATTERN,), resolve_archive),
+    SourceProvider('4pda', (FOURPDA_ATTACHMENT_URL_PATTERN,), resolve_4pda_attachment),
     # Cloud storage links.
     SourceProvider('onedrive', (ONEDRIVE_URL_PATTERN,), resolve_onedrive),
     SourceProvider('yandex-disk', (YANDEX_DISK_URL_PATTERN,), resolve_yandex_disk),

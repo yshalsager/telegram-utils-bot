@@ -7,6 +7,7 @@ from urllib.parse import quote as url_quote
 import aiohttp
 import regex as re
 
+from src import STATE_DIR
 from src.utils.archive_org import (
     extract_archive_input,
     fetch_archive_files,
@@ -51,6 +52,10 @@ HUAWEI_APPGALLERY_URL_PATTERN = re.compile(
 HUAWEI_APPGALLERY_ID_PATTERN = re.compile(r'^C[0-9]+$')
 HUAWEI_APPGALLERY_DOWNLOAD_URL = 'https://appgallery.cloud.huawei.com/appdl'
 APKCOMBO_URL_PATTERN = re.compile(r'https?://(?:www\.)?apkcombo\.com/[^\s<>"\']+')
+FOURPDA_ATTACHMENT_URL_PATTERN = re.compile(
+    r'https?://(?:www\.)?4pda\.(?:to|ru)/forum/dl/post/\d+/[^\s<>"\']+'
+)
+FOURPDA_COOKIE_FILE = STATE_DIR / 'private_hosts' / '4pda.cookies'
 APKCOMBO_HEADERS = {
     'User-Agent': 'curl/8.0.1',
     'Accept': '*/*',
@@ -262,6 +267,12 @@ def convert_dropbox_url(url: str) -> DirectLink | None:
     return DirectLink(
         name=unquote(parsed.path.rstrip('/').rsplit('/', 1)[-1] or 'dropbox'), url=direct_url
     )
+
+
+async def resolve_4pda_attachment(url: str) -> list[DirectLink]:
+    parsed = urlparse(url)
+    filename = unquote(parsed.path.rstrip('/').rsplit('/', 1)[-1] or '4pda-attachment')
+    return [DirectLink(name=filename, url=url, cookie_file=FOURPDA_COOKIE_FILE, source='4pda')]
 
 
 def build_onedrive_share_id(url: str) -> str:

@@ -15,6 +15,7 @@ class RemoteFile:
     url: str
     size: str = ''
     headers: dict[str, str] = field(default_factory=dict)
+    cookie_file: Path | None = None
     source: str = ''
 
     @property

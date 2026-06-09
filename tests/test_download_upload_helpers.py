@@ -10,6 +10,7 @@ from src.modules.plugins.download_upload import (
     DownloadUpload,
     build_download_upload_params,
     collect_upload_paths,
+    download_from_url,
     extract_gdrive_command_input,
     has_gdrive_download_input,
     upload_file_command,
@@ -89,6 +90,29 @@ class GDriveDownloadHelpersTest(TestCase):
 
     def test_gdrive_button_condition_still_allows_explicit_command_validation(self) -> None:
         assert has_gdrive_download_input(self.make_event('/gdrive'), None)
+
+
+class DownloadFromUrlTest(TestCase):
+    def test_download_from_url_passes_cookie_file_to_aria2c(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            temp_dir = Path(temp_dir_name)
+            cookie_file = temp_dir / 'cookies.txt'
+            with patch(
+                'src.modules.plugins.download_upload.stream_shell_output', new=AsyncMock()
+            ) as stream:
+                output = asyncio.run(
+                    download_from_url(
+                        SimpleNamespace(),
+                        'https://4pda.to/forum/dl/post/29739893/usbdeview.zip',
+                        temp_dir,
+                        filename='usbdeview.zip',
+                        cookie_file=cookie_file,
+                    )
+                )
+
+            command = stream.await_args.args[1]
+            assert output == temp_dir / 'usbdeview.zip'
+            assert f'--load-cookies={cookie_file}' in command
 
 
 class ArchiveInputTest(TestCase):

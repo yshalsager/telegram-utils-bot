@@ -1,3 +1,4 @@
+import asyncio
 from unittest import TestCase
 
 from src.modules.plugins.direct_links import (
@@ -13,6 +14,7 @@ from src.utils.google_drive import (
 )
 from src.utils.remote_files.models import RemoteFile as DirectLink
 from src.utils.remote_files.providers import (
+    FOURPDA_COOKIE_FILE,
     GitHubReleaseInput,
     OneDriveAccess,
     SourceForgeInput,
@@ -41,6 +43,7 @@ from src.utils.remote_files.providers import (
     parse_sourceforge_input,
     parse_sourceforge_mirrors,
     parse_yandex_disk_link,
+    resolve_4pda_attachment,
 )
 from src.utils.remote_files.resolver import is_supported_remote_url
 
@@ -74,6 +77,7 @@ class DirectLinksInputTest(TestCase):
         assert is_supported_remote_url(
             'https://sourceforge.net/projects/demo/files/app.zip/download'
         )
+        assert is_supported_remote_url('https://4pda.to/forum/dl/post/29739893/usbdeview.zip')
         assert not is_supported_remote_url('https://example.com/file.zip')
 
 
@@ -93,6 +97,22 @@ class MediaFireParserTest(TestCase):
             url='https://download.mediafire.com/file/sample.zip',
             size='12 MB',
         )
+
+
+class FourPdaParserTest(TestCase):
+    def test_resolve_4pda_attachment_uses_private_cookie_file(self) -> None:
+        links = asyncio.run(
+            resolve_4pda_attachment('https://4pda.to/forum/dl/post/29739893/usbdeview.zip')
+        )
+
+        assert links == [
+            DirectLink(
+                name='usbdeview.zip',
+                url='https://4pda.to/forum/dl/post/29739893/usbdeview.zip',
+                cookie_file=FOURPDA_COOKIE_FILE,
+                source='4pda',
+            )
+        ]
 
 
 class SourceForgeParserTest(TestCase):

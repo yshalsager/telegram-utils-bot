@@ -79,15 +79,17 @@ async def download_from_url(
     progress_message: Message | None = None,
     filename: str | None = None,
     headers: dict[str, str] | None = None,
+    cookie_file: Path | None = None,
 ) -> Path:
     filename = filename or get_filename_from_url(url)
     download_to = download_dir / filename
     header_args = ' '.join(
         f'--header={quote(f"{header}: {value}")}' for header, value in (headers or {}).items()
     )
+    cookie_args = f'--load-cookies={quote(str(cookie_file))}' if cookie_file else ''
     cmd = (
         f'aria2c -x 16 -d {quote(str(download_dir))} -o {quote(filename)} '
-        f'{header_args} '
+        f'{header_args} {cookie_args} '
         f'{quote(url)} --allow-overwrite=true'
     )
     await stream_shell_output(event, cmd, progress_message=progress_message)
@@ -149,6 +151,7 @@ async def download_remote_files(
             progress_message=progress_message,
             filename=filename,
             headers=remote_file.headers,
+            cookie_file=remote_file.cookie_file,
         )
         if not output_file.exists():
             return []
