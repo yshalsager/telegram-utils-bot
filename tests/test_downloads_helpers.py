@@ -1,6 +1,8 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase
+from unittest.mock import AsyncMock
 
 from src.utils.downloads import resolve_upload_caption
 
@@ -10,25 +12,27 @@ class UploadCaptionTest(TestCase):
         return SimpleNamespace(
             message=SimpleNamespace(
                 is_reply=reply_message is not None,
-                reply_to=SimpleNamespace(reply_message=reply_message),
+                get_reply_message=AsyncMock(return_value=reply_message),
             )
         )
 
+    def caption(
+        self, event: SimpleNamespace, output_file: str = 'out.mp4', caption: str = ''
+    ) -> str:
+        return asyncio.run(resolve_upload_caption(event, Path(output_file), caption))
+
     def test_explicit_caption_wins(self) -> None:
-        assert resolve_upload_caption(self.event(), Path('out.mp4'), 'done') == 'done'
+        assert self.caption(self.event(), caption='done') == 'done'
 
     def test_reply_caption_is_preserved(self) -> None:
         reply = SimpleNamespace(raw_text='original caption')
 
-        assert resolve_upload_caption(self.event(reply), Path('out.mp4')) == 'original caption'
+        assert self.caption(self.event(reply)) == 'original caption'
 
     def test_reply_filename_falls_back_before_output_name(self) -> None:
         reply = SimpleNamespace(raw_text='', file=SimpleNamespace(name='original.mp4'))
 
-        assert (
-            resolve_upload_caption(self.event(reply), Path('out.mp4'))
-            == '<code>original.mp4</code>'
-        )
+        assert self.caption(self.event(reply)) == '<code>original.mp4</code>'
 
     def test_output_filename_is_final_fallback(self) -> None:
-        assert resolve_upload_caption(self.event(), Path('out.mp4')) == '<code>out.mp4</code>'
+        assert self.caption(self.event()) == '<code>out.mp4</code>'

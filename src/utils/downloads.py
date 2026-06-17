@@ -85,20 +85,19 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
     return new_filename_with_ext
 
 
-def resolve_upload_caption(
+async def resolve_upload_caption(
     event: NewMessage.Event | CallbackQuery.Event, output_file: Path, caption: str = ''
 ) -> str:
     if caption:
         return caption
-    message = getattr(event, 'message', None)
-    if message and message.is_reply and message.reply_to:
-        reply_message = getattr(message.reply_to, 'reply_message', None)
-        if reply_caption := getattr(reply_message, 'raw_text', ''):
-            return reply_caption
-        if (reply_file := getattr(reply_message, 'file', None)) and (
-            file_name := getattr(reply_file, 'name', '')
-        ):
-            return f'<code>{file_name}</code>'
+    message = await event.get_message() if isinstance(event, CallbackQuery.Event) else event.message
+    reply_message = await message.get_reply_message() if message and message.is_reply else None
+    if reply_caption := getattr(reply_message, 'raw_text', ''):
+        return reply_caption
+    if (reply_file := getattr(reply_message, 'file', None)) and (
+        file_name := getattr(reply_file, 'name', '')
+    ):
+        return f'<code>{file_name}</code>'
     return f'<code>{output_file.name}</code>'
 
 
@@ -175,7 +174,7 @@ async def upload_file(
             event.chat_id,
             file=uploaded_file,
             force_document=force_document,
-            caption=resolve_upload_caption(event, output_file, caption),
+            caption=await resolve_upload_caption(event, output_file, caption),
             voice_note=is_voice,
             reply_to=event.message.id if isinstance(event, NewMessage.Event) else None,
             **kwargs,
