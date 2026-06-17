@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from src.modules.plugins.media import (
     ALLOWED_SPEED_FACTORS,
+    ALLOWED_VIDEO_X265_CRF,
     TIME_RANGES_PATTERN,
     Media,
     build_amplify_command,
@@ -54,6 +55,9 @@ from src.modules.plugins.media import (
 
 
 class MediaTimeRangeHelpersTest(TestCase):
+    def test_x265_crf_buttons_match_validation_range(self) -> None:
+        assert ALLOWED_VIDEO_X265_CRF == [18, 20, 22, 24, 26, 28, 30]
+
     def test_parse_time_ranges_keeps_existing_cut_format(self) -> None:
         assert parse_time_ranges('00:00:00 00:30:00 00:45:00 01:15:00') == [
             (0, 1800),

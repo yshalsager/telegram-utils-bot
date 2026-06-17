@@ -1873,8 +1873,8 @@ async def video_encode_x265(event: NewMessage.Event | CallbackQuery.Event) -> No
     else:
         crf = int(event.message.text.split('x265 ')[1])
 
-    if crf < 20 or crf > 28:
-        await event.reply(t('crf_value_must_be_between_20_and_28'))
+    if crf < min(ALLOWED_VIDEO_X265_CRF) or crf > max(ALLOWED_VIDEO_X265_CRF):
+        await event.reply(t('crf_value_must_be_in_allowed_range'))
         return
 
     reply_message = await get_reply_message(event, previous=True)
