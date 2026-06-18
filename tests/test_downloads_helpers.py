@@ -34,5 +34,10 @@ class UploadCaptionTest(TestCase):
 
         assert self.caption(self.event(reply)) == '<code>original.mp4</code>'
 
+    def test_bot_prompt_reply_is_not_used_as_caption(self) -> None:
+        reply = SimpleNamespace(raw_text='Please provide a new filename.', out=True)
+
+        assert self.caption(self.event(reply), 'renamed.epub') == '<code>renamed.epub</code>'
+
     def test_output_filename_is_final_fallback(self) -> None:
         assert self.caption(self.event()) == '<code>out.mp4</code>'

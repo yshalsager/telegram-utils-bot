@@ -92,6 +92,8 @@ async def resolve_upload_caption(
         return caption
     message = await event.get_message() if isinstance(event, CallbackQuery.Event) else event.message
     reply_message = await message.get_reply_message() if message and message.is_reply else None
+    if getattr(reply_message, 'out', False):
+        return f'<code>{output_file.name}</code>'
     if reply_caption := getattr(reply_message, 'raw_text', ''):
         return reply_caption
     if (reply_file := getattr(reply_message, 'file', None)) and (
