@@ -40,6 +40,10 @@ ALLOWED_INPUT_FORMATS = {
 ALLOWED_OUTPUT_FORMATS = {'jpg', 'jpeg', 'png', 'pnm', 'pgm', 'pbm', 'ppm', 'pam', 'psd', 'ps'}
 
 
+def image_ocr_language(text: str = '') -> str:
+    return match.group(1) if (match := re.search(r'^/image\s+ocr\s+([\w+]{3,})$', text)) else 'ara'
+
+
 async def convert_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
@@ -101,13 +105,11 @@ async def trim_image(event: NewMessage.Event) -> None:
         await upload_file_and_cleanup(event, output_file, progress_message)
 
 
-async def ocr_image(event: NewMessage.Event) -> None:
+async def ocr_image(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await send_progress_message(event, t('starting_process'))
     progress_message = await send_progress_message(event, t('performing_ocr_on_image'))
-    lang = 'ara'
-    if match := re.search(r'^/image\s+ocr\s+([\w+]{3,})$', event.message.raw_text):
-        lang = match.group(1)
+    lang = image_ocr_language(event.message.raw_text if isinstance(event, NewMessage.Event) else '')
 
     async with download_to_temp_file(event, reply_message, progress_message) as temp_file_path:
         command = f'tesseract "{temp_file_path.name}" "{temp_file_path.stem}" -l {lang}'
