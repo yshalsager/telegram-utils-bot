@@ -1,6 +1,9 @@
 from unittest import TestCase
 
-from src.modules.plugins.ytdlp import youtube_thumbnail_urls
+from src.modules.plugins.ytdlp import (
+    pick_storyboard_format,
+    youtube_thumbnail_urls,
+)
 
 
 class YtdlpHelperTest(TestCase):
@@ -12,3 +15,13 @@ class YtdlpHelperTest(TestCase):
             'https://img.youtube.com/vi/abc123_DEF0/mqdefault.jpg',
             'https://img.youtube.com/vi/abc123_DEF0/default.jpg',
         ]
+
+    def test_pick_storyboard_prefers_mid_sized_gallery_sheets(self) -> None:
+        info = {
+            'formats': [
+                {'format_id': 'sb0', 'format_note': 'storyboard', 'fragments': [{}] * 50},
+                {'format_id': 'sb1', 'format_note': 'storyboard', 'fragments': [{}] * 18},
+            ]
+        }
+
+        assert pick_storyboard_format(info)['format_id'] == 'sb1'

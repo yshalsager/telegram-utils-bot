@@ -154,6 +154,17 @@ def youtube_thumbnail_urls(text: str) -> list[str]:
     ]
 
 
+def pick_storyboard_format(info_dict: dict[str, Any]) -> dict[str, Any] | None:
+    storyboards = [
+        f
+        for f in info_dict.get('formats', [])
+        if f.get('format_note') == 'storyboard' and f.get('fragments')
+    ]
+    return next((f for f in storyboards if f.get('format_id') == 'sb1'), None) or (
+        max(storyboards, key=lambda f: len(f.get('fragments') or []), default=None)
+    )
+
+
 def parse_playlist_items_arg(text: str) -> str | None:
     command_parts = text.split(maxsplit=2)
     if not command_parts or command_parts[0] != '/ytdown':
@@ -515,6 +526,42 @@ async def get_youtube_thumbnail(event: NewMessage.Event | CallbackQuery.Event) -
             await progress_message.edit(t('download_and_upload_completed'))
             return
     await progress_message.edit(t('no_file_found'))
+
+
+async def get_youtube_storyboard(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    progress_message = await send_progress_message(event, t('starting_download'))
+    link = await get_link_from_event(event)
+    if not link:
+        await progress_message.edit(t('no_valid_url_found'))
+        return
+
+    info_dict = await ydl_extract(link, params, download=False)
+    storyboard = pick_storyboard_format(info_dict)
+    if not storyboard:
+        await progress_message.edit(t('no_file_found'))
+        return
+
+    files = []
+    for idx, fragment in enumerate(storyboard['fragments'], start=1):
+        output_file = await download_from_url(
+            event,
+            fragment['url'],
+            TMP_DIR,
+            progress_message,
+            filename=f'{info_dict["id"]}_{storyboard["format_id"]}_{idx:03}.jpg',
+        )
+        if output_file.exists() and output_file.stat().st_size:
+            files.append(output_file)
+
+    if not files:
+        await progress_message.edit(t('no_file_found'))
+        return
+
+    await progress_message.edit(t('uploading_file'))
+    for idx in range(0, len(files), 10):
+        await event.client.send_file(event.chat_id, files[idx : idx + 10])
+    cleanup_paths(set(files))
+    await progress_message.edit(t('download_and_upload_completed'))
 
 
 async def get_subtitles(event: NewMessage.Event) -> None:
@@ -905,6 +952,15 @@ class YTDLP(ModuleBase):
             handler=get_youtube_thumbnail,
             description=t('_ytthumb_description'),
             pattern=re.compile(rf'^/ytthumb\s+{YOUTUBE_URL_PATTERN}$'),
+            condition=lambda event, reply_message: has_valid_url(
+                event, reply_message, YOUTUBE_URL_PATTERN
+            ),
+            is_applicable_for_reply=True,
+        ),
+        'ytstoryboard': Command(
+            handler=get_youtube_storyboard,
+            description=t('_ytstoryboard_description'),
+            pattern=re.compile(rf'^/ytstoryboard\s+{YOUTUBE_URL_PATTERN}$'),
             condition=lambda event, reply_message: has_valid_url(
                 event, reply_message, YOUTUBE_URL_PATTERN
             ),

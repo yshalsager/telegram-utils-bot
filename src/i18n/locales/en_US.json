@@ -221,6 +221,8 @@
   "_ytinfo_description": "[url]: Get video information as JSON.",
   "_ytthumb": "thumbnail",
   "_ytthumb_description": "[url]: Download the YouTube video thumbnail.",
+  "_ytstoryboard": "storyboard",
+  "_ytstoryboard_description": "[url]: Download YouTube storyboard sheets.",
   "_ytsub": "ytsub",
   "_ytsub_description": "[lang] [url]: Get YouTube video subtitles.",
   "_readability_module_description": "Readable web pages.",
