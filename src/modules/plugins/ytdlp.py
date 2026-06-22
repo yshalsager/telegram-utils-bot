@@ -18,6 +18,7 @@ from yt_dlp.utils import PlaylistEntries
 
 from src import STATE_DIR, TMP_DIR
 from src.modules.base import ModuleBase
+from src.modules.plugins.download_upload import download_from_url
 from src.modules.plugins.run import stream_shell_output
 from src.utils.command import Command
 from src.utils.downloads import upload_file
@@ -141,6 +142,16 @@ def extract_link(text: str) -> str | None:
     if match := re.search(HTTP_URL_PATTERN, text):
         return str(match.group(0))
     return None
+
+
+def youtube_thumbnail_urls(text: str) -> list[str]:
+    if not (match := re.search(YOUTUBE_URL_PATTERN, text)):
+        return []
+    video_id = match.group(1).split('?', 1)[0].strip('/')
+    return [
+        f'https://img.youtube.com/vi/{video_id}/{name}.jpg'
+        for name in ('maxresdefault', 'sddefault', 'hqdefault', 'mqdefault', 'default')
+    ]
 
 
 def parse_playlist_items_arg(text: str) -> str | None:
@@ -481,6 +492,29 @@ async def get_info(event: NewMessage.Event | CallbackQuery.Event) -> None:
             await progress_message.delete()
     except Exception as e:  # noqa: BLE001
         await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
+
+
+async def get_youtube_thumbnail(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    progress_message = await send_progress_message(event, t('starting_download'))
+    thumbnail_urls = youtube_thumbnail_urls(await get_link_from_event(event) or '')
+    if not thumbnail_urls:
+        await progress_message.edit(t('no_valid_url_found'))
+        return
+
+    for thumbnail_url in thumbnail_urls:
+        output_file = await download_from_url(
+            event,
+            thumbnail_url,
+            TMP_DIR,
+            progress_message,
+            filename=thumbnail_url.split('/vi/', 1)[1].replace('/', '_'),
+        )
+        if output_file.exists() and output_file.stat().st_size:
+            await upload_file(event, output_file, progress_message, caption=thumbnail_url)
+            output_file.unlink(missing_ok=True)
+            await progress_message.edit(t('download_and_upload_completed'))
+            return
+    await progress_message.edit(t('no_file_found'))
 
 
 async def get_subtitles(event: NewMessage.Event) -> None:
@@ -865,6 +899,15 @@ class YTDLP(ModuleBase):
             description=t('_ytinfo_description'),
             pattern=re.compile(rf'^/ytinfo\s+{HTTP_URL_PATTERN}$'),
             condition=has_valid_url,
+            is_applicable_for_reply=True,
+        ),
+        'ytthumb': Command(
+            handler=get_youtube_thumbnail,
+            description=t('_ytthumb_description'),
+            pattern=re.compile(rf'^/ytthumb\s+{YOUTUBE_URL_PATTERN}$'),
+            condition=lambda event, reply_message: has_valid_url(
+                event, reply_message, YOUTUBE_URL_PATTERN
+            ),
             is_applicable_for_reply=True,
         ),
         'ytsub': Command(

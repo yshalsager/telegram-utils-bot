@@ -219,6 +219,8 @@
   "_ytformats_description": "[url]: الحصول على التنسيقات المتاحة لفيديو YouTube.",
   "_ytinfo": "معلومات",
   "_ytinfo_description": "[url]: الحصول على معلومات الفيديو بتنسيق JSON.",
+  "_ytthumb": "صورة الفيديو",
+  "_ytthumb_description": "[url]: تنزيل صورة فيديو YouTube المصغرة.",
   "_ytsub": "استخراج الترجمة",
   "_ytsub_description": "[lang] [url]: الحصول على ترجمات فيديو YouTube.",
   "_readability_module_description": "صفحات ويب قابلة للقراءة.",
