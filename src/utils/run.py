@@ -2,6 +2,7 @@ import asyncio
 import logging
 from asyncio.subprocess import PIPE, Process
 from collections.abc import AsyncGenerator
+from contextlib import suppress
 from os import getpgid, killpg, setsid
 from shlex import split as shlex_split
 from signal import SIGKILL
@@ -67,6 +68,7 @@ async def _run_subprocess(  # noqa: C901, PLR0912
 ) -> AsyncGenerator[tuple[str, int | None]]:
     output = ''
     return_code = None
+    deadline = asyncio.get_running_loop().time() + timeout
     process_task = asyncio.create_task(process.wait(), name='process')
     stdout_reader = read_stream(process.stdout)
     stderr_reader = read_stream(process.stderr)
@@ -77,9 +79,12 @@ async def _run_subprocess(  # noqa: C901, PLR0912
     }
     try:
         while pending or not process_task.done():
+            timeout_left = deadline - asyncio.get_running_loop().time()
+            if timeout_left <= 0:
+                raise TimeoutError
             done, _ = await asyncio.wait(
                 [*list(pending.values()), process_task],
-                timeout=timeout,
+                timeout=timeout_left,
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
@@ -102,6 +107,8 @@ async def _run_subprocess(  # noqa: C901, PLR0912
 
             if not done:  # Timeout occurred
                 raise TimeoutError
+            if not process_task.done() and asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError
 
     except StopAsyncIteration:
         pass
@@ -121,11 +128,10 @@ async def _run_subprocess(  # noqa: C901, PLR0912
             if not task.done():
                 task.cancel()
         if process.returncode is None:
-            try:
+            with suppress(ProcessLookupError):
                 pgid = getpgid(process.pid)
                 killpg(pgid, SIGKILL)
-            except ProcessLookupError:
-                pass  # Process already terminated
+            await process.wait()
 
     if return_code is not None:
         yield output, return_code
@@ -141,6 +147,8 @@ async def run_command(
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except TimeoutError:
+        process.kill()
+        await process.wait()
         return t('process_timed_out'), -1
     output = (stdout + stderr).decode('utf-8', errors='replace').strip()
     return output, (process.returncode or 0)
