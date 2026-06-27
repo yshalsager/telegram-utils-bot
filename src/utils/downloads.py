@@ -203,5 +203,5 @@ async def upload_file_and_cleanup(
 
 
 def get_filename_from_url(url: str) -> str:
-    filename = Path(parse.urlparse(url).path).name
+    filename = Path(parse.unquote(parse.urlparse(url).path)).name
     return filename if filename else str(uuid4())

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import AsyncMock
 
-from src.utils.downloads import resolve_upload_caption
+from src.utils.downloads import get_filename_from_url, resolve_upload_caption
 
 
 class UploadCaptionTest(TestCase):
@@ -41,3 +41,13 @@ class UploadCaptionTest(TestCase):
 
     def test_output_filename_is_final_fallback(self) -> None:
         assert self.caption(self.event()) == '<code>out.mp4</code>'
+
+
+class UrlFilenameTest(TestCase):
+    def test_url_filename_is_decoded(self) -> None:
+        assert (
+            get_filename_from_url(
+                'https://example.com/files/%D9%85%D9%84%D9%81-%D8%B9%D8%B1%D8%A8%D9%8A.pdf'
+            )
+            == 'ملف-عربي.pdf'
+        )
