@@ -22,6 +22,7 @@ from src.utils.progress import progress_callback
 
 PDF_THUMBNAIL_MAX_SIDE = 320
 PDF_THUMBNAIL_MAX_SIZE = 200_000
+MAX_UPLOAD_CAPTION_LENGTH = 1024
 
 
 def get_default_filename() -> str:
@@ -88,19 +89,22 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
 async def resolve_upload_caption(
     event: NewMessage.Event | CallbackQuery.Event, output_file: Path, caption: str = ''
 ) -> str:
+    filename_caption = f'<code>{output_file.name}</code>'
     if caption:
-        return caption
+        return caption if len(caption) <= MAX_UPLOAD_CAPTION_LENGTH else filename_caption
     message = await event.get_message() if isinstance(event, CallbackQuery.Event) else event.message
     reply_message = await message.get_reply_message() if message and message.is_reply else None
     if getattr(reply_message, 'out', False):
-        return f'<code>{output_file.name}</code>'
+        return filename_caption
     if reply_caption := getattr(reply_message, 'raw_text', ''):
-        return reply_caption
+        return (
+            reply_caption if len(reply_caption) <= MAX_UPLOAD_CAPTION_LENGTH else filename_caption
+        )
     if (reply_file := getattr(reply_message, 'file', None)) and (
         file_name := getattr(reply_file, 'name', '')
     ):
         return f'<code>{file_name}</code>'
-    return f'<code>{output_file.name}</code>'
+    return filename_caption
 
 
 async def download_file(

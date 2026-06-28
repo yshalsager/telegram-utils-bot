@@ -29,6 +29,11 @@ class UploadCaptionTest(TestCase):
 
         assert self.caption(self.event(reply)) == 'original caption'
 
+    def test_long_reply_caption_falls_back_to_output_name(self) -> None:
+        reply = SimpleNamespace(raw_text='x' * 1025)
+
+        assert self.caption(self.event(reply), 'out.mp4') == '<code>out.mp4</code>'
+
     def test_reply_filename_falls_back_before_output_name(self) -> None:
         reply = SimpleNamespace(raw_text='', file=SimpleNamespace(name='original.mp4'))
 
