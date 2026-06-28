@@ -4,7 +4,6 @@ from unittest import TestCase
 from src.modules.plugins.direct_links import (
     DirectLinks,
     extract_direct_command_input,
-    extract_direct_urls,
 )
 from src.utils.archive_org import ArchiveFile
 from src.utils.google_drive import (
@@ -12,6 +11,7 @@ from src.utils.google_drive import (
     extract_gdrive_file_id,
     parse_gdrive_confirm_token,
 )
+from src.utils.patterns import extract_urls
 from src.utils.remote_files.models import RemoteFile as DirectLink
 from src.utils.remote_files.providers import (
     FOURPDA_COOKIE_FILE,
@@ -50,7 +50,7 @@ from src.utils.remote_files.resolver import is_supported_remote_url
 
 class DirectLinksInputTest(TestCase):
     def test_extract_direct_urls_returns_multiple_urls_without_trailing_punctuation(self) -> None:
-        assert extract_direct_urls(
+        assert extract_urls(
             'links: https://mediafire.com/file/example/file.zip, '
             'https://sourceforge.net/projects/demo/files/app.zip/download) '
             'https://pixeldrain.com/u/abc123.'

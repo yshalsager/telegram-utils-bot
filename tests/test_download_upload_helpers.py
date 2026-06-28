@@ -13,6 +13,7 @@ from src.modules.plugins.download_upload import (
     download_file_command,
     download_from_url,
     extract_gdrive_command_input,
+    extract_upload_url_input,
     has_gdrive_download_input,
     upload_file_command,
 )
@@ -95,6 +96,20 @@ class GDriveDownloadHelpersTest(TestCase):
 
 
 class DownloadFromUrlTest(TestCase):
+    def test_extract_upload_url_input_returns_multiple_urls(self) -> None:
+        assert extract_upload_url_input(
+            '/upload url https://example.com/a.pdf\nhttps://example.org/b.pdf'
+        ) == (['https://example.com/a.pdf', 'https://example.org/b.pdf'], '')
+
+    def test_extract_upload_url_input_keeps_custom_name_for_single_url_only(self) -> None:
+        assert extract_upload_url_input('/upload url https://example.com/a.pdf | book.pdf') == (
+            ['https://example.com/a.pdf'],
+            'book.pdf',
+        )
+        assert extract_upload_url_input(
+            '/upload url https://example.com/a.pdf https://example.org/b.pdf | book.pdf'
+        ) == (['https://example.com/a.pdf', 'https://example.org/b.pdf'], '')
+
     def test_download_from_url_passes_cookie_file_to_aria2c(self) -> None:
         with TemporaryDirectory() as temp_dir_name:
             temp_dir = Path(temp_dir_name)

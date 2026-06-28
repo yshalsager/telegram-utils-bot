@@ -42,7 +42,7 @@ from src.utils.google_drive import (
     missing_gdl_dependencies,
 )
 from src.utils.i18n import t
-from src.utils.patterns import HTTP_URL_PATTERN
+from src.utils.patterns import HTTP_URL_PATTERN, extract_urls
 from src.utils.remote_files import ExternalDownload, RemoteFile, resolve_download_plan
 from src.utils.telegram import get_reply_message, send_progress_message
 
@@ -56,6 +56,12 @@ def collect_upload_paths(pattern: str, base_dir: Path = PARENT_DIR) -> list[Path
     else:
         paths = base_dir.glob(pattern)
     return sorted((path for path in paths if path.is_file()), key=lambda path: path.as_posix())
+
+
+def extract_upload_url_input(text: str) -> tuple[list[str], str]:
+    input_text, *custom = (text or '').split('|', 1)
+    urls = extract_urls(input_text)
+    return urls, custom[0].strip() if custom and len(urls) == 1 else ''
 
 
 def extract_gdrive_command_input(text: str) -> str:
@@ -292,35 +298,43 @@ async def upload_from_url_command(event: NewMessage.Event | CallbackQuery.Event)
     if message is None:
         await event.answer(t('no_valid_url_found'), alert=True)
         return
-    custom_name = ''
-    url_match = re.search(HTTP_URL_PATTERN, message.raw_text)
-    if url_match:
-        url = url_match.group(0)
-    else:
+    urls, custom_name = extract_upload_url_input(message.raw_text or '')
+    if not urls:
         if isinstance(event, CallbackQuery.Event):
             await event.answer(t('no_valid_url_found'), alert=True)
         else:
             await event.reply(t('no_valid_url_found'))
         return
-    if custom := (message.raw_text or '').split('|', 1):
-        custom_name = custom[1].strip() if len(custom) > 1 else ''
     progress_message = await send_progress_message(event, t('starting_file_download'))
-
-    try:
-        plan = await resolve_download_plan(url)
-    except aiohttp.ClientError as e:
-        await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e}</pre>'))
-        return
 
     with TemporaryDirectory(dir=DOWNLOADS_DIR) as download_dir_name:
         download_dir = Path(download_dir_name)
-        await upload_files_from_plan(
-            event,
-            plan or [RemoteFile(name=custom_name or get_filename_from_url(url), url=url)],
-            download_dir,
-            progress_message,
-            custom_name,
-        )
+        output_files = []
+        for idx, url in enumerate(urls, start=1):
+            if len(urls) > 1:
+                await progress_message.edit(f'{t("downloading")} {idx}/{len(urls)}')
+            try:
+                plan = await resolve_download_plan(url)
+            except aiohttp.ClientError as e:
+                await progress_message.edit(t('an_error_occurred', error=f'\n<pre>{e}</pre>'))
+                return
+            output_files.extend(
+                await collect_download_plan_files(
+                    event,
+                    plan or [RemoteFile(name=custom_name or get_filename_from_url(url), url=url)],
+                    download_dir,
+                    progress_message,
+                    custom_name,
+                )
+            )
+        if not output_files:
+            await progress_message.edit(t('download_failed'))
+            return
+
+        await progress_message.edit(t('download_complete_starting_upload'))
+        await upload_output_files(event, output_files, progress_message)
+        uploaded = output_files[0].name if len(output_files) == 1 else str(len(output_files))
+        await progress_message.edit(f'{t("file_uploaded")}: <code>{uploaded}</code>')
 
 
 async def upload_as_file_or_media(event: NewMessage.Event | CallbackQuery.Event) -> None:

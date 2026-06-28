@@ -10,7 +10,7 @@ from src.modules.base import ModuleBase
 from src.utils.command import Command
 from src.utils.filters import has_valid_url, is_admin_in_private
 from src.utils.i18n import t
-from src.utils.patterns import HTTP_URL_PATTERN
+from src.utils.patterns import extract_urls
 from src.utils.remote_files.models import ExternalDownload
 from src.utils.remote_files.resolver import is_supported_remote_url, resolve_download_plan
 from src.utils.telegram import edit_or_send_as_file, get_reply_message, send_progress_message
@@ -23,10 +23,6 @@ def extract_direct_command_input(text: str) -> str:
     return (match.group(1) if match else '') or ''
 
 
-def extract_direct_urls(text: str) -> list[str]:
-    return [match.group(0).rstrip('.,،)') for match in re.finditer(HTTP_URL_PATTERN, text)]
-
-
 def has_direct_link_input(event: NewMessage.Event, message: Message | None) -> bool:
     if not is_admin_in_private(event, message or event.message):
         return False
@@ -37,7 +33,7 @@ def has_direct_link_input(event: NewMessage.Event, message: Message | None) -> b
 
     if (event.message.raw_text or '').startswith('/direct'):
         return True
-    return any(is_supported_remote_url(url) for url in extract_direct_urls(text))
+    return any(is_supported_remote_url(url) for url in extract_urls(text))
 
 
 async def get_direct_input_text(event: NewMessage.Event | CallbackQuery.Event) -> str:
@@ -55,7 +51,7 @@ async def get_direct_input_text(event: NewMessage.Event | CallbackQuery.Event) -
 async def direct_links(event: NewMessage.Event | CallbackQuery.Event) -> None:
     input_text = await get_direct_input_text(event)
 
-    urls = extract_direct_urls(input_text)
+    urls = extract_urls(input_text)
     if not urls:
         if isinstance(event, CallbackQuery.Event):
             await event.answer(t('no_valid_url_found'), alert=True)
