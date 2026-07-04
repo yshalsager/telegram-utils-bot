@@ -1,4 +1,3 @@
-import json
 import logging
 from asyncio import sleep
 from collections.abc import Awaitable, Callable
@@ -70,7 +69,6 @@ Add only one separator of _________ before all footnotes mass
 Each new footnote should start in a new line, even if if in the same line in the original page, and should be separated from the previous footnote by a line separator
 Do Not rely or compare with on any memorized texts. Only OCR the text present in the image.
 """
-OCR_JSON_PROMPT = f'{OCR_PROMPT}\nReturn the result as raw JSON with the key "text_content".'
 GEMINI_TRANSCRIBE_CHUNK_SECONDS = 30 * 60
 GEMINI_FILES_API_BASE = 'https://generativelanguage.googleapis.com'
 
@@ -321,46 +319,21 @@ def is_quota_exceeded_gemini_error(error: Exception) -> bool:
     )
 
 
-def is_copyright_gemini_error(error: Exception) -> bool:
-    return 'copyright' in str(error).lower()
-
-
 def ocr_page_zoom(page_width: float) -> float:
     zoom = OCR_IMAGE_DPI / 72
     return min(zoom, OCR_IMAGE_MAX_WIDTH / page_width)
 
 
-def extract_ocr_json_text(text: str) -> str:
-    payload = json.loads(text)
-    return str(payload.get('text_content') or '')
-
-
-async def prompt_gemini_ocr_page(
-    model: llm.AsyncModel, image_path: Path, operation: str, *, json_mode: bool = False
-) -> str:
+async def prompt_gemini_ocr_page(model: llm.AsyncModel, image_path: Path, operation: str) -> str:
     response = await call_gemini_with_retries(
         operation=operation,
         action=lambda: model.prompt(
-            OCR_JSON_PROMPT if json_mode else OCR_PROMPT,
+            OCR_PROMPT,
             attachments=[llm.Attachment(path=str(image_path))],
-            json_object=json_mode,
             max_output_tokens=OCR_MAX_OUTPUT_TOKENS,
         ),
     )
-    text = await response.text()
-    return extract_ocr_json_text(text) if json_mode else text
-
-
-async def prompt_gemini_ocr_page_with_fallback(
-    model: llm.AsyncModel, image_path: Path, operation: str
-) -> str:
-    try:
-        return await prompt_gemini_ocr_page(model, image_path, operation)
-    except Exception as e:
-        if is_copyright_gemini_error(e):
-            logger.warning(f'{operation} hit copyright filter; retrying as JSON')
-            return await prompt_gemini_ocr_page(model, image_path, operation, json_mode=True)
-        raise
+    return await response.text()
 
 
 async def call_gemini_with_retries[T](*, operation: str, action: Callable[[], Awaitable[T]]) -> T:
@@ -437,7 +410,7 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
             for idx, page in enumerate(sorted(output_dir.glob('*.png')), start=1):
                 operation = f'OCR page {idx}/{total_pages}'
                 try:
-                    text = await prompt_gemini_ocr_page_with_fallback(model, page, operation)
+                    text = await prompt_gemini_ocr_page(model, page, operation)
                     out.write(text + '\n\n')
                     out.flush()
                 except GeminiQuotaExceededError as e:
