@@ -45,12 +45,27 @@ GEMINI_MODELS: list[str] = [
     'gemini-3-flash-preview',
     'gemini-2.5-flash',
 ]
-OCR_PROMPT = (
-    'OCR this PDF page. DONt REMOVE ARABIC Taskheel. '
-    'NO text modifications. NO entries from you. '
-    'Add \n\n between each paragraph. '
-    'Correct spelling and punctuations if there are any problems with them.'
-)
+OCR_PROMPT = """Extract text from this page, it is mostly in arabic
+Remove the page Number (may be at the top or bottom of the page)
+If you find single line of text on the top (may be with page number on the middle, or on the side), (and may be separated by a horizontal line from the rest of the page), that is a page header, remove it
+Give me plain text. No formatting, No Html tags or formatting tags for footnotes or for anything
+Arabic poetry verse is formatted in two equal halves separated by a moderate space. Keep the verse in a separate line, and add "..." between the 2 halves
+Arabic diacritics (ie tashkeel), should be exactly as the document, No more (do not expect or add diacritics), no less (Do not remove diacritics)
+Correct punctuations and brackets
+pay special care to islamic honorifics, they are not always the same, try to get them correct by magnifying the glyph and identifying the pattern, considering also the context
+Quran verses should be surrounded by these curly brackets {}.
+Do Not remove footnotes numbers from the text
+Keep all numbers present in the text
+Never return Empty string. If the page has no text return " " (A single space character, not an empty string)
+Reformat the text to be a replica of original image, each line separated by a line separator from the other
+No text modifications
+Do not add any text entries from yourself
+If there is a complete horizontal line across the whole page width (not a footnote separator), (may be with a copule of words within the same line), represent it as "===", exactly at the same site of the horizontal line
+Do Not remove footnotes
+Add only one separator of _________ before all footnotes mass
+Each new footnote should start in a new line, even if if in the same line in the original page, and should be separated from the previous footnote by a line separator
+Do Not rely or compare with on any memorized texts. Only OCR the text present in the image.
+"""
 GEMINI_TRANSCRIBE_CHUNK_SECONDS = 30 * 60
 GEMINI_FILES_API_BASE = 'https://generativelanguage.googleapis.com'
 
