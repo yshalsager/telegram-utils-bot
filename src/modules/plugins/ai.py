@@ -13,6 +13,7 @@ from uuid import uuid4
 import aiohttp
 import llm
 import llm_gemini
+import orjson
 import pymupdf
 import regex as re
 from telethon.events import CallbackQuery, NewMessage
@@ -25,6 +26,7 @@ from src.utils.command import Command
 from src.utils.downloads import download_to_temp_file, get_download_name, upload_file_and_cleanup
 from src.utils.filters import has_file, has_media, has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
+from src.utils.json_processing import json_options
 from src.utils.run import run_command
 from src.utils.telegram import (
     delete_message_after,
@@ -324,11 +326,21 @@ def ocr_page_zoom(page_width: float) -> float:
     return min(zoom, OCR_IMAGE_MAX_WIDTH / page_width)
 
 
-async def prompt_gemini_ocr_page(model: llm.AsyncModel, image_path: Path, operation: str) -> str:
+def build_ocr_prompt(page_number: int) -> str:
+    return (
+        f'This image is PDF page number {page_number}. OCR this page only. '
+        'The caller will store your response under this page number; do not invent page numbers.\n\n'
+        f'{OCR_PROMPT}'
+    )
+
+
+async def prompt_gemini_ocr_page(
+    model: llm.AsyncModel, image_path: Path, operation: str, page_number: int
+) -> str:
     response = await call_gemini_with_retries(
         operation=operation,
         action=lambda: model.prompt(
-            OCR_PROMPT,
+            build_ocr_prompt(page_number),
             attachments=[llm.Attachment(path=str(image_path))],
             max_output_tokens=OCR_MAX_OUTPUT_TOKENS,
         ),
@@ -404,32 +416,46 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 (output_dir / f'{str(idx).zfill(5)}.png').write_bytes(
                     page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False).tobytes('png')
                 )
-        output_file = temp_file_path.with_suffix('.txt')
+        output_name, output_file, output_json_file = (
+            get_download_name(reply_message),
+            temp_file_path.with_suffix('.txt'),
+            temp_file_path.with_suffix('.json'),
+        )
+        ocr_content: dict[str, str] = {}
         quota_exceeded_error: GeminiQuotaExceededError | None = None
         with output_file.open('w') as out:
             for idx, page in enumerate(sorted(output_dir.glob('*.png')), start=1):
                 operation = f'OCR page {idx}/{total_pages}'
                 try:
-                    text = await prompt_gemini_ocr_page(model, page, operation)
-                    out.write(text + '\n\n')
-                    out.flush()
+                    text = await prompt_gemini_ocr_page(model, page, operation, idx)
                 except GeminiQuotaExceededError as e:
                     quota_exceeded_error = e
                     logger.error(f'Gemini quota exhausted during OCR page {idx}: {e}')
-                    out.write(f'[Stopped at page {idx} due to Gemini quota limits]\n\n')
-                    out.flush()
+                    text = f'[Stopped at page {idx} due to Gemini quota limits]'
+                    ocr_content[str(idx)] = text
+                    out.write(f'=== Page {idx} ===\n{text}\n\n')
                     break
                 except Exception as e:  # noqa: BLE001
                     logger.error(f'Failed to process page {idx}: {e}')
-                    out.write(f'[Error processing page {idx}]\n\n')
-                    out.flush()
+                    text = f'[Error processing page {idx}]'
 
+                ocr_content[str(idx)] = text
+                out.write(f'=== Page {idx} ===\n{text}\n\n')
+                out.flush()
                 await progress_message.edit(f'<pre>{idx} / {total_pages}</pre>')
 
-        output_file = output_file.rename(
-            output_file.with_stem(get_download_name(reply_message).stem)
+        output_json_file.write_text(
+            orjson.dumps(
+                {'source_file': output_name.name, 'content': ocr_content},
+                option=json_options,
+            ).decode()
         )
-        await upload_file_and_cleanup(event, output_file, progress_message)
+        output_file = output_file.rename(output_file.with_stem(output_name.stem))
+        output_json_file = output_json_file.rename(output_json_file.with_stem(output_name.stem))
+        await upload_file_and_cleanup(event, output_file, progress_message, force_document=True)
+        await upload_file_and_cleanup(
+            event, output_json_file, progress_message, force_document=True
+        )
 
     if quota_exceeded_error:
         await status_message.edit(t('gemini_quota_exceeded_partial'))
