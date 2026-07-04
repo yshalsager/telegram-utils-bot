@@ -1,3 +1,4 @@
+import json
 import logging
 from asyncio import sleep
 from collections.abc import Awaitable, Callable
@@ -36,6 +37,9 @@ from src.utils.telegram import (
 
 OCR_MODEL = 'gemini-3.5-flash'
 OCR_MODEL_RPM = 10
+OCR_IMAGE_DPI = 300
+OCR_IMAGE_MAX_WIDTH = 3000
+OCR_MAX_OUTPUT_TOKENS = 64_000
 GEMINI_MODELS: list[str] = [
     'gemini-flash-latest',
     'gemini-flash-lite-latest',
@@ -66,6 +70,7 @@ Add only one separator of _________ before all footnotes mass
 Each new footnote should start in a new line, even if if in the same line in the original page, and should be separated from the previous footnote by a line separator
 Do Not rely or compare with on any memorized texts. Only OCR the text present in the image.
 """
+OCR_JSON_PROMPT = f'{OCR_PROMPT}\nReturn the result as raw JSON with the key "text_content".'
 GEMINI_TRANSCRIBE_CHUNK_SECONDS = 30 * 60
 GEMINI_FILES_API_BASE = 'https://generativelanguage.googleapis.com'
 
@@ -316,6 +321,48 @@ def is_quota_exceeded_gemini_error(error: Exception) -> bool:
     )
 
 
+def is_copyright_gemini_error(error: Exception) -> bool:
+    return 'copyright' in str(error).lower()
+
+
+def ocr_page_zoom(page_width: float) -> float:
+    zoom = OCR_IMAGE_DPI / 72
+    return min(zoom, OCR_IMAGE_MAX_WIDTH / page_width)
+
+
+def extract_ocr_json_text(text: str) -> str:
+    payload = json.loads(text)
+    return str(payload.get('text_content') or '')
+
+
+async def prompt_gemini_ocr_page(
+    model: llm.AsyncModel, image_path: Path, operation: str, *, json_mode: bool = False
+) -> str:
+    response = await call_gemini_with_retries(
+        operation=operation,
+        action=lambda: model.prompt(
+            OCR_JSON_PROMPT if json_mode else OCR_PROMPT,
+            attachments=[llm.Attachment(path=str(image_path))],
+            json_object=json_mode,
+            max_output_tokens=OCR_MAX_OUTPUT_TOKENS,
+        ),
+    )
+    text = await response.text()
+    return extract_ocr_json_text(text) if json_mode else text
+
+
+async def prompt_gemini_ocr_page_with_fallback(
+    model: llm.AsyncModel, image_path: Path, operation: str
+) -> str:
+    try:
+        return await prompt_gemini_ocr_page(model, image_path, operation)
+    except Exception as e:
+        if is_copyright_gemini_error(e):
+            logger.warning(f'{operation} hit copyright filter; retrying as JSON')
+            return await prompt_gemini_ocr_page(model, image_path, operation, json_mode=True)
+        raise
+
+
 async def call_gemini_with_retries[T](*, operation: str, action: Callable[[], Awaitable[T]]) -> T:
     retry_count = 0
     backoff_time = 10.0
@@ -380,32 +427,31 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
             total_pages = doc.page_count
             await progress_message.edit(t('converting_pdf_to_images'))
             for idx, page in enumerate(doc, start=1):
+                zoom = ocr_page_zoom(page.rect.width)
                 (output_dir / f'{str(idx).zfill(5)}.png').write_bytes(
-                    page.get_pixmap().tobytes('png')
+                    page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False).tobytes('png')
                 )
         output_file = temp_file_path.with_suffix('.txt')
         quota_exceeded_error: GeminiQuotaExceededError | None = None
         with output_file.open('w') as out:
             for idx, page in enumerate(sorted(output_dir.glob('*.png')), start=1):
+                operation = f'OCR page {idx}/{total_pages}'
                 try:
-                    response = await call_gemini_with_retries(
-                        operation=f'OCR page {idx}/{total_pages}',
-                        action=lambda _page=page: model.prompt(
-                            OCR_PROMPT, attachments=[llm.Attachment(path=str(_page))]
-                        ),
-                    )
-                    out.write(await response.text() + '\n\n')
+                    text = await prompt_gemini_ocr_page_with_fallback(model, page, operation)
+                    out.write(text + '\n\n')
+                    out.flush()
                 except GeminiQuotaExceededError as e:
                     quota_exceeded_error = e
                     logger.error(f'Gemini quota exhausted during OCR page {idx}: {e}')
                     out.write(f'[Stopped at page {idx} due to Gemini quota limits]\n\n')
+                    out.flush()
                     break
                 except Exception as e:  # noqa: BLE001
                     logger.error(f'Failed to process page {idx}: {e}')
                     out.write(f'[Error processing page {idx}]\n\n')
+                    out.flush()
 
-                if idx % 10 == 0:
-                    await progress_message.edit(f'<pre>{idx} / {total_pages}</pre>')
+                await progress_message.edit(f'<pre>{idx} / {total_pages}</pre>')
 
         output_file = output_file.rename(
             output_file.with_stem(get_download_name(reply_message).stem)
