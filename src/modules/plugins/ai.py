@@ -482,7 +482,9 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
             ).decode()
         )
         output_file = output_file.rename(output_file.with_stem(output_name.stem))
-        output_json_file = output_json_file.rename(output_json_file.with_stem(output_name.stem))
+        output_json_file = output_json_file.rename(
+            output_json_file.with_name(f'{output_name.stem}.raw.json')
+        )
         await upload_file_and_cleanup(event, output_file, progress_message, force_document=True)
         await upload_file_and_cleanup(
             event, output_json_file, progress_message, force_document=True
