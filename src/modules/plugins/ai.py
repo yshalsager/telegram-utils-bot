@@ -74,7 +74,7 @@ Do Not rely or compare with on any memorized texts. Only OCR the text present in
 GEMINI_TRANSCRIBE_CHUNK_SECONDS = 30 * 60
 GEMINI_FILES_API_BASE = 'https://generativelanguage.googleapis.com'
 
-GEMINI_OCR_PATTERN = re.compile(r'^/(gemini)\s+(ocr)$')
+GEMINI_OCR_PATTERN = re.compile(r'^/(gemini)\s+(ocr)(?:\s+(.+))?$')
 GEMINI_TRANSCRIBE_PATTERN = re.compile(r'^/(gemini)\s+(transcribe)(?:\s+([a-zA-Z-]+))?$')
 GEMINI_PROMPT_PATTERN = re.compile(r'^/(gemini)\s+(prompt)$')
 PROMPT_TEXT_PATTERN = re.compile(r'(?s)^(.+)$')
@@ -326,6 +326,23 @@ def ocr_page_zoom(page_width: float) -> float:
     return min(zoom, OCR_IMAGE_MAX_WIDTH / page_width)
 
 
+def parse_ocr_page_selection(text: str, total_pages: int) -> list[int]:
+    tokens = re.findall(r'!?\d+(?:-\d+)?', text)
+    if not tokens:
+        return [] if text.strip() else list(range(1, total_pages + 1))
+
+    includes: set[int] = set()
+    excludes: set[int] = set()
+    for token in tokens:
+        target = excludes if token.startswith('!') else includes
+        raw = token.removeprefix('!')
+        start, end = map(int, raw.split('-', 1)) if '-' in raw else (int(raw), int(raw))
+        target.update(range(max(1, min(start, end)), min(total_pages, max(start, end)) + 1))
+
+    pages = includes if includes else set(range(1, total_pages + 1))
+    return sorted(pages - excludes)
+
+
 def build_ocr_prompt(page_number: int) -> str:
     return (
         f'This image is PDF page number {page_number}. OCR this page only. '
@@ -383,7 +400,7 @@ async def media_preflight_ok(input_file_path: Path) -> bool:
         return False
 
 
-async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0915
     model_name = await choose_gemini_model(event, prefix='m|gemini_ocr|model|')
     if model_name is None:
         return
@@ -393,6 +410,10 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         return
 
     reply_message = await get_message_for_processing(event)
+    page_selection = ''
+    if isinstance(event, NewMessage.Event) and event.message.text:
+        match = GEMINI_OCR_PATTERN.match(event.message.text)
+        page_selection = (match.group(3) if match else '') or ''
     mime_type = reply_message.file.mime_type if reply_message.file else None
     status_message = await send_progress_message(event, t('starting_process'))
     progress_message = await send_progress_message(event, t('performing_ocr'))
@@ -410,10 +431,15 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
             mime_type = guess_type(temp_file_path)[0]
         with pymupdf.open(temp_file_path) as doc:
             total_pages = doc.page_count
+            selected_pages = parse_ocr_page_selection(page_selection, total_pages)
+            if not selected_pages:
+                await progress_message.edit(t('invalid_pdf_extract_pages'))
+                return
             await progress_message.edit(t('converting_pdf_to_images'))
-            for idx, page in enumerate(doc, start=1):
+            for page_number in selected_pages:
+                page = doc[page_number - 1]
                 zoom = ocr_page_zoom(page.rect.width)
-                (output_dir / f'{str(idx).zfill(5)}.png').write_bytes(
+                (output_dir / f'{str(page_number).zfill(5)}.png').write_bytes(
                     page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False).tobytes('png')
                 )
         output_name, output_file, output_json_file = (
@@ -422,27 +448,32 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
             temp_file_path.with_suffix('.json'),
         )
         ocr_content: dict[str, str] = {}
-        quota_exceeded_error: GeminiQuotaExceededError | None = None
+        quota_exceeded = False
         with output_file.open('w') as out:
-            for idx, page in enumerate(sorted(output_dir.glob('*.png')), start=1):
-                operation = f'OCR page {idx}/{total_pages}'
+            for done, page_number in enumerate(selected_pages, start=1):
+                operation = f'OCR page {page_number}/{total_pages}'
                 try:
-                    text = await prompt_gemini_ocr_page(model, page, operation, idx)
+                    text = await prompt_gemini_ocr_page(
+                        model,
+                        output_dir / f'{str(page_number).zfill(5)}.png',
+                        operation,
+                        page_number,
+                    )
                 except GeminiQuotaExceededError as e:
-                    quota_exceeded_error = e
-                    logger.error(f'Gemini quota exhausted during OCR page {idx}: {e}')
-                    text = f'[Stopped at page {idx} due to Gemini quota limits]'
-                    ocr_content[str(idx)] = text
-                    out.write(f'=== Page {idx} ===\n{text}\n\n')
+                    quota_exceeded = True
+                    logger.error(f'Gemini quota exhausted during OCR page {page_number}: {e}')
+                    text = f'[Stopped at page {page_number} due to Gemini quota limits]'
+                    ocr_content[str(page_number)] = text
+                    out.write(f'=== Page {page_number} ===\n{text}\n\n')
                     break
                 except Exception as e:  # noqa: BLE001
-                    logger.error(f'Failed to process page {idx}: {e}')
-                    text = f'[Error processing page {idx}]'
+                    logger.error(f'Failed to process page {page_number}: {e}')
+                    text = f'[Error processing page {page_number}]'
 
-                ocr_content[str(idx)] = text
-                out.write(f'=== Page {idx} ===\n{text}\n\n')
+                ocr_content[str(page_number)] = text
+                out.write(f'=== Page {page_number} ===\n{text}\n\n')
                 out.flush()
-                await progress_message.edit(f'<pre>{idx} / {total_pages}</pre>')
+                await progress_message.edit(f'<pre>{done} / {len(selected_pages)}</pre>')
 
         output_json_file.write_text(
             orjson.dumps(
@@ -457,7 +488,7 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
             event, output_json_file, progress_message, force_document=True
         )
 
-    if quota_exceeded_error:
+    if quota_exceeded:
         await status_message.edit(t('gemini_quota_exceeded_partial'))
     else:
         await status_message.edit(t('pdf_ocr_process_completed'))
