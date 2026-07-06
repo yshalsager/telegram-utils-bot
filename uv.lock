@@ -1070,8 +1070,16 @@ wheels = [
 [[package]]
 name = "locro"
 version = "0.1.0"
-source = { git = "https://github.com/yshalsager/clv-locro.git?rev=codex%2Fsupport-browser-screen-ai-paths#e28800b406196893fa146602029c18ef833a0f71" }
+source = { url = "https://github.com/yshalsager/clv-locro/archive/e28800b406196893fa146602029c18ef833a0f71.zip" }
 dependencies = [
+    { name = "pillow" },
+    { name = "pymupdf" },
+    { name = "typer" },
+]
+sdist = { hash = "sha256:e4e0dacfe1479c61fdcc6e8f8e7d6cb807a050838044a7763e906171af5a1a1f" }
+
+[package.metadata]
+requires-dist = [
     { name = "pillow" },
     { name = "pymupdf" },
     { name = "typer" },
@@ -2215,7 +2223,7 @@ requires-dist = [
     { name = "llm", specifier = ">=0.27.1" },
     { name = "llm-gemini", specifier = ">=0.30" },
     { name = "llm-groq", specifier = ">=0.8" },
-    { name = "locro", git = "https://github.com/yshalsager/clv-locro.git?rev=codex%2Fsupport-browser-screen-ai-paths" },
+    { name = "locro", url = "https://github.com/yshalsager/clv-locro/archive/e28800b406196893fa146602029c18ef833a0f71.zip" },
     { name = "ocrmypdf", specifier = ">=16.12.0" },
     { name = "orjson", specifier = ">=3.11.2" },
     { name = "plate", specifier = ">=1.0.1" },
