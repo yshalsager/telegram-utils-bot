@@ -880,7 +880,11 @@ async def ocrmypdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
 
 
 async def screenai_ocr(event: NewMessage.Event | CallbackQuery.Event) -> None:
-    reply_message = await get_reply_message(event, previous=True)
+    reply_message = (
+        event.message
+        if isinstance(event, NewMessage.Event) and event.message.file
+        else await get_reply_message(event, previous=True)
+    )
     page_selection = ''
     if isinstance(event, NewMessage.Event) and event.message.text:
         match = SCREENAI_OCR_PATTERN.match(event.message.text)

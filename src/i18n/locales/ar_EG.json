@@ -158,6 +158,7 @@
   "_image_convert_description": "[format] - تحويل الصورة إلى تنسيق آخر.",
   "_image_ocr": "إلى نص",
   "_image_ocr_description": "[lang]: التعرف الضوئي على الحروف باستخدام tesseract.",
+  "_screenai_ocr": "إلى نص ScreenAI",
   "_screenai_ocr_description": "[pages]: التعرف الضوئي المحلي باستخدام ScreenAI من Brave/Chrome.",
   "_image_trim": "قص الحواف",
   "_image_trim_description": "إزالة الحواف البيضاء من الصورة",
