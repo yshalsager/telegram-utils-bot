@@ -1,4 +1,6 @@
+from asyncio import Lock, to_thread
 from contextlib import suppress
+from functools import cache
 from io import BytesIO
 from os import getenv
 from pathlib import Path
@@ -12,6 +14,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pymupdf
 import regex as re
 from humanize import naturalsize
+from locro import ScreenAI
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 
@@ -42,6 +45,8 @@ PDF_SAVE_KWARGS = {
     'use_objstms': True,
 }
 PDF_FONT_ZIP_THRESHOLD = 5
+SCREENAI_OCR_PATTERN = re.compile(r'^/(screenai)\s+(ocr)(?:\s+([\d,\-\s]+))?$')
+screenai_lock = Lock()
 
 PDF_PERMISSION_FLAGS = [
     ('pdf_permission_print', 4),
@@ -550,6 +555,12 @@ def parse_page_numbers(input_string: str) -> list[int]:
     return sorted(pages)
 
 
+@cache
+def get_screenai_engine() -> Any:
+    model_dir = getenv('SCREENAI_MODEL_DIR')
+    return ScreenAI(Path(model_dir) if model_dir else None)
+
+
 async def _extract_pdf_pages_process(
     event: NewMessage.Event,
     reply_message: Message | None,
@@ -866,6 +877,50 @@ async def ocrmypdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
             return
 
     await progress_message.edit(t('pdf_ocr_process_completed'))
+
+
+async def screenai_ocr(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    page_selection = ''
+    if isinstance(event, NewMessage.Event) and event.message.text:
+        match = SCREENAI_OCR_PATTERN.match(event.message.text)
+        page_selection = (match.group(3) if match else '') or ''
+
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('performing_ocr'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix=reply_message.file.ext,
+    ) as input_file_path:
+        pages = None
+        if input_file_path.suffix.lower() == '.pdf' and page_selection.strip():
+            with pymupdf.open(input_file_path) as doc:
+                pages = [
+                    page + 1 for page in parse_page_numbers(page_selection) if page < doc.page_count
+                ]
+            if not pages:
+                await progress_message.edit(t('invalid_pdf_extract_pages'))
+                return
+
+        try:
+            async with screenai_lock:
+                text = await to_thread(
+                    lambda: get_screenai_engine().ocr(input_file_path, pages=pages).to_text()
+                )
+        except Exception as e:  # noqa: BLE001
+            await status_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
+            return
+
+        output_file = input_file_path.with_name(
+            f'{get_download_name(reply_message).stem}.screenai.txt'
+        )
+        output_file.write_text(text or ' ')
+        await upload_file_and_cleanup(event, output_file, progress_message, force_document=True)
+
+    await status_message.edit(t('pdf_ocr_process_completed'))
 
 
 async def ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -1198,6 +1253,13 @@ class PDF(ModuleBase):
             description=t('_pdf_ocr_description'),
             pattern=re.compile(r'^/(pdf)\s+(ocr)\s+?([\w+]{3,})?$'),
             condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'screenai ocr': Command(
+            handler=screenai_ocr,
+            description=t('_screenai_ocr_description'),
+            pattern=SCREENAI_OCR_PATTERN,
+            condition=lambda e, m: has_pdf_file(e, m) or has_photo_or_photo_file(e, m),
             is_applicable_for_reply=True,
         ),
         'pdf split': Command(

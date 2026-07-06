@@ -158,6 +158,7 @@
   "_image_convert_description": "[format] - Convert image to another format.",
   "_image_ocr": "image ocr",
   "_image_ocr_description": "[lang]: Perform OCR using tesseract.",
+  "_screenai_ocr_description": "[pages]: Perform local OCR using Brave/Chrome ScreenAI.",
   "_image_trim": "image trim",
   "_image_trim_description": "Remove white space borders from the image",
   "md5_hashing_started": "Starting MD5 hash calculation…",
