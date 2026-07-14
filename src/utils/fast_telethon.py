@@ -298,14 +298,17 @@ class ParallelTransferrer:
 
         part = 0
         while part < part_count:
-            tasks = [self.loop.create_task(sender.next()) for sender in self.senders]  # type: ignore[call-arg, union-attr]
-            for task in tasks:
-                data = await task
+            chunks = await asyncio.gather(*[sender.next() for sender in self.senders])  # type: ignore[union-attr]
+            if not any(chunks):
+                break
+            for data in chunks:
                 if not data:
-                    break
+                    continue
                 yield data
                 part += 1
         await self._cleanup()
+        if part < part_count:
+            raise EOFError('Telegram returned no data before download completed')
 
 
 parallel_transfer_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
