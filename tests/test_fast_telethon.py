@@ -2,7 +2,6 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
 
-import pytest
 from src.utils.fast_telethon import ParallelTransferrer
 
 
@@ -13,7 +12,7 @@ class ParallelDownloadTest(IsolatedAsyncioTestCase):
         transferrer._init_download = AsyncMock()
         transferrer._cleanup = AsyncMock()
 
-        with pytest.raises(EOFError):
+        with self.assertRaises(EOFError):  # noqa: PT027
             [
                 chunk
                 async for chunk in transferrer.download(
