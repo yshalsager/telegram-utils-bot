@@ -6,7 +6,7 @@ import logging
 import traceback
 from asyncio import CancelledError, Task, create_task, run
 from collections.abc import Callable, Coroutine
-from contextlib import suppress
+from datetime import UTC, datetime
 from itertools import zip_longest
 from pathlib import Path
 from shutil import rmtree
@@ -18,6 +18,7 @@ from telethon.events import CallbackQuery, InlineQuery, NewMessage, StopPropagat
 
 from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN, STATE_DIR, TMP_DIR
 from src.modules.base import InlineModuleBase, ModuleBase, matches_command
+from src.modules.core.tasks_manager import ActiveTask, next_task_id
 from src.utils.i18n import t
 from src.utils.modules_registry import ModuleRegistry
 from src.utils.permission_manager import PermissionManager
@@ -83,7 +84,7 @@ async def handle_restart() -> None:
 async def handle_module_execution(
     event: NewMessage.Event | CallbackQuery.Event,
     module: ModuleBase,
-    handler_args: tuple[Any, ...],
+    command: str,
     response_func: Callable[[str], Coroutine[Any, Any, None]],
 ) -> None:
     reply_message = None
@@ -98,12 +99,17 @@ async def handle_module_execution(
         if base_message is None:
             return
     message = reply_message or base_message
-    task_id = f'{message.chat_id}_{message.id}'
-    task: Task[bool] = create_task(module.handle(*handler_args))
-
     if not hasattr(event.client, 'active_tasks'):
         event.client.active_tasks = {}
-    event.client.active_tasks[task_id] = task
+    active_tasks: dict[str, ActiveTask] = event.client.active_tasks
+    task_id = next_task_id(active_tasks, f'{message.chat_id}_{message.id}')
+    task: Task[bool] = create_task(module.handle(event, command))
+    active_tasks[task_id] = ActiveTask(
+        task=task,
+        command=command,
+        user_id=event.sender_id or event.chat_id,
+        started_at=datetime.now(UTC),
+    )
 
     try:
         await task
@@ -117,12 +123,7 @@ async def handle_module_execution(
         )
         await response_func(t('an_error_occurred', error=f'{e!s}'[:100]))
     finally:
-        if task_id in event.client.active_tasks:
-            task = event.client.active_tasks[task_id]
-            if not task.done():
-                with suppress(CancelledError):
-                    task.cancel()
-            del event.client.active_tasks[task_id]
+        active_tasks.pop(task_id, None)
 
 
 async def handle_commands(event: NewMessage.Event) -> None:
@@ -150,7 +151,7 @@ async def handle_commands(event: NewMessage.Event) -> None:
     if not cmd or not matches_command(event, reply_message, cmd):
         raise StopPropagation
 
-    await handle_module_execution(event, module, (event, command), event.reply)
+    await handle_module_execution(event, module, command, event.reply)
     raise StopPropagation
 
 
@@ -207,7 +208,7 @@ async def handle_callback(event: CallbackQuery.Event) -> None:
     async def response_func(message: str) -> None:
         await event.answer(message, alert=True)
 
-    await handle_module_execution(event, module, (event, command), response_func)
+    await handle_module_execution(event, module, command, response_func)
 
 
 async def handle_inline_query(event: InlineQuery.Event) -> None:
@@ -225,11 +226,18 @@ async def start_command(event: NewMessage.Event) -> None:
 
 async def cancel_command(event: NewMessage.Event) -> None:
     original_message = await get_reply_message(event)
-    task_id = f'{original_message.chat_id}_{original_message.id}'
-    if not getattr(event.client, 'active_tasks', {}).get(task_id):
+    base_task_id = f'{original_message.chat_id}_{original_message.id}'
+    active_tasks: dict[str, ActiveTask] = getattr(event.client, 'active_tasks', {})
+    task_ids = [
+        task_id
+        for task_id in active_tasks
+        if task_id == base_task_id or task_id.startswith(f'{base_task_id}_')
+    ]
+    if not task_ids:
         await event.reply(t('no_active_operation'))
         return
-    event.client.active_tasks[task_id].cancel()
+    for task_id in task_ids:
+        active_tasks[task_id].task.cancel()
     await event.reply(t('operation_cancellation_requested'))
     raise StopPropagation
 
