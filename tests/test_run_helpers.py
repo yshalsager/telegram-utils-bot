@@ -17,6 +17,9 @@ class RunHelpersTest(TestCase):
         assert message == '<pre>f</pre>'
         assert len(message) <= 12
 
+    def test_format_pre_block_escapes_html(self) -> None:
+        assert format_pre_block('<tag>&') == '<pre>&lt;tag&gt;&amp;</pre>'
+
 
 class ReadStreamTest(IsolatedAsyncioTestCase):
     async def test_read_stream_handles_long_output_without_separator(self) -> None:

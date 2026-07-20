@@ -3,6 +3,7 @@ import logging
 from asyncio.subprocess import PIPE, Process
 from collections.abc import AsyncGenerator
 from contextlib import suppress
+from html import escape
 from os import getpgid, killpg, setsid
 from shlex import split as shlex_split
 from signal import SIGKILL
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def format_pre_block(text: str, max_length: int = MAX_MESSAGE_LENGTH, *, tail: bool = False) -> str:
+    text = escape(text)
     limit = max(0, max_length - len('<pre></pre>'))
     if len(text) > limit:
         text = text[-limit:] if tail else text[:limit]
