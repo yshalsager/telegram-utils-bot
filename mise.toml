@@ -49,6 +49,8 @@ LLM_GEMINI_KEY = ''
 # Groq API key
 GROQ_API_KEY = ''
 LLM_TRANSCRIPTION_MODEL = 'groq/whisper-large-v3'
+# Cohere transcription API key
+COHERE_API_KEY = ''
 
 [env.mise]
 file = '.env'

@@ -21,13 +21,16 @@ from telethon.tl.custom import Message
 
 from src import TMP_DIR
 from src.modules.base import ModuleBase
-from src.modules.plugins.media import get_format_info, get_stream_info
+from src.modules.plugins.media import (
+    get_format_info,
+    get_stream_info,
+    split_audio_for_transcription,
+)
 from src.utils.command import Command
 from src.utils.downloads import download_to_temp_file, get_download_name, upload_file_and_cleanup
 from src.utils.filters import has_file, has_media, has_pdf_file, has_photo_or_photo_file
 from src.utils.i18n import t
 from src.utils.json_processing import json_options
-from src.utils.run import run_command
 from src.utils.telegram import (
     delete_message_after,
     edit_or_send_as_file,
@@ -525,32 +528,20 @@ async def gemini_transcribe_media(  # noqa: C901, PLR0911, PLR0912, PLR0915
             if not await media_preflight_ok(input_file_path):
                 await status_message.edit(t('corrupt_media_file'))
                 return
-            audio_file_path = output_dir / 'gemini-input.ogg'
             await progress_message.edit(t('converting_media'))
-            output, status_code = await run_command(
-                f'ffmpeg -hide_banner -y -i "{input_file_path}" -vn -ac 1 -c:a libopus -b:a 32k "{audio_file_path}"'
-            )
-            if status_code != 0:
-                if has_corrupt_media_error(output):
+            try:
+                audio_parts = await split_audio_for_transcription(
+                    input_file_path,
+                    output_dir,
+                    'gemini-part',
+                    GEMINI_TRANSCRIBE_CHUNK_SECONDS,
+                )
+            except RuntimeError as e:
+                if has_corrupt_media_error(str(e)):
                     await status_message.edit(t('corrupt_media_file'))
                     return
-                await status_message.edit(t('an_error_occurred', error=f'\n<pre>{output}</pre>'))
+                await status_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
                 return
-
-            chunk_pattern = output_dir / 'gemini-part-%03d.ogg'
-            output, status_code = await run_command(
-                f'ffmpeg -hide_banner -y -i "{audio_file_path}" -vn -ac 1 -c:a libopus -b:a 32k '
-                f'-f segment -segment_time {GEMINI_TRANSCRIBE_CHUNK_SECONDS} -reset_timestamps 1 "{chunk_pattern}"'
-            )
-            if status_code != 0:
-                if has_corrupt_media_error(output):
-                    await status_message.edit(t('corrupt_media_file'))
-                    return
-                await status_message.edit(t('an_error_occurred', error=f'\n<pre>{output}</pre>'))
-                return
-            audio_parts = sorted(
-                path for path in output_dir.glob('gemini-part-*.ogg') if path.stat().st_size
-            )
             if not audio_parts:
                 await status_message.edit(t('unsupported_file_type'))
                 return

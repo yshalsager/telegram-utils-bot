@@ -30,6 +30,7 @@ from src.modules.plugins.media import (
     build_split_media_command,
     build_static_image_video_command,
     build_telegram_thumbnail_command,
+    build_transcription_chunk_command,
     build_video_audio_update_command,
     build_video_compress_command,
     build_video_thumbnail_grid_command,
@@ -123,6 +124,12 @@ class MediaTimeRangeHelpersTest(TestCase):
         assert '-r 1' in command
         assert 'format=yuv420p' in command
         assert '-shortest' not in command
+
+    def test_transcription_chunk_command_normalizes_audio(self) -> None:
+        command = build_transcription_chunk_command(Path('input.mp4'), Path('part-%03d.ogg'), 3600)
+
+        assert '-ac 1 -c:a libopus -b:a 32k' in command
+        assert '-segment_time 3600 -reset_timestamps 1' in command
 
     def test_crop_out_filter_command_uses_precise_trim_concat(self) -> None:
         command = build_crop_out_filter_command(

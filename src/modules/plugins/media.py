@@ -51,7 +51,7 @@ ALLOWED_AUDIO_COMPRESS_BITRATES = [16, 32, 48, 64, 96, 128]
 ALLOWED_AMPLIFY_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
 ALLOWED_VIDEO_COMPRESS_PERCENTAGES = list(range(20, 100, 10))
 ALLOWED_VIDEO_X265_CRF = [18, 20, 22, 24, 26, 28, 30]
-ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'vosk', 'google']
+ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'cohere', 'vosk', 'google']
 SUPPORTED_AUDIO_THUMBNAIL_EXTS = {'.mp3', '.m4a', '.m4b'}
 TELEGRAM_THUMBNAIL_MAX_SIZE = 20_000
 DEFAULT_AUDIO_BITRATE = '96k'
@@ -72,6 +72,9 @@ GOOGLE_SPEECH_V2_API_KEY = (
     getenv('GOOGLE_SPEECH_V2_KEY') or 'AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw'
 )
 GOOGLE_SPEECH_V2_API_URL = 'https://www.google.com/speech-api/v2/recognize?output=json&client=chromium&lang={lang}&key={key}'
+COHERE_TRANSCRIBE_API_URL = 'https://api.cohere.com/v2/audio/transcriptions'
+COHERE_TRANSCRIBE_MODEL = 'cohere-transcribe-arabic-07-2026'
+COHERE_TRANSCRIBE_CHUNK_SECONDS = 60 * 60
 TIME_RANGES_PATTERN = re.compile(
     r'^(\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}(\s+\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2})*)$'
 )
@@ -727,6 +730,62 @@ async def transcribe_with_google(
     output_file = output_dir / f'{input_file_path.stem}.txt'
     output_file.write_text(transcript)
     return output_file
+
+
+def build_transcription_chunk_command(
+    input_file: Path, output_pattern: Path, chunk_seconds: int
+) -> str:
+    return (
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} -vn -ac 1 -c:a libopus -b:a 32k '
+        f'-f segment -segment_time {chunk_seconds} -reset_timestamps 1 '
+        f'{shell_arg(output_pattern)}'
+    )
+
+
+async def split_audio_for_transcription(
+    input_file: Path, output_dir: Path, prefix: str, chunk_seconds: int
+) -> list[Path]:
+    output_pattern = output_dir / f'{prefix}-%03d.ogg'
+    output, status_code = await run_command(
+        build_transcription_chunk_command(input_file, output_pattern, chunk_seconds)
+    )
+    if status_code:
+        raise RuntimeError(output)
+    return sorted(path for path in output_dir.glob(f'{prefix}-*.ogg') if path.stat().st_size)
+
+
+async def transcribe_with_cohere(
+    input_file: Path,
+    output_dir: Path,
+    api_key: str,
+    language: str,
+    progress_message: Message,
+) -> str:
+    chunks = await split_audio_for_transcription(
+        input_file, output_dir, 'cohere-part', COHERE_TRANSCRIBE_CHUNK_SECONDS
+    )
+    if not chunks:
+        raise RuntimeError(t('failed_to_transcribe'))
+
+    parts = []
+    async with aiohttp.ClientSession(headers={'Authorization': f'Bearer {api_key}'}) as session:
+        for idx, chunk in enumerate(chunks, start=1):
+            await progress_message.edit(f'<pre>{idx} / {len(chunks)}</pre>')
+            form = aiohttp.FormData()
+            form.add_field('model', COHERE_TRANSCRIBE_MODEL)
+            form.add_field('language', language)
+            with chunk.open('rb') as audio:
+                form.add_field('file', audio, filename=chunk.name, content_type='audio/ogg')
+                async with session.post(COHERE_TRANSCRIBE_API_URL, data=form) as response:
+                    body = await response.read()
+                    if response.status >= 400:
+                        raise RuntimeError(body.decode(errors='replace'))
+                    if text := orjson.loads(body).get('text', '').strip():
+                        parts.append(text)
+
+    if not parts:
+        raise RuntimeError(t('failed_to_transcribe'))
+    return '\n\n'.join(parts)
 
 
 async def process_media(
@@ -1999,7 +2058,7 @@ async def _video_create_process(event: NewMessage.Event, file_ids: list[int]) ->
     raise StopPropagation
 
 
-async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912, PLR0915
+async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0911, PLR0912, PLR0915
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
         transcription_method = await inline_choice_grid(
@@ -2021,11 +2080,16 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         match = Media.commands['transcribe'].pattern.match(event.message.text)
         transcription_method = (match.group(2) if match else 'wit') or 'wit'
         language = (match.group(3) if match else 'ar') or 'ar'
-    wit_access_tokens, whisper_api_key = None, None
+    wit_access_tokens, whisper_api_key, cohere_api_key = None, None, None
     if transcription_method == 'whisper':
         whisper_api_key = getenv('GROQ_API_KEY')
         if not whisper_api_key:
             await event.reply(t('please_set_whisper_api_key'))
+            return
+    elif transcription_method == 'cohere':
+        cohere_api_key = getenv('COHERE_API_KEY')
+        if not cohere_api_key:
+            await event.reply(f'{t("missing_api_key")}: <code>COHERE_API_KEY</code>')
             return
     elif transcription_method == 'wit':
         wit_access_tokens = getenv('WIT_CLIENT_ACCESS_TOKENS')
@@ -2038,6 +2102,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
     output_dir = Path(TMP_DIR / str(uuid4()))
     output_dir.mkdir(parents=True, exist_ok=True)
+    transcription = None
 
     async with download_to_temp_file(
         event,
@@ -2088,12 +2153,18 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             )
             response.on_done(lambda _: audio_file_path.unlink(missing_ok=True))
             transcription = response.text()
-            await edit_or_send_as_file(
-                event,
-                status_message,
-                transcription,
-                file_name=audio_file_path.with_suffix('.txt').name,
-            )
+        elif transcription_method == 'cohere' and cohere_api_key:
+            try:
+                transcription = await transcribe_with_cohere(
+                    input_file_path,
+                    output_dir,
+                    cohere_api_key,
+                    language,
+                    progress_message,
+                )
+            except Exception as e:  # noqa: BLE001
+                await status_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
+                return
         elif transcription_method == 'wit':
             command = (
                 f'tafrigh {shell_arg(input_file_path)} -o {shell_arg(output_dir.name)} -f txt srt'
@@ -2101,6 +2172,13 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             command += f' -w {shell_arg(wit_access_tokens)}'
             await stream_shell_output(
                 event, command, status_message, progress_message, max_length=100
+            )
+        if transcription is not None:
+            await edit_or_send_as_file(
+                event,
+                status_message,
+                transcription,
+                file_name=get_download_name(reply_message).with_suffix('.txt').name,
             )
         if transcription_method == 'vosk':
             srt_to_txt(input_file_path.with_suffix('.srt'))
@@ -2120,7 +2198,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 )
             else:
                 await status_message.edit(f'{t("failed_to_transcribe")} {output_file.name}')
-    if transcription_method != 'whisper':
+    if transcription_method not in ('whisper', 'cohere'):
         await status_message.edit(t('transcription_completed'))
     rmtree(output_dir)
     delete_message_after(progress_message)
@@ -2271,7 +2349,7 @@ class Media(ModuleBase):
             handler=transcribe_media,
             description=t('_transcribe_description'),
             pattern=re.compile(
-                r'^/(transcribe)(?:\s+(wit|whisper|vosk|google))?(?:\s+(\w{2,3}))?$'
+                r'^/(transcribe)(?:\s+(wit|whisper|cohere|vosk|google))?(?:\s+(\w{2,3}))?$'
             ),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,

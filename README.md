@@ -123,6 +123,8 @@ Before setting up the bot:
    LLM_GEMINI_KEY="..."
    # Optional (Whisper via Groq)
    GROQ_API_KEY="..."
+   # Optional (Arabic transcription via Cohere)
+   COHERE_API_KEY="..."
    # Optional (tafrigh wit)
    WIT_CLIENT_ACCESS_TOKENS="..."
    # Optional (Google Play APK downloads)
