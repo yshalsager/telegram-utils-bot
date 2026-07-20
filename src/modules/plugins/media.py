@@ -34,7 +34,6 @@ from src.utils.filters import has_media
 from src.utils.i18n import t
 from src.utils.json_processing import json_options, process_dict
 from src.utils.run import run_command
-from src.utils.subtitles import srt_to_txt
 from src.utils.telegram import (
     delete_callback_after,
     delete_message_after,
@@ -51,7 +50,7 @@ ALLOWED_AUDIO_COMPRESS_BITRATES = [16, 32, 48, 64, 96, 128]
 ALLOWED_AMPLIFY_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
 ALLOWED_VIDEO_COMPRESS_PERCENTAGES = list(range(20, 100, 10))
 ALLOWED_VIDEO_X265_CRF = [18, 20, 22, 24, 26, 28, 30]
-ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'cohere', 'vosk', 'google']
+ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'cohere', 'google']
 SUPPORTED_AUDIO_THUMBNAIL_EXTS = {'.mp3', '.m4a', '.m4b'}
 TELEGRAM_THUMBNAIL_MAX_SIZE = 20_000
 DEFAULT_AUDIO_BITRATE = '96k'
@@ -2120,14 +2119,6 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             if not output_file:
                 await status_message.edit(f'{t("failed_to_transcribe")} {input_file_path.name}')
                 return
-        elif transcription_method == 'vosk':
-            command = (
-                f'vosk-transcriber --log-level warning -i {shell_arg(input_file_path)} -l ar '
-                f'-t srt -o {shell_arg(output_dir / input_file_path.with_suffix(".srt").name)}'
-            )
-            await stream_shell_output(
-                event, command, status_message, progress_message, max_length=100
-            )
         elif transcription_method == 'whisper' and whisper_api_key:
             model = get_model(getenv('LLM_TRANSCRIPTION_MODEL'))
             audio_file_path = input_file_path
@@ -2180,8 +2171,6 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 transcription,
                 file_name=get_download_name(reply_message).with_suffix('.txt').name,
             )
-        if transcription_method == 'vosk':
-            srt_to_txt(input_file_path.with_suffix('.srt'))
         for output_file in output_dir.glob('*.[st][xr]t'):
             if output_file.exists() and output_file.stat().st_size:
                 if reply_message.file.name:
@@ -2349,7 +2338,7 @@ class Media(ModuleBase):
             handler=transcribe_media,
             description=t('_transcribe_description'),
             pattern=re.compile(
-                r'^/(transcribe)(?:\s+(wit|whisper|cohere|vosk|google))?(?:\s+(\w{2,3}))?$'
+                r'^/(transcribe)(?:\s+(wit|whisper|cohere|google))?(?:\s+(\w{2,3}))?$'
             ),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,

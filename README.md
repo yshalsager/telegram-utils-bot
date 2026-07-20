@@ -64,7 +64,7 @@ A versatile multilingual modular Telegram bot with multiple features.
 
 - OCR (Optical Character Recognition) using Tesseract and Gemini
 - PDF processing: text extraction, compression, page extraction, cropping, splitting, and merging
-- Transcription (Wit/Whisper/Vosk + Gemini)
+- Transcription (Wit/Whisper/Cohere + Gemini)
 - Custom Gemini prompt on a replied file
 
 ### Utility Functions
@@ -170,7 +170,6 @@ uv run -m src
 - [orjson](https://github.com/ijl/orjson/)
 - [regex](https://github.com/mrabarnett/mrab-regex)
 - [search-engine-parser](https://github.com/bisohns/search-engine-parser)
-- [Vosk](https://github.com/alphacep/vosk-api)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [OCRmyPDF](https://github.com/ocrmypdf/OCRmyPDF)
 - [tafrigh](https://github.com/ieasybooks/tafrigh)
