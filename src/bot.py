@@ -9,13 +9,14 @@ from collections.abc import Callable, Coroutine
 from contextlib import suppress
 from itertools import zip_longest
 from pathlib import Path
+from shutil import rmtree
 from typing import Any, cast
 
 import orjson
 from telethon import Button, TelegramClient
 from telethon.events import CallbackQuery, InlineQuery, NewMessage, StopPropagation
 
-from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN, STATE_DIR
+from src import API_HASH, API_ID, BOT_ADMINS, BOT_TOKEN, STATE_DIR, TMP_DIR
 from src.modules.base import InlineModuleBase, ModuleBase, matches_command
 from src.utils.i18n import t
 from src.utils.modules_registry import ModuleRegistry
@@ -114,7 +115,7 @@ async def handle_module_execution(
         logger.error(
             f'Error in module {module.name}: {"\n".join(traceback.format_exception(None, e, e.__traceback__))}'
         )
-        await response_func(t('an_error_occurred', error=f'{e!s}'))
+        await response_func(t('an_error_occurred', error=f'{e!s}'[:100]))
     finally:
         if task_id in event.client.active_tasks:
             task = event.client.active_tasks[task_id]
@@ -235,6 +236,8 @@ async def cancel_command(event: NewMessage.Event) -> None:
 
 async def run_bot() -> None:
     """Run the bot."""
+    rmtree(TMP_DIR, ignore_errors=True)
+    TMP_DIR.mkdir(exist_ok=True)
     state.permission_manager = PermissionManager(set(BOT_ADMINS), STATE_DIR / 'permissions.json')
     state.modules_registry = ModuleRegistry(__package__ or __name__, state.permission_manager)
     commands_with_modifiers = {

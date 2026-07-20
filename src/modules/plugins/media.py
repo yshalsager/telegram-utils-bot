@@ -2154,7 +2154,13 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     progress_message,
                 )
             except Exception as e:  # noqa: BLE001
-                await status_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
+                await edit_or_send_as_file(
+                    event,
+                    status_message,
+                    t('an_error_occurred', error=f'\n{e!s}'),
+                    file_name='transcription-error.txt',
+                    file_text=str(e),
+                )
                 return
         elif transcription_method == 'wit':
             command = (
@@ -2189,7 +2195,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 await status_message.edit(f'{t("failed_to_transcribe")} {output_file.name}')
     if transcription_method not in ('whisper', 'cohere'):
         await status_message.edit(t('transcription_completed'))
-    rmtree(output_dir)
+    rmtree(output_dir, ignore_errors=True)
     delete_message_after(progress_message)
     if delete_message_after_process:
         delete_callback_after(event)
