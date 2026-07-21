@@ -52,5 +52,5 @@ LLM_TRANSCRIPTION_MODEL = 'groq/whisper-large-v3'
 # Cohere transcription API key
 COHERE_API_KEY = ''
 
-[env.mise]
+[env._]
 file = '.env'
