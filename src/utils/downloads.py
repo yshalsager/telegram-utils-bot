@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
+from html import escape
 from io import BufferedRandom, BufferedWriter
 from os import fsync
 from pathlib import Path
@@ -58,6 +59,9 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
     mime_type = ''
     if message.document:
         mime_type = message.document.mime_type.split('/')[-1] if message.document.mime_type else ''
+        fallback_ext = getattr(message.file, 'ext', '') or (
+            f'.{mime_type}' if mime_type not in {'', 'octet-stream'} else '.unknown'
+        )
         original_filename = (
             next(
                 (
@@ -67,7 +71,7 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
                 ),
                 message.file.name if (message.file and message.file.name) else None,
             )
-            or f'{get_default_filename()}.{mime_type or "unknown"}'
+            or f'{get_default_filename()}{fallback_ext}'
         )
     else:
         original_filename = (
@@ -76,7 +80,17 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
             else f'{get_default_filename()}{message.file.ext}'
         )
 
-    original_ext = Path(original_filename).suffix or f'.{mime_type}' if mime_type else '.unknown'
+    suffixes = Path(original_filename).suffixes
+    compound_ext = ''.join(suffixes[-2:]).lower()
+    original_ext = (
+        compound_ext
+        if compound_ext in {'.tar.gz', '.tar.bz2', '.tar.xz', '.tar.br', '.tar.zst'}
+        else Path(original_filename).suffix
+    )
+    if original_ext == '.':
+        original_ext = ''
+    elif not original_ext:
+        original_ext = getattr(message.file, 'ext', '') or '.unknown'
     if not new_filename:
         return Path(original_filename)
 
@@ -89,7 +103,7 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
 async def resolve_upload_caption(
     event: NewMessage.Event | CallbackQuery.Event, output_file: Path, caption: str = ''
 ) -> str:
-    filename_caption = f'<code>{output_file.name}</code>'
+    filename_caption = f'<code>{escape(output_file.name)}</code>'
     if caption:
         return caption if len(caption) <= MAX_UPLOAD_CAPTION_LENGTH else filename_caption
     message = await event.get_message() if isinstance(event, CallbackQuery.Event) else event.message
@@ -103,7 +117,7 @@ async def resolve_upload_caption(
     if (reply_file := getattr(reply_message, 'file', None)) and (
         file_name := getattr(reply_file, 'name', '')
     ):
-        return f'<code>{file_name}</code>'
+        return f'<code>{escape(file_name)}</code>'
     return filename_caption
 
 
@@ -198,12 +212,14 @@ async def upload_file_and_cleanup(
     unlink: bool = True,
     **kwargs: Any,
 ) -> None:
-    await upload_file(event, output_file, progress_message, **kwargs)
-    if unlink:
-        output_file.unlink(missing_ok=True)
-        thumb = kwargs.get('thumb')
-        if isinstance(thumb, str | Path):
-            Path(thumb).unlink(missing_ok=True)
+    try:
+        await upload_file(event, output_file, progress_message, **kwargs)
+    finally:
+        if unlink:
+            output_file.unlink(missing_ok=True)
+            thumb = kwargs.get('thumb')
+            if isinstance(thumb, str | Path):
+                Path(thumb).unlink(missing_ok=True)
 
 
 def get_filename_from_url(url: str) -> str:

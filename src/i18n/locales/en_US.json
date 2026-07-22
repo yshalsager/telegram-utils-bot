@@ -170,6 +170,7 @@
   "_ping": "ping",
   "_ping_description": "Ping the bot.",
   "please_provide_a_new_filename": "Please provide a new filename for the file.",
+  "invalid_filename": "Please provide a valid filename without path separators.",
   "the_new_filename_is_the_same": "The new filename is the same as the old one.",
   "starting_file_rename": "Starting file rename process…",
   "file_renamed": "File successfully renamed to",

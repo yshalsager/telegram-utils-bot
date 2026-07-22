@@ -1,3 +1,4 @@
+from html import escape
 from typing import Any, ClassVar
 
 import regex as re
@@ -11,14 +12,32 @@ from src.utils.filters import has_file
 from src.utils.i18n import t
 from src.utils.telegram import get_reply_message, send_progress_message
 
+RENAME_PATTERN = re.compile(r'^/rename\s+(.+)$')
+
+
+def is_valid_filename(filename: str) -> bool:
+    return bool(
+        filename
+        and filename not in {'.', '..'}
+        and '/' not in filename
+        and '\\' not in filename
+        and '\0' not in filename
+        and len(filename.encode()) <= 255
+    )
+
 
 async def _rename_process(
     event: NewMessage.Event,
     reply_message: Message | None,
     match: Any,
 ) -> None:
-    assert reply_message is not None
     new_filename = match.group(1).strip()
+    if not reply_message or not reply_message.file:
+        await event.reply(t('no_files_found'))
+        return
+    if not is_valid_filename(new_filename):
+        await event.reply(t('invalid_filename'))
+        return
 
     new_filename_with_ext = get_download_name(reply_message, new_filename)
     if new_filename_with_ext.name == reply_message.file.name:
@@ -28,10 +47,12 @@ async def _rename_process(
     progress_message = await send_progress_message(event, t('starting_file_rename'))
 
     async with download_to_temp_file(event, reply_message, progress_message) as temp_file_path:
-        new_file_path = temp_file_path.rename(temp_file_path.with_name(str(new_filename_with_ext)))
-        await upload_file_and_cleanup(event, new_file_path, progress_message)
+        new_file_path = temp_file_path.rename(temp_file_path.with_name(new_filename_with_ext.name))
+        await upload_file_and_cleanup(event, new_file_path, progress_message, force_document=True)
 
-    await progress_message.edit(f'{t("file_renamed")}: {new_filename_with_ext}')
+    await progress_message.edit(
+        f'{t("file_renamed")}: <code>{escape(new_filename_with_ext.name)}</code>'
+    )
     raise StopPropagation
 
 
@@ -46,10 +67,12 @@ async def rename(event: NewMessage.Event | CallbackQuery.Event) -> None:
         )
         return
 
-    reply_message = await get_reply_message(event, previous=True)
-    new_filename = event.message.text.split(maxsplit=1)[1].strip()
-    match = re.match(r'^(.+)$', new_filename)
-    assert match is not None
+    if not (match := RENAME_PATTERN.match(event.message.raw_text or '')):
+        await event.reply(t('please_provide_a_new_filename'))
+        return
+    reply_message = (
+        event.message if event.message.file else await get_reply_message(event, previous=True)
+    )
     await _rename_process(event, reply_message, match)
 
 
@@ -60,7 +83,7 @@ class Rename(ModuleBase):
         'rename': Command(
             handler=rename,
             description=t('_rename_description'),
-            pattern=re.compile(r'^/rename\s+(.+)$'),
+            pattern=RENAME_PATTERN,
             condition=has_file,
             is_applicable_for_reply=True,
         )

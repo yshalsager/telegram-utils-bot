@@ -1,10 +1,12 @@
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest import TestCase
 from unittest.mock import AsyncMock
 
-from src.utils.downloads import get_filename_from_url, resolve_upload_caption
+from src.utils.downloads import get_download_name, get_filename_from_url, resolve_upload_caption
+from telethon.tl.types import DocumentAttributeFilename
 
 
 class UploadCaptionTest(TestCase):
@@ -47,6 +49,9 @@ class UploadCaptionTest(TestCase):
     def test_output_filename_is_final_fallback(self) -> None:
         assert self.caption(self.event()) == '<code>out.mp4</code>'
 
+    def test_filename_caption_is_escaped(self) -> None:
+        assert self.caption(self.event(), '<out>.mp4') == '<code>&lt;out&gt;.mp4</code>'
+
 
 class UrlFilenameTest(TestCase):
     def test_url_filename_is_decoded(self) -> None:
@@ -56,3 +61,27 @@ class UrlFilenameTest(TestCase):
             )
             == 'ملف-عربي.pdf'
         )
+
+
+class DownloadNameTest(TestCase):
+    def test_trailing_dot_does_not_replace_requested_extension(self) -> None:
+        message: Any = SimpleNamespace(
+            document=SimpleNamespace(
+                mime_type='application/octet-stream',
+                attributes=[DocumentAttributeFilename('malformed-name.')],
+            ),
+            file=SimpleNamespace(name='malformed-name.'),
+        )
+
+        assert get_download_name(message, 'renamed.pdf') == Path('renamed.pdf')
+
+    def test_compound_extension_is_preserved(self) -> None:
+        message: Any = SimpleNamespace(
+            document=SimpleNamespace(
+                mime_type='application/gzip',
+                attributes=[DocumentAttributeFilename('archive.tar.gz')],
+            ),
+            file=SimpleNamespace(name='archive.tar.gz', ext='.gz'),
+        )
+
+        assert get_download_name(message, 'renamed') == Path('renamed.tar.gz')

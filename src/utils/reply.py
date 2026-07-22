@@ -24,6 +24,7 @@ class ReplyPrompt:
 class ReplyPromptManager:
     def __init__(self) -> None:
         self.prompts: dict[tuple[int, int], ReplyPrompt] = {}
+        self.timeout_tasks: dict[tuple[int, int], Task[None]] = {}
 
     async def ask(
         self,
@@ -34,6 +35,7 @@ class ReplyPromptManager:
         handler: Callable[[NewMessage.Event, Message | None, Any], Awaitable[None]],
         invalid_reply_text: str,
         media_message_id: int | None = None,
+        timeout_seconds: int = 60 * 15,
     ) -> None:
         await event.answer()
         bot_reply = await event.reply(prompt_text, reply_to=event.message_id)
@@ -42,7 +44,8 @@ class ReplyPromptManager:
             media_message_id = message.reply_to_msg_id
 
         chat_id = event.chat_id or message.chat_id
-        self.prompts[(chat_id, bot_reply.id)] = ReplyPrompt(
+        key = (chat_id, bot_reply.id)
+        self.prompts[key] = ReplyPrompt(
             sender_id=event.sender_id,
             chat_id=chat_id,
             reply_message_id=bot_reply.id,
@@ -51,6 +54,16 @@ class ReplyPromptManager:
             handler=handler,
             invalid_reply_text=invalid_reply_text,
         )
+        self.timeout_tasks[key] = create_task(self._expire(key, timeout_seconds))
+
+    async def _expire(self, key: tuple[int, int], seconds: int) -> None:
+        await sleep(seconds)
+        self._pop(key)
+
+    def _pop(self, key: tuple[int, int]) -> None:
+        self.prompts.pop(key, None)
+        if task := self.timeout_tasks.pop(key, None):
+            task.cancel()
 
     async def handle(self, event: NewMessage.Event) -> bool:
         if not event.is_reply:
@@ -76,7 +89,7 @@ class ReplyPromptManager:
         try:
             await prompt.handler(event, original_message, match)
         finally:
-            self.prompts.pop((event.chat_id, reply_to), None)
+            self._pop((event.chat_id, reply_to))
         return True
 
 
