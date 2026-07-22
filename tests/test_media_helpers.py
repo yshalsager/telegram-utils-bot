@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from typing import Any
 from unittest import TestCase
@@ -45,6 +46,7 @@ from src.modules.plugins.media import (
     format_bitrate_arg,
     format_ffmpeg_time,
     format_timestamp,
+    get_transcription_files,
     invert_time_ranges,
     is_audio_thumbnail_image_message,
     merge_time_ranges,
@@ -130,6 +132,15 @@ class MediaTimeRangeHelpersTest(TestCase):
 
         assert '-ac 1 -c:a libopus -b:a 32k' in command
         assert '-segment_time 3600 -reset_timestamps 1' in command
+
+    def test_transcription_files_exclude_empty_and_unrelated_files(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            (output_dir / 'result.txt').write_text('text')
+            (output_dir / 'empty.srt').touch()
+            (output_dir / 'audio.ogg').write_bytes(b'audio')
+
+            assert get_transcription_files(output_dir) == [output_dir / 'result.txt']
 
     def test_crop_out_filter_command_uses_precise_trim_concat(self) -> None:
         command = build_crop_out_filter_command(

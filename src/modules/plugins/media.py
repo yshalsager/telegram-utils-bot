@@ -702,6 +702,10 @@ def get_google_transcript(response_text: str) -> str | None:
     return None
 
 
+def get_transcription_files(output_dir: Path) -> list[Path]:
+    return sorted(path for path in output_dir.glob('*.[st][xr]t') if path.stat().st_size)
+
+
 async def transcribe_with_google(
     input_file_path: Path, output_dir: Path, language: str
 ) -> Path | None:
@@ -2171,14 +2175,14 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                 event, command, status_message, progress_message, max_length=100
             )
         if transcription is not None:
-            await edit_or_send_as_file(
-                event,
-                status_message,
-                transcription,
-                file_name=get_download_name(reply_message).with_suffix('.txt').name,
+            (output_dir / get_download_name(reply_message).with_suffix('.txt').name).write_text(
+                transcription
             )
-        for output_file in output_dir.glob('*.[st][xr]t'):
-            if output_file.exists() and output_file.stat().st_size:
+        output_files = get_transcription_files(output_dir)
+        if not output_files:
+            await status_message.edit(t('failed_to_transcribe'))
+        else:
+            for output_file in output_files:
                 if reply_message.file.name:
                     renamed_file = output_file.rename(
                         output_file.with_stem(Path(reply_message.file.name).stem)
@@ -2191,9 +2195,7 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     progress_message,
                     caption=f'<code>{renamed_file.name}</code>',
                 )
-            else:
-                await status_message.edit(f'{t("failed_to_transcribe")} {output_file.name}')
-    if transcription_method not in ('whisper', 'cohere'):
+    if output_files:
         await status_message.edit(t('transcription_completed'))
     rmtree(output_dir, ignore_errors=True)
     delete_message_after(progress_message)
