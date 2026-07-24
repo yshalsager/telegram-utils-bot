@@ -199,7 +199,7 @@ class ParallelTransferrer:
             self.senders.append(
                 await self._create_download_sender(
                     file,
-                    index * part_size,
+                    index,
                     part_size,
                     connections * part_size,
                     get_part_count(),

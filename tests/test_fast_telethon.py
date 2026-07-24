@@ -7,6 +7,18 @@ from src.utils.fast_telethon import ParallelTransferrer, upload_file
 
 
 class ParallelDownloadTest(IsolatedAsyncioTestCase):
+    async def test_sender_offsets_use_part_indexes(self) -> None:
+        transferrer = object.__new__(ParallelTransferrer)
+        transferrer._create_download_sender = AsyncMock(side_effect=[object(), object(), object()])
+
+        await transferrer._init_download(3, None, 3, 1024)
+
+        assert [call.args[1] for call in transferrer._create_download_sender.await_args_list] == [
+            0,
+            1,
+            2,
+        ]
+
     async def test_empty_download_round_fails_instead_of_spinning(self) -> None:
         transferrer = object.__new__(ParallelTransferrer)
         transferrer.senders = [SimpleNamespace(next=AsyncMock(return_value=None))]
