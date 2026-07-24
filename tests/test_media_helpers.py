@@ -324,15 +324,17 @@ class MediaTimeRangeHelpersTest(TestCase):
         assert '-c:a copy' in build_convert_to_audio_command(copy_audio=True)
         assert '-c:a aac -b:a {audio_bitrate}' in build_convert_to_audio_command(copy_audio=False)
         assert '-metadata title="a\\"b"' in build_set_metadata_command('a"b', 'artist')
+        assert '-c:a aac -b:a 96k' in build_set_metadata_command('title', 'artist', reencode=True)
         assert '-map 0:v:0 -dn -sn -c:v copy -an' in build_mute_video_command()
         video_convert_command = build_convert_media_command(
             target_is_audio=False, output_suffix='.mp4', input_audio_codec='aac'
         )
         assert '-map 0:v:0 -map 0:a? -dn -sn' in video_convert_command
         assert '-c:a copy' in video_convert_command
-        assert '-filter:a "volume=2"' in build_amplify_command(2, has_video_stream=True)
-        assert '-c:v copy' in build_amplify_command(2, has_video_stream=True)
-        assert '-c:a libmp3lame -q:a 2' in build_speed_audio_command('atempo=2', is_voice=False)
+        amplify_command = build_amplify_command(2, has_video_stream=True)
+        assert '-filter:a "volume=2"' in amplify_command
+        assert '-c:v copy' in amplify_command
+        assert '-b:a {audio_bitrate}' in build_speed_audio_command('atempo=2', is_voice=False)
         assert '-c:a libopus -b:a 48k' in build_speed_audio_command('atempo=2', is_voice=True)
         assert 'pan=mono|c0=FR' in build_fix_stereo_command('FR')
 

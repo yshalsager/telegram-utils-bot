@@ -592,10 +592,11 @@ def build_convert_to_audio_command(*, copy_audio: bool) -> str:
     return 'ffmpeg -hide_banner -y -i "{input}" -vn -c:a aac -b:a {audio_bitrate} "{output}"'
 
 
-def build_set_metadata_command(title: str, artist: str) -> str:
+def build_set_metadata_command(title: str, artist: str, *, reencode: bool = False) -> str:
     return (
-        'ffmpeg -hide_banner -y -i "{input}" -c copy '
-        f'-metadata title="{double_quoted_shell_value(title)}" '
+        'ffmpeg -hide_banner -y -i "{input}" '
+        + ('-vn -c:a aac -b:a 96k ' if reencode else '-c copy ')
+        + f'-metadata title="{double_quoted_shell_value(title)}" '
         f'-metadata artist="{double_quoted_shell_value(artist)}" '
         '"{output}"'
     )
@@ -616,11 +617,13 @@ def build_convert_media_command(
     )
 
 
-def build_amplify_command(amplification_factor: float, *, has_video_stream: bool) -> str:
+def build_amplify_command(
+    amplification_factor: float, *, has_video_stream: bool, is_voice: bool = False
+) -> str:
     command = (
         'ffmpeg -hide_banner -y -i "{input}" '
         f'-filter:a "volume={amplification_factor}" '
-        '-b:a {audio_bitrate}'
+        + ('-c:a libopus -b:a 48k' if is_voice else '-b:a {audio_bitrate}')
     )
     return command + (' -c:v copy "{output}"' if has_video_stream else ' -vn "{output}"')
 
@@ -629,15 +632,16 @@ def build_speed_audio_command(atempo: str, *, is_voice: bool) -> str:
     return (
         'ffmpeg -hide_banner -y -i "{input}" '
         f'-filter:a "{atempo}" '
-        + ('-vn -c:a libopus -b:a 48k ' if is_voice else '-vn -c:a libmp3lame -q:a 2 ')
+        + ('-vn -c:a libopus -b:a 48k ' if is_voice else '-vn -b:a {audio_bitrate} ')
         + '"{output}"'
     )
 
 
-def build_fix_stereo_command(channel: str) -> str:
+def build_fix_stereo_command(channel: str, *, is_voice: bool = False) -> str:
     return (
         f'ffmpeg -hide_banner -y -i "{{input}}" -af "pan=mono|c0={channel}" '
-        '-c:a aac -b:a {audio_bitrate} "{output}"'
+        + ('-c:a libopus -b:a 48k ' if is_voice else '-b:a {audio_bitrate} ')
+        + '"{output}"'
     )
 
 
@@ -946,7 +950,10 @@ async def convert_to_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
     await process_media(
         event,
         build_convert_to_audio_command(
-            copy_audio=bool(reply_message.file and reply_message.file.ext in ['aac', 'm4a', 'mp3'])
+            copy_audio=bool(
+                reply_message.file
+                and reply_message.file.ext.lower().lstrip('.') in {'aac', 'm4a', 'mp3'}
+            )
         ),
         '.m4a',
         reply_message=reply_message,
@@ -1236,11 +1243,15 @@ async def _set_metadata_process(
 ) -> None:
     assert reply_message is not None
     title, artist = match.group(1), match.group(2)
+    is_voice = bool(reply_message.voice)
+    output_suffix = (
+        '.m4a' if is_voice or reply_message.file.ext.lower() == '.aac' else reply_message.file.ext
+    )
 
     await process_media(
         event,
-        build_set_metadata_command(title, artist),
-        reply_message.file.ext,
+        build_set_metadata_command(title, artist, reencode=is_voice),
+        output_suffix,
         reply_message=reply_message,
         feedback_text=t('audio_metadata_set'),
     )
@@ -1472,7 +1483,9 @@ async def trim_silence(event: NewMessage.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await send_progress_message(event, t('starting_silence_trimming'))
     progress_message = await send_progress_message(event, f'<pre>{t("process_output")}:</pre>')
-    extension = reply_message.file.ext
+    extension = reply_message.file.ext.lower()
+    is_voice = bool(reply_message.voice)
+    output_suffix = '.ogg' if is_voice else extension
 
     async with download_to_temp_file(
         event,
@@ -1480,11 +1493,11 @@ async def trim_silence(event: NewMessage.Event) -> None:
         progress_message,
         suffix=extension,
     ) as input_file_path:
-        output_file_path = input_file_path.with_suffix('.mp3')
+        output_file_path = input_file_path.with_suffix(output_suffix)
         if reply_message.file.name:
             output_file_path = output_file_path.with_name(
                 f'trimmed_{reply_message.file.name}'
-            ).with_suffix('.mp3')
+            ).with_suffix(output_suffix)
 
         await progress_message.edit(t('loading_file'))
         sound = AudioSegment.from_file(input_file_path)
@@ -1495,7 +1508,14 @@ async def trim_silence(event: NewMessage.Event) -> None:
         for chunk in chunks:
             combined += chunk
         await progress_message.edit(t('exporting'))
-        combined.export(output_file_path, format='mp3')
+        output_format = {'.aac': 'adts', '.aif': 'aiff', '.m4a': 'mp4', '.m4b': 'mp4'}.get(
+            output_suffix, output_suffix.lstrip('.')
+        )
+        combined.export(
+            output_file_path,
+            format=output_format,
+            codec='libopus' if is_voice else None,
+        )
         # command = (
         #     f'ffmpeg -hide_banner -y -i "{input_file.name}" -af '
         #     f'silenceremove=start_periods=1:start_duration=1:start_threshold=-50dB:'
@@ -1513,14 +1533,12 @@ async def trim_silence(event: NewMessage.Event) -> None:
             await status_message.edit(t('silence_trimming_failed'))
             return
 
-        upload_params = await build_media_upload_params(
-            output_file_path, is_voice=bool(reply_message.voice)
-        )
+        upload_params = await build_media_upload_params(output_file_path, is_voice=is_voice)
         await upload_file_and_cleanup(
             event,
             output_file_path,
             progress_message,
-            is_voice=bool(reply_message.voice),
+            is_voice=is_voice,
             caption=t('trimmed_audio'),
             **upload_params,
         )
@@ -1667,7 +1685,7 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
             )
             return
     reply_message = await get_reply_message(event, previous=True)
-    if reply_message.file.ext == target_format:
+    if reply_message.file.ext.lower().lstrip('.') == target_format:
         await event.reply(t('file_already_in_target_format', target_format=target_format))
         return
 
@@ -1828,14 +1846,17 @@ async def amplify_sound(event: NewMessage.Event | CallbackQuery.Event) -> None:
     amplification_factor = min(amplification_factor, 3)
 
     reply_message = await get_reply_message(event, previous=True)
+    is_voice = bool(reply_message.voice)
     await process_media(
         event,
         build_amplify_command(
             amplification_factor,
             has_video_stream=bool(reply_message.video or reply_message.video_note),
+            is_voice=is_voice,
         ),
         reply_message.file.ext,
         reply_message=reply_message,
+        is_voice=is_voice,
         get_bitrate=True,
         feedback_text=t(
             'audio_amplified_by_amplification_factor', amplification_factor=amplification_factor
@@ -1889,8 +1910,8 @@ async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         is_voice = False
     else:
         is_voice = bool(reply_message.voice)
+        output_suffix = '.ogg' if is_voice else reply_message.file.ext
         ffmpeg_command = build_speed_audio_command(atempo, is_voice=is_voice)
-        output_suffix = '.ogg' if is_voice else '.mp3'
 
     await process_media(
         event,
@@ -1898,6 +1919,7 @@ async def speed_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
         output_suffix,
         reply_message=reply_message,
         is_voice=is_voice,
+        get_bitrate=True,
         feedback_text=t(
             'media_slowed_down' if speed_factor < 1 else 'media_sped_up', factor=speed_factor
         ),
@@ -2288,11 +2310,13 @@ async def fix_stereo_audio(event: NewMessage.Event | CallbackQuery.Event) -> Non
         channel = event.message.text.split('stereo ')[1]
     reply_message = await get_reply_message(event, previous=True)
     channel = 'FR' if channel == 'right' else 'FL'
+    is_voice = bool(reply_message.voice)
     await process_media(
         event,
-        build_fix_stereo_command(channel),
+        build_fix_stereo_command(channel, is_voice=is_voice),
         reply_message.file.ext,
         reply_message=reply_message,
+        is_voice=is_voice,
         get_bitrate=True,
     )
     if delete_message_after_process:
@@ -2323,7 +2347,7 @@ class Media(ModuleBase):
             handler=set_metadata,
             description=t('_audio_metadata_description'),
             pattern=re.compile(r'^/(audio)\s+(metadata)\s+.+\s+-\s+.+$'),
-            condition=partial(has_media, audio=True),
+            condition=partial(has_media, audio_or_voice=True),
             is_applicable_for_reply=True,
         ),
         'audio thumbnail': Command(
