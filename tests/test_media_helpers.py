@@ -22,6 +22,7 @@ from src.modules.plugins.media import (
     build_cut_media_command,
     build_filter_concat_command,
     build_fix_stereo_command,
+    build_media_attachment_extract_command,
     build_media_upload_params,
     build_mute_video_command,
     build_resize_video_command,
@@ -46,9 +47,11 @@ from src.modules.plugins.media import (
     format_bitrate_arg,
     format_ffmpeg_time,
     format_timestamp,
+    get_media_attachment_streams,
     get_transcription_files,
     invert_time_ranges,
     is_audio_thumbnail_image_message,
+    media_attachment_file_name,
     merge_time_ranges,
     parse_time_ranges,
     parse_timestamp,
@@ -58,6 +61,31 @@ from src.modules.plugins.media import (
 
 
 class MediaTimeRangeHelpersTest(TestCase):
+    def test_media_attachment_helpers_cover_files_and_artwork(self) -> None:
+        streams = [
+            {'index': 1, 'codec_type': 'attachment', 'tags': {'filename': '../font.ttf'}},
+            {
+                'index': 2,
+                'codec_name': 'mjpeg',
+                'codec_type': 'video',
+                'disposition': {'attached_pic': 1},
+            },
+            {'index': 3, 'codec_type': 'subtitle'},
+        ]
+
+        attachments = get_media_attachment_streams(streams)
+        used_names: set[str] = set()
+
+        assert [stream['index'] for stream in attachments] == [1, 2]
+        assert media_attachment_file_name(attachments[0], 1, used_names) == 'font.ttf'
+        assert media_attachment_file_name(attachments[1], 2, used_names) == 'cover_2.jpg'
+        assert '-dump_attachment:1' in build_media_attachment_extract_command(
+            Path('input.mkv'), Path('font.ttf'), attachments[0]
+        )
+        assert '-map 0:2 -c copy' in build_media_attachment_extract_command(
+            Path('input.mp3'), Path('cover.jpg'), attachments[1]
+        )
+
     def test_x265_crf_buttons_match_validation_range(self) -> None:
         assert ALLOWED_VIDEO_X265_CRF == [18, 20, 22, 24, 26, 28, 30]
 

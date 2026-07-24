@@ -25,6 +25,8 @@ from src.utils.command import Command
 from src.utils.downloads import (
     download_to_temp_file,
     get_download_name,
+    safe_file_name,
+    unique_file_name,
     upload_file_and_cleanup,
 )
 from src.utils.filters import has_pdf_file, has_photo_or_photo_file
@@ -62,22 +64,6 @@ PDF_PERMISSION_FLAGS = [
 
 def clean_pdf_value(value: Any) -> str:
     return str(value or '').strip()
-
-
-def safe_archive_name(name: str, fallback: str) -> str:
-    safe_name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', '_', clean_pdf_value(name)).strip(' ._')
-    return safe_name or fallback
-
-
-def unique_archive_name(name: str, used_names: set[str]) -> str:
-    path = Path(name)
-    candidate = name
-    idx = 2
-    while candidate in used_names:
-        candidate = f'{path.stem}_{idx}{path.suffix}'
-        idx += 1
-    used_names.add(candidate)
-    return candidate
 
 
 def format_pdf_permissions(permissions: int) -> str:
@@ -256,8 +242,8 @@ def collect_pdf_attachments(doc: pymupdf.Document) -> list[tuple[str, bytes]]:
     for idx, name in enumerate(doc.embfile_names(), start=1):
         info = doc.embfile_info(name)
         filename = info.get('ufilename') or info.get('filename') or name
-        archive_name = unique_archive_name(
-            safe_archive_name(str(filename), f'attachment_{idx}'), used_names
+        archive_name = unique_file_name(
+            safe_file_name(str(filename), f'attachment_{idx}'), used_names
         )
         entries.append((archive_name, doc.embfile_get(name)))
     return entries
@@ -277,8 +263,8 @@ def collect_pdf_font_files(doc: pymupdf.Document) -> list[tuple[str, bytes]]:
             if not content:
                 continue
             suffix = f'.{ext}' if ext and ext != 'n/a' else ''
-            archive_name = unique_archive_name(
-                safe_archive_name(
+            archive_name = unique_file_name(
+                safe_file_name(
                     f'{name or font["basefont"]}_{xref}{suffix}', f'font_{xref}{suffix}'
                 ),
                 used_names,

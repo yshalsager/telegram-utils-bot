@@ -1,3 +1,4 @@
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
@@ -28,6 +29,22 @@ MAX_UPLOAD_CAPTION_LENGTH = 1024
 
 def get_default_filename() -> str:
     return f'{datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")}'
+
+
+def safe_file_name(name: str, fallback: str) -> str:
+    safe_name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', '_', str(name or '').strip()).strip(' ._')
+    return safe_name or fallback
+
+
+def unique_file_name(name: str, used_names: set[str]) -> str:
+    path = Path(name)
+    candidate = name
+    idx = 2
+    while candidate in used_names:
+        candidate = f'{path.stem}_{idx}{path.suffix}'
+        idx += 1
+    used_names.add(candidate)
+    return candidate
 
 
 def prepare_pdf_thumbnail(input_file: Path, output_file: Path) -> bool:

@@ -27,6 +27,8 @@ from src.utils.downloads import (
     download_file,
     download_to_temp_file,
     get_download_name,
+    safe_file_name,
+    unique_file_name,
     upload_file,
     upload_file_and_cleanup,
 )
@@ -206,6 +208,39 @@ def build_audio_cover_extract_command(input_file: Path, output_file: Path) -> st
     return (
         f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} '
         f'-map 0:v:0 -frames:v 1 {shell_arg(output_file)}'
+    )
+
+
+def get_media_attachment_streams(streams: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        stream
+        for stream in streams
+        if stream.get('codec_type') == 'attachment'
+        or stream.get('disposition', {}).get('attached_pic')
+    ]
+
+
+def media_attachment_file_name(stream: dict[str, Any], number: int, used_names: set[str]) -> str:
+    attached_pic = bool(stream.get('disposition', {}).get('attached_pic'))
+    codec_name = str(stream.get('codec_name') or 'bin')
+    codec = {'mjpeg': 'jpg', 'jpeg2000': 'jp2'}.get(codec_name, codec_name)
+    fallback = f'{"cover" if attached_pic else "attachment"}_{number}.{codec}'
+    return unique_file_name(
+        safe_file_name(stream.get('tags', {}).get('filename', ''), fallback), used_names
+    )
+
+
+def build_media_attachment_extract_command(
+    input_file: Path, output_file: Path, stream: dict[str, Any]
+) -> str:
+    if stream.get('codec_type') == 'attachment':
+        return (
+            f'ffmpeg -hide_banner -y -dump_attachment:{stream["index"]} '
+            f'{shell_arg(output_file)} -i {shell_arg(input_file)} -t 0 -f null -'
+        )
+    return (
+        f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} '
+        f'-map 0:{stream["index"]} -c copy {shell_arg(output_file)}'
     )
 
 
@@ -1548,6 +1583,38 @@ async def extract_subtitle(event: NewMessage.Event) -> None:
     await status_message.edit(t('subtitle_extraction_completed'))
 
 
+async def extract_media_attachments(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await send_progress_message(event, t('extracting_media_attachments'))
+
+    async with download_to_temp_file(event, reply_message, progress_message) as input_file:
+        output, code = await run_command(ffprobe_command.format(input=shell_arg(input_file)))
+        if code:
+            await progress_message.edit(t('failed_to_get_stream_info'))
+            return
+
+        streams = get_media_attachment_streams(orjson.loads(output).get('streams', []))
+        if not streams:
+            await progress_message.edit(t('no_media_attachments'))
+            return
+
+        used_names: set[str] = set()
+        for number, stream in enumerate(streams, start=1):
+            output_file = input_file.with_name(
+                media_attachment_file_name(stream, number, used_names)
+            )
+            _, code = await run_command(
+                build_media_attachment_extract_command(input_file, output_file, stream)
+            )
+            if code or not output_file.exists() or not output_file.stat().st_size:
+                output_file.unlink(missing_ok=True)
+                await progress_message.edit(t('failed_to_extract_media_attachment', item=number))
+                return
+            await upload_file_and_cleanup(event, output_file, progress_message, force_document=True)
+
+    await progress_message.edit(t('media_attachments_extracted'))
+
+
 ALLOWED_AUDIO_FORMATS = {
     'mp3',
     'aac',
@@ -2332,6 +2399,13 @@ class Media(ModuleBase):
             handler=media_info,
             description=t('_media_info_description'),
             pattern=re.compile(r'^/(media)\s+(info)$'),
+            condition=partial(has_media, any=True),
+            is_applicable_for_reply=True,
+        ),
+        'media attachments': Command(
+            handler=extract_media_attachments,
+            description=t('_media_attachments_description'),
+            pattern=re.compile(r'^/(media)\s+(attachments)$'),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,
         ),
