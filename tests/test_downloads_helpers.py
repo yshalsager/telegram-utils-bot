@@ -64,6 +64,17 @@ class UrlFilenameTest(TestCase):
 
 
 class DownloadNameTest(TestCase):
+    def test_requested_extension_overrides_detected_extension(self) -> None:
+        message: Any = SimpleNamespace(
+            document=SimpleNamespace(
+                mime_type='application/octet-stream',
+                attributes=[DocumentAttributeFilename('unknown-file')],
+            ),
+            file=SimpleNamespace(name='unknown-file', ext='.bin'),
+        )
+
+        assert get_download_name(message, 'renamed.mp4') == Path('renamed.mp4')
+
     def test_trailing_dot_does_not_replace_requested_extension(self) -> None:
         message: Any = SimpleNamespace(
             document=SimpleNamespace(

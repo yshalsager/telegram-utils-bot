@@ -112,7 +112,7 @@ def get_download_name(message: Message, new_filename: str = '') -> Path:
         return Path(original_filename)
 
     new_filename_with_ext = Path(new_filename)
-    if original_ext and new_filename_with_ext.suffix != original_ext:
+    if original_ext and not new_filename_with_ext.suffix:
         new_filename_with_ext = new_filename_with_ext.with_suffix(original_ext)
     return new_filename_with_ext
 
