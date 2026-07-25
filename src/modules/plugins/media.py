@@ -2271,21 +2271,23 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         if not output_files:
             await status_message.edit(t('failed_to_transcribe'))
         else:
-            for output_file in output_files:
+            await status_message.edit(t('transcription_completed'))
+            for index, output_file in enumerate(output_files):
+                file_name = output_file.name
                 if reply_message.file.name:
-                    renamed_file = output_file.rename(
-                        output_file.with_stem(Path(reply_message.file.name).stem)
-                    )
-                else:
-                    renamed_file = output_file
-                await upload_file_and_cleanup(
-                    event,
-                    renamed_file,
-                    progress_message,
-                    caption=f'<code>{renamed_file.name}</code>',
+                    file_name = output_file.with_stem(Path(reply_message.file.name).stem).name
+                result_message = (
+                    status_message
+                    if index == 0
+                    else await send_progress_message(event, t('transcription_completed'))
                 )
-    if output_files:
-        await status_message.edit(t('transcription_completed'))
+                await edit_or_send_as_file(
+                    event,
+                    result_message,
+                    output_file.read_text(),
+                    file_name=file_name,
+                    caption=f'<code>{file_name}</code>',
+                )
     rmtree(output_dir, ignore_errors=True)
     delete_message_after(progress_message)
     if delete_message_after_process:

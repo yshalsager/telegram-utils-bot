@@ -19,6 +19,16 @@ class TelegramChunkMessageTest(TestCase):
 
 
 class TelegramOutputTest(IsolatedAsyncioTestCase):
+    async def test_text_at_limit_edits_message_without_uploading_file(self) -> None:
+        message = AsyncMock()
+        text = 'x' * telegram.MAX_MESSAGE_LENGTH
+        with patch.object(telegram, 'upload_file', AsyncMock()) as upload_file:
+            edited = await telegram.edit_or_send_as_file(AsyncMock(), message, text)
+
+        assert edited
+        message.edit.assert_awaited_once_with(text, parse_mode=None)
+        upload_file.assert_not_awaited()
+
     async def test_long_text_is_sent_as_file_without_editing_message(self) -> None:
         message = AsyncMock()
         progress_message = AsyncMock()
