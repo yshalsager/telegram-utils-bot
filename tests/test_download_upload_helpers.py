@@ -101,6 +101,11 @@ class DownloadFromUrlTest(TestCase):
             '/upload url https://example.com/a.pdf\nhttps://example.org/b.pdf'
         ) == (['https://example.com/a.pdf', 'https://example.org/b.pdf'], '')
 
+    def test_extract_upload_url_input_accepts_unicode_paths(self) -> None:
+        url = 'https://example.com/files/ملف*صوتي'
+
+        assert extract_upload_url_input(f'/upload url {url}') == ([url], '')
+
     def test_extract_upload_url_input_keeps_custom_name_for_single_url_only(self) -> None:
         assert extract_upload_url_input('/upload url https://example.com/a.pdf | book.pdf') == (
             ['https://example.com/a.pdf'],
