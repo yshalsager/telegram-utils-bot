@@ -85,7 +85,7 @@ params['extractor_args'] = {
     # yt-dlp expects extractor args to be lists of strings (same shape as --extractor-args parsing)
     'youtubepot-bgutilhttp': {'base_url': ['http://bgutil-provider:4416']},
     'youtube': {
-        'player_client': ['web_creator', 'mweb', 'web'],
+        'player_client': ['web_creator', 'web'] if cookies else ['mweb', 'web'],
         'webpage_client': ['web'],
     },
 }
