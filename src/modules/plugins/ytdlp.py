@@ -262,7 +262,10 @@ async def ydl_extract(link: str, ydl_opts: dict[str, Any], *, download: bool) ->
                 current_ydl_opts.pop('external_downloader', None)
                 current_ydl_opts.pop('external_downloader_args', None)
                 continue
-            if 'HTTP Error 429' not in error_text or retry_count >= 3:
+            if (
+                not any(code in error_text for code in ('HTTP Error 403', 'HTTP Error 429'))
+                or retry_count >= 3
+            ):
                 raise
             retry_count += 1
             await sleep(backoff_seconds)
