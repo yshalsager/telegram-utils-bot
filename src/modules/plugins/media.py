@@ -1654,6 +1654,14 @@ ALLOWED_AUDIO_FORMATS = {
 ALLOWED_VIDEO_FORMATS = {'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'mpeg', 'mpg', 'wmv', 'm4v'}
 
 
+def has_convertible_media(event: NewMessage.Event, reply_message: Message | None) -> bool:
+    message = reply_message or event.message
+    extension = (message.file.ext or '').lower().lstrip('.') if message.file else ''
+    return has_media(event, reply_message, any=True) or extension in (
+        ALLOWED_AUDIO_FORMATS | ALLOWED_VIDEO_FORMATS
+    )
+
+
 async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
@@ -2384,7 +2392,7 @@ class Media(ModuleBase):
             handler=convert_media,
             description=t('_media_convert_description'),
             pattern=re.compile(r'^/(media)\s+(convert)\s+(\w+)$'),
-            condition=partial(has_media, any=True),
+            condition=has_convertible_media,
             is_applicable_for_reply=True,
         ),
         'media cut': Command(

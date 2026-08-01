@@ -49,6 +49,7 @@ from src.modules.plugins.media import (
     format_timestamp,
     get_media_attachment_streams,
     get_transcription_files,
+    has_convertible_media,
     invert_time_ranges,
     is_audio_thumbnail_image_message,
     media_attachment_file_name,
@@ -61,6 +62,20 @@ from src.modules.plugins.media import (
 
 
 class MediaTimeRangeHelpersTest(TestCase):
+    def test_convert_accepts_supported_generic_documents(self) -> None:
+        event = SimpleNamespace(message=SimpleNamespace(file=None))
+        message = SimpleNamespace(
+            file=SimpleNamespace(ext='.wmv'),
+            audio=None,
+            voice=None,
+            video=None,
+            video_note=None,
+        )
+
+        assert has_convertible_media(event, message)
+        message.file.ext = '.pdf'
+        assert not has_convertible_media(event, message)
+
     def test_media_attachment_helpers_cover_files_and_artwork(self) -> None:
         streams = [
             {'index': 1, 'codec_type': 'attachment', 'tags': {'filename': '../font.ttf'}},
