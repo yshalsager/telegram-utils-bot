@@ -171,7 +171,11 @@ async def handle_messages(event: NewMessage.Event) -> None:
                 for command in row
                 if command is not None
             ]
-            for row in list(zip_longest(*[iter(sorted(applicable_commands))] * 3, fillvalue=None))
+            for row in list(
+                zip_longest(
+                    *[iter(sorted(applicable_commands, key=label_for_command))] * 3, fillvalue=None
+                )
+            )
         ]
         await event.reply(t('choose_an_option'), buttons=keyboard)
     elif event.is_private:
