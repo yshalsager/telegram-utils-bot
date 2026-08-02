@@ -2,7 +2,6 @@
 # Copyright (C) 2021-2023 Tulir Asokan
 
 import asyncio
-from collections import defaultdict
 from collections.abc import AsyncGenerator, Callable
 from contextlib import suppress
 from hashlib import md5
@@ -15,7 +14,6 @@ from typing import Any, BinaryIO, Union, cast
 
 from telethon import TelegramClient
 from telethon.crypto import AuthKey
-from telethon.errors.common import InvalidBufferError
 from telethon.helpers import _maybe_await, generate_random_long
 from telethon.network import MTProtoSender
 from telethon.tl.alltlobjects import LAYER
@@ -42,8 +40,8 @@ from telethon.tl.types import (
 from telethon.utils import get_appropriated_part_size, get_input_location
 
 log: Logger = getLogger('_FastTelethon')
-TRANSFER_CONNECTION_LIMITS = (20, 8, 4)
-TRANSFER_RETRY_DELAYS = (0, 2, 4)
+CHUNK_TIMEOUT_SECONDS = 60
+CLEANUP_TIMEOUT_SECONDS = 10
 
 TypeLocation = Union[  # noqa: UP007
     Document,
@@ -80,7 +78,8 @@ class DownloadSender:
     async def next(self) -> bytes | None:
         if not self.remaining:
             return None
-        result = await self.client._call(self.sender, self.request)
+        async with asyncio.timeout(CHUNK_TIMEOUT_SECONDS):
+            result = await self.client._call(self.sender, self.request)
         self.remaining -= 1
         self.request.offset += self.stride
         return cast(bytes, result.bytes)
@@ -127,7 +126,8 @@ class UploadSender:
 
     async def _next(self, data: bytes) -> None:
         self.request.bytes = data
-        await self.client._call(self.sender, self.request)
+        async with asyncio.timeout(CHUNK_TIMEOUT_SECONDS):
+            await self.client._call(self.sender, self.request)
         self.request.file_part += self.stride
 
     async def disconnect(self) -> Any:
@@ -163,9 +163,16 @@ class ParallelTransferrer:
     async def _cleanup(self, *, raise_errors: bool = False) -> None:
         senders = self.senders or []
         self.senders = None
-        results = await asyncio.gather(
-            *(sender.disconnect() for sender in senders), return_exceptions=True
-        )
+        try:
+            async with asyncio.timeout(CLEANUP_TIMEOUT_SECONDS):
+                results = await asyncio.gather(
+                    *(sender.disconnect() for sender in senders), return_exceptions=True
+                )
+        except TimeoutError:
+            log.warning('Telegram transfer cleanup timed out')
+            if raise_errors:
+                raise
+            return
         if raise_errors and (
             error := next((item for item in results if isinstance(item, BaseException)), None)
         ):
@@ -194,17 +201,18 @@ class ParallelTransferrer:
 
         # The first cross-DC sender will export+import the authorization, so we always create it
         # before creating any other senders.
-        self.senders = []
-        for index in range(connections):
-            self.senders.append(
-                await self._create_download_sender(
-                    file,
-                    index,
-                    part_size,
-                    connections * part_size,
-                    get_part_count(),
+        first = await self._create_download_sender(
+            file, 0, part_size, connections * part_size, get_part_count()
+        )
+        rest = await asyncio.gather(
+            *(
+                self._create_download_sender(
+                    file, index, part_size, connections * part_size, get_part_count()
                 )
+                for index in range(1, connections)
             )
+        )
+        self.senders = [first, *rest]
 
     async def _create_download_sender(
         self,
@@ -227,11 +235,14 @@ class ParallelTransferrer:
     async def _init_upload(
         self, connections: int, file_id: int, part_count: int, big: bool
     ) -> None:
-        self.senders = []
-        for index in range(connections):
-            self.senders.append(
-                await self._create_upload_sender(file_id, part_count, big, index, connections)
+        first = await self._create_upload_sender(file_id, part_count, big, 0, connections)
+        rest = await asyncio.gather(
+            *(
+                self._create_upload_sender(file_id, part_count, big, index, connections)
+                for index in range(1, connections)
             )
+        )
+        self.senders = [first, *rest]
 
     async def _create_upload_sender(
         self, file_id: int, part_count: int, big: bool, index: int, stride: int
@@ -249,7 +260,7 @@ class ParallelTransferrer:
 
     async def _create_sender(self) -> MTProtoSender:
         dc = await self.client._get_dc(self.dc_id)
-        sender = MTProtoSender(self.auth_key, loggers=self.client._log, auto_reconnect=False)
+        sender = MTProtoSender(self.auth_key, loggers=self.client._log)
         await sender.connect(
             self.client._connection(
                 dc.ip_address,
@@ -304,7 +315,13 @@ class ParallelTransferrer:
             await self._init_download(connection_count, file, part_count, part_size)  # type: ignore[arg-type]
             part = 0
             while part < part_count:
-                chunks = await asyncio.gather(*[sender.next() for sender in self.senders])  # type: ignore[union-attr]
+                tasks = [asyncio.create_task(sender.next()) for sender in self.senders]  # type: ignore[union-attr]
+                try:
+                    chunks = await asyncio.gather(*tasks)
+                finally:
+                    for task in tasks:
+                        task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
                 if not any(chunks):
                     break
                 for data in chunks:
@@ -316,9 +333,6 @@ class ParallelTransferrer:
                 raise EOFError('Telegram returned no data before download completed')
         finally:
             await self._cleanup()
-
-
-parallel_transfer_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 def stream_file(file_to_stream: BinaryIO, chunk_size: int = 1024) -> AsyncGenerator[bytes]:  # type: ignore[misc]
@@ -334,16 +348,13 @@ async def _internal_transfer_to_telegram(
     response: BinaryIO,
     filename: str,
     progress_callback: Callable,
-    connection_count: int | None = None,
 ) -> tuple[TypeInputFile, int]:
     file_id = generate_random_long()
     file_size = Path(response.name).stat().st_size
     hash_md5 = md5(usedforsecurity=False)
     uploader = ParallelTransferrer(client)
     try:
-        part_size, part_count, is_large = await uploader.init_upload(
-            file_id, file_size, connection_count=connection_count
-        )
+        part_size, part_count, is_large = await uploader.init_upload(file_id, file_size)
         buffer = bytearray()
         for data in stream_file(response):  # type: ignore[attr-defined]
             if progress_callback:  # type: ignore[truthy-function]
@@ -381,32 +392,13 @@ async def download_file(
 ) -> BinaryIO:
     size = location.size
     dc_id, location = get_input_location(location)
-    async with parallel_transfer_locks[dc_id]:
-        for max_connections, delay in zip(
-            TRANSFER_CONNECTION_LIMITS, TRANSFER_RETRY_DELAYS, strict=True
-        ):
-            if delay:
-                await asyncio.sleep(delay)
-            out.seek(0)
-            out.truncate()
-            try:
-                downloader = ParallelTransferrer(client, dc_id)
-                downloaded = downloader.download(
-                    location,
-                    size,
-                    connection_count=min(downloader._get_connection_count(size), max_connections),
-                )
-                async for chunk in downloaded:
-                    out.write(chunk)
-                    if progress_callback:
-                        with suppress(BaseException):
-                            await _maybe_await(progress_callback(out.tell(), size))
-                return out  # type: ignore[return-value]
-            except InvalidBufferError, OSError, EOFError:
-                if max_connections == TRANSFER_CONNECTION_LIMITS[-1]:
-                    raise
-                log.warning('Telegram download failed; retrying with fewer connections')
-    raise RuntimeError('Telegram download retries exhausted')
+    downloader = ParallelTransferrer(client, dc_id)
+    async for chunk in downloader.download(location, size):
+        out.write(chunk)
+        if progress_callback:
+            with suppress(BaseException):
+                await _maybe_await(progress_callback(out.tell(), size))
+    return out  # type: ignore[return-value]
 
 
 async def upload_file(
@@ -415,26 +407,6 @@ async def upload_file(
     filename: str,
     progress_callback: Callable | None = None,
 ) -> TypeInputFile:
-    file_size = Path(file.name).stat().st_size
-    async with parallel_transfer_locks[client.session.dc_id]:
-        for max_connections, delay in zip(
-            TRANSFER_CONNECTION_LIMITS, TRANSFER_RETRY_DELAYS, strict=True
-        ):
-            if delay:
-                await asyncio.sleep(delay)
-            file.seek(0)
-            try:
-                return (
-                    await _internal_transfer_to_telegram(
-                        client,
-                        file,
-                        filename,
-                        progress_callback,  # type: ignore[arg-type]
-                        min(ParallelTransferrer._get_connection_count(file_size), max_connections),
-                    )
-                )[0]
-            except InvalidBufferError, OSError, EOFError:
-                if max_connections == TRANSFER_CONNECTION_LIMITS[-1]:
-                    raise
-                log.warning('Telegram upload failed; retrying with fewer connections')
-    raise RuntimeError('Telegram upload retries exhausted')
+    return (
+        await _internal_transfer_to_telegram(client, file, filename, progress_callback)  # type: ignore[arg-type]
+    )[0]

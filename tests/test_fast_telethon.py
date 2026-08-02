@@ -1,5 +1,6 @@
 from tempfile import NamedTemporaryFile
 from types import SimpleNamespace
+from typing import Any
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
@@ -35,18 +36,16 @@ class ParallelDownloadTest(IsolatedAsyncioTestCase):
 
         transferrer._cleanup.assert_awaited_once()
 
-    async def test_large_upload_retries_with_fewer_connections(self) -> None:
-        client = SimpleNamespace(session=SimpleNamespace(dc_id=1))
-        result = object()
+    async def test_upload_does_not_retry_failed_transfer(self) -> None:
+        client: Any = SimpleNamespace(session=SimpleNamespace(dc_id=1))
         with (
             NamedTemporaryFile() as file,
             patch(
                 'src.utils.fast_telethon._internal_transfer_to_telegram',
-                new=AsyncMock(side_effect=[OSError, OSError, (result, 0)]),
+                new=AsyncMock(side_effect=OSError),
             ) as transfer,
-            patch('src.utils.fast_telethon.asyncio.sleep', new=AsyncMock()),
+            self.assertRaises(OSError),  # noqa: PT027
         ):
-            file.truncate(101 * 1024**2)
-            assert await upload_file(client, file, 'file.bin') is result
+            await upload_file(client, file, 'file.bin')
 
-        assert [call.args[-1] for call in transfer.await_args_list] == [20, 8, 4]
+        transfer.assert_awaited_once()
