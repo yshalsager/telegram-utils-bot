@@ -20,6 +20,17 @@ def test_streamed_subprocess_timeout_is_total_runtime() -> None:
     assert '19' not in output[-1][0]
 
 
+def test_streamed_subprocess_strips_ansi_sequences() -> None:
+    async def run() -> list[tuple[str, int | None]]:
+        code = "print('\\033[A\\033[K\\033[34mblue\\033[0m')"
+        command = f'{quote(sys.executable)} -c {quote(code)}'
+        return [item async for item in run_subprocess_shell(command)]
+
+    output = asyncio.run(run())
+
+    assert output[-1] == ('blue\n', 0)
+
+
 def test_run_command_kills_process_after_timeout() -> None:
     async def run() -> tuple[str, int]:
         return await run_command(

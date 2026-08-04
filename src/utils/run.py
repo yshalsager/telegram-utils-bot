@@ -9,6 +9,8 @@ from shlex import split as shlex_split
 from signal import SIGKILL
 from typing import Any
 
+import regex as re
+
 from src import TMP_DIR
 from src.utils.i18n import t
 
@@ -16,6 +18,7 @@ MAX_MESSAGE_LENGTH = 4000  # Max is 4096 but we leave some buffer for formatting
 TIMEOUT_SECONDS = 60 * 10  # 10 minutes timeout for user commands
 TIMEOUT_BYPASS_SECONDS = 60 * 60  # 1 hour timeout for exempt users
 ADMIN_TIMEOUT_SECONDS = 60 * 60 * 6  # 6 hours timeout for admin commands
+ANSI_ESCAPE = re.compile(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|[@-_])')
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +96,7 @@ async def _run_subprocess(  # noqa: C901, PLR0912
             for task in done:
                 if task.get_name() in ('stdout', 'stderr'):
                     try:
-                        line = str(task.result())
-                        output += line
+                        output += ANSI_ESCAPE.sub('', str(task.result()))
                         yield output, None
                         pending[task.get_name()] = asyncio.create_task(
                             (
