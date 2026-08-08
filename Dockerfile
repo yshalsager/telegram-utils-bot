@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.23
+# syntax=docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 
 ARG PYTHON_IMAGE=public.ecr.aws/docker/library/python
 ARG PYTHON_VERSION=3.14-slim-bookworm
