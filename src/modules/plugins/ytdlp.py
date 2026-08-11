@@ -231,6 +231,10 @@ def ydl_progress_hooks(message: Message) -> list[Any]:
 
 
 async def ydl_extract(link: str, ydl_opts: dict[str, Any], *, download: bool) -> dict[str, Any]:
+    def extract_info(options: dict[str, Any]) -> dict[str, Any]:
+        with YoutubeDL(options) as ydl:
+            return ydl.extract_info(link, download=download)
+
     retry_count = 0
     backoff_seconds = 10
     used_native_downloader_fallback = False
@@ -239,7 +243,8 @@ async def ydl_extract(link: str, ydl_opts: dict[str, Any], *, download: bool) ->
         try:
             return await get_running_loop().run_in_executor(
                 None,
-                partial(YoutubeDL(current_ydl_opts).extract_info, link, download=download),
+                extract_info,
+                current_ydl_opts,
             )
         except Exception as e:
             error_text = str(e)
