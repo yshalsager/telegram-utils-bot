@@ -47,7 +47,10 @@ OCR_MAX_OUTPUT_TOKENS = 64_000
 GEMINI_MODELS: list[str] = [
     'gemini-flash-latest',
     'gemini-flash-lite-latest',
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
     'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
     'gemini-3.1-flash-lite-preview',
     'gemini-3-flash-preview',
