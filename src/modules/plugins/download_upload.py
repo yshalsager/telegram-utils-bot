@@ -1,3 +1,5 @@
+from contextlib import suppress
+from mimetypes import guess_extension
 from pathlib import Path
 from shlex import join as shell_join
 from shlex import quote
@@ -88,6 +90,13 @@ async def download_from_url(
     cookie_file: Path | None = None,
 ) -> Path:
     filename = filename or get_filename_from_url(url)
+    if not Path(filename).suffix:
+        with suppress(aiohttp.ClientError, TimeoutError):
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                async with session.head(url, headers=headers, allow_redirects=True) as response:
+                    response.raise_for_status()
+                    mime_type = response.headers.get('Content-Type', '').partition(';')[0]
+                    filename += guess_extension(mime_type.replace('audio/x-m4a', 'audio/mp4')) or ''
     download_to = download_dir / filename
     header_args = ' '.join(
         f'--header={quote(f"{header}: {value}")}' for header, value in (headers or {}).items()
