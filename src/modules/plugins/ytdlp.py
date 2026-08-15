@@ -764,8 +764,8 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                 format_name = f'{f["format"]} | {f["ext"]} | {naturalsize(total_size, binary=True)}'
                 buttons.append([Button.inline(format_name, f'ytdown|{_type}|{format_id}')])
         if not buttons:
-            await progress_message.edit(t('no_suitable_formats_found'))
-            return
+            names = ('ba', 'wa') if _type == 'audio' else ('bv', 'wv')
+            buttons.append([Button.inline(name, f'ytdown|{_type}|{name}') for name in names])
         await safe_event_edit(
             event,
             t('choose_format_for', type=t(_type), entry_count=entry_count),
