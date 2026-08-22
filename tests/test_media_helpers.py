@@ -51,6 +51,7 @@ from src.modules.plugins.media import (
     get_transcription_files,
     has_convertible_media,
     invert_time_ranges,
+    is_audio_media,
     is_audio_thumbnail_image_message,
     media_attachment_file_name,
     merge_time_ranges,
@@ -62,6 +63,20 @@ from src.modules.plugins.media import (
 
 
 class MediaTimeRangeHelpersTest(TestCase):
+    def test_generic_mp3_uses_audio_conversion_formats(self) -> None:
+        message = SimpleNamespace(
+            file=SimpleNamespace(ext='.mp3'),
+            audio=None,
+            voice=None,
+            video=None,
+            video_note=None,
+        )
+
+        assert is_audio_media(message)
+        message.file.ext = '.mpeg'
+        message.video = object()
+        assert not is_audio_media(message)
+
     def test_convert_accepts_supported_generic_documents(self) -> None:
         event = SimpleNamespace(message=SimpleNamespace(file=None))
         message = SimpleNamespace(

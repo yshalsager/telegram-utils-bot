@@ -830,7 +830,7 @@ async def transcribe_with_cohere(
     return '\n\n'.join(parts)
 
 
-async def process_media(
+async def process_media(  # noqa: PLR0917
     event: NewMessage.Event | CallbackQuery.Event,
     ffmpeg_command: str,
     output_suffix: str,
@@ -1654,6 +1654,17 @@ ALLOWED_AUDIO_FORMATS = {
 ALLOWED_VIDEO_FORMATS = {'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'mpeg', 'mpg', 'wmv', 'm4v'}
 
 
+def is_audio_media(message: Any) -> bool:
+    return bool(
+        message.audio
+        or message.voice
+        or (
+            not (message.video or message.video_note)
+            and normalized_file_ext(message).lstrip('.') in ALLOWED_AUDIO_FORMATS
+        )
+    )
+
+
 def has_convertible_media(event: NewMessage.Event, reply_message: Message | None) -> bool:
     message = reply_message or event.message
     extension = (message.file.ext or '').lower().lstrip('.') if message.file else ''
@@ -1666,11 +1677,7 @@ async def convert_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
     delete_message_after_process = False
     if isinstance(event, CallbackQuery.Event):
         reply_message = await get_reply_message(event, previous=True)
-        formats = (
-            ALLOWED_AUDIO_FORMATS
-            if (reply_message.audio or reply_message.voice)
-            else ALLOWED_VIDEO_FORMATS
-        )
+        formats = ALLOWED_AUDIO_FORMATS if is_audio_media(reply_message) else ALLOWED_VIDEO_FORMATS
         target_format = await inline_choice_grid(
             event,
             prefix='m|media_convert|',
