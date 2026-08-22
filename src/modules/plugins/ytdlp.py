@@ -826,7 +826,7 @@ async def download_media(event: NewMessage.Event | CallbackQuery.Event) -> None:
                     [
                         f'👤 {entry.get("uploader", "")}',
                         f'⏱ {entry.get("duration_string", "")}',
-                        f'💾 {naturalsize(entry.get("filesize_approx", 0), binary=True)}',
+                        f'💾 {naturalsize(file_path.stat().st_size, binary=True)}',
                         f'📅 {entry.get("upload_date", "")}',
                     ],
                 ),
