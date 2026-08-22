@@ -156,7 +156,7 @@ def pick_storyboard_format(info_dict: dict[str, Any]) -> dict[str, Any] | None:
         if f.get('format_note') == 'storyboard' and f.get('fragments')
     ]
     return next((f for f in storyboards if f.get('format_id') == 'sb1'), None) or (
-        max(storyboards, key=lambda f: len(f.get('fragments') or []), default=None)
+        max(storyboards, key=lambda f: len(f.get('fragments') or [])) if storyboards else None
     )
 
 
