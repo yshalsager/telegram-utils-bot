@@ -1059,36 +1059,32 @@ async def pdf_bw(event: NewMessage.Event | CallbackQuery.Event) -> None:
         temp_dir=output_dir,
     ) as temp_file_path:
         input_file = temp_file_path.absolute()
+        output_file = output_dir / f'{Path(reply_message.file.name).stem}_bw.pdf'
+        assembly_code = f"""import sys
+import pymupdf
+
+with pymupdf.open() as doc:
+    for file_name in sys.argv[2:]:
+        pix = pymupdf.Pixmap(file_name)
+        page = doc.new_page(width=pix.width, height=pix.height)
+        page.insert_image(pymupdf.Rect(0, 0, pix.width, pix.height), stream=pix.tobytes('png'))
+    doc.save(sys.argv[1], **{PDF_SAVE_KWARGS!r})
+"""
         command = (
             f'pdftoppm -r 300 -gray "{input_file}" "{work_dir / "page"}" '
             f'&& for f in "{work_dir}"/page-*.pgm; do '
             'n=${f##*/}; n=${n%.pgm}; n=${n#page-}; '
             f'unpaper --dpi 300 --type pbm --black-threshold 0.33 --white-threshold 0.9 "$f" "{work_dir}/cleaned-$n.pbm"; '
-            'done'
+            f'done && python -c {quote(assembly_code)} {quote(str(output_file))} "{work_dir}"/cleaned-*.pbm'
         )
         await stream_shell_output(event, command, status_message, progress_message)
 
-        cleaned_files = sorted(
-            output_dir.glob('cleaned-*.pbm'),
-            key=lambda p: int(p.stem.split('-')[-1]),
-        )
-        if not cleaned_files:
+        if not output_file.exists() or not output_file.stat().st_size:
             await status_message.edit(
                 t('process_failed_for_file', file_name=reply_message.file.name)
             )
             rmtree(output_dir, ignore_errors=True)
             return
-
-        output_file = output_dir / f'{Path(reply_message.file.name).stem}_bw.pdf'
-        with pymupdf.open() as doc:
-            for file in cleaned_files:
-                pix = pymupdf.Pixmap(str(file))
-                page = doc.new_page(width=pix.width, height=pix.height)
-                page.insert_image(
-                    pymupdf.Rect(0, 0, pix.width, pix.height),
-                    stream=pix.tobytes('png'),
-                )
-            doc.save(output_file, **PDF_SAVE_KWARGS)
 
         await upload_file_and_cleanup(event, output_file, progress_message)
 
