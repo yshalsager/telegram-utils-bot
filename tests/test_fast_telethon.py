@@ -2,12 +2,32 @@ from tempfile import NamedTemporaryFile
 from types import SimpleNamespace
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from src.utils.fast_telethon import ParallelTransferrer, upload_file
 
 
 class ParallelDownloadTest(IsolatedAsyncioTestCase):
+    async def test_temporary_sender_does_not_auto_reconnect(self) -> None:
+        client: Any = SimpleNamespace(
+            _get_dc=AsyncMock(return_value=SimpleNamespace(ip_address='127.0.0.1', port=443, id=1)),
+            _log={},
+            _proxy=None,
+            _connection=Mock(return_value=object()),
+        )
+        transferrer = object.__new__(ParallelTransferrer)
+        transferrer.client = client
+        transferrer.dc_id = 1
+        transferrer.auth_key = object()
+
+        with patch('src.utils.fast_telethon.MTProtoSender') as sender_class:
+            sender_class.return_value.connect = AsyncMock()
+            await transferrer._create_sender()
+
+        sender_class.assert_called_once_with(
+            transferrer.auth_key, loggers=client._log, auto_reconnect=False
+        )
+
     async def test_sender_offsets_use_part_indexes(self) -> None:
         transferrer = object.__new__(ParallelTransferrer)
         transferrer._create_download_sender = AsyncMock(side_effect=[object(), object(), object()])

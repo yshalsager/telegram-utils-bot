@@ -2,6 +2,7 @@
 # Copyright (C) 2021-2023 Tulir Asokan
 
 import asyncio
+from collections import defaultdict
 from collections.abc import AsyncGenerator, Callable
 from contextlib import suppress
 from hashlib import md5
@@ -42,6 +43,7 @@ from telethon.utils import get_appropriated_part_size, get_input_location
 log: Logger = getLogger('_FastTelethon')
 CHUNK_TIMEOUT_SECONDS = 60
 CLEANUP_TIMEOUT_SECONDS = 10
+parallel_transfer_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 TypeLocation = Union[  # noqa: UP007
     Document,
@@ -59,7 +61,7 @@ class DownloadSender:
     remaining: int
     stride: int
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         client: TelegramClient,
         sender: MTProtoSender,
@@ -97,7 +99,7 @@ class UploadSender:
     previous: asyncio.Task | None
     loop: asyncio.AbstractEventLoop
 
-    def __init__(
+    def __init__(  # noqa: PLR0917
         self,
         client: TelegramClient,
         sender: MTProtoSender,
@@ -162,7 +164,6 @@ class ParallelTransferrer:
 
     async def _cleanup(self, *, raise_errors: bool = False) -> None:
         senders = self.senders or []
-        self.senders = None
         try:
             async with asyncio.timeout(CLEANUP_TIMEOUT_SECONDS):
                 results = await asyncio.gather(
@@ -173,6 +174,7 @@ class ParallelTransferrer:
             if raise_errors:
                 raise
             return
+        self.senders = None
         if raise_errors and (
             error := next((item for item in results if isinstance(item, BaseException)), None)
         ):
@@ -210,9 +212,15 @@ class ParallelTransferrer:
                     file, index, part_size, connections * part_size, get_part_count()
                 )
                 for index in range(1, connections)
-            )
+            ),
+            return_exceptions=True,
         )
-        self.senders = [first, *rest]
+        self.senders = [
+            first,
+            *(sender for sender in rest if not isinstance(sender, BaseException)),
+        ]
+        if error := next((sender for sender in rest if isinstance(sender, BaseException)), None):
+            raise error
 
     async def _create_download_sender(
         self,
@@ -240,9 +248,15 @@ class ParallelTransferrer:
             *(
                 self._create_upload_sender(file_id, part_count, big, index, connections)
                 for index in range(1, connections)
-            )
+            ),
+            return_exceptions=True,
         )
-        self.senders = [first, *rest]
+        self.senders = [
+            first,
+            *(sender for sender in rest if not isinstance(sender, BaseException)),
+        ]
+        if error := next((sender for sender in rest if isinstance(sender, BaseException)), None):
+            raise error
 
     async def _create_upload_sender(
         self, file_id: int, part_count: int, big: bool, index: int, stride: int
@@ -260,25 +274,30 @@ class ParallelTransferrer:
 
     async def _create_sender(self) -> MTProtoSender:
         dc = await self.client._get_dc(self.dc_id)
-        sender = MTProtoSender(self.auth_key, loggers=self.client._log)
-        await sender.connect(
-            self.client._connection(
-                dc.ip_address,
-                dc.port,
-                dc.id,
-                loggers=self.client._log,
-                proxy=self.client._proxy,
+        sender = MTProtoSender(self.auth_key, loggers=self.client._log, auto_reconnect=False)
+        try:
+            await sender.connect(
+                self.client._connection(
+                    dc.ip_address,
+                    dc.port,
+                    dc.id,
+                    loggers=self.client._log,
+                    proxy=self.client._proxy,
+                )
             )
-        )
-        if not self.auth_key:
-            auth = await self.client(ExportAuthorizationRequest(self.dc_id))
-            self.client._init_request.query = ImportAuthorizationRequest(
-                id=auth.id, bytes=auth.bytes
-            )
-            req = InvokeWithLayerRequest(LAYER, self.client._init_request)
-            await sender.send(req)
-            self.auth_key = sender.auth_key
-        return sender
+            if not self.auth_key:
+                auth = await self.client(ExportAuthorizationRequest(self.dc_id))
+                self.client._init_request.query = ImportAuthorizationRequest(
+                    id=auth.id, bytes=auth.bytes
+                )
+                req = InvokeWithLayerRequest(LAYER, self.client._init_request)
+                await sender.send(req)
+                self.auth_key = sender.auth_key
+            return sender
+        except BaseException:
+            with suppress(BaseException):
+                await sender.disconnect()
+            raise
 
     async def init_upload(
         self,
@@ -392,12 +411,13 @@ async def download_file(
 ) -> BinaryIO:
     size = location.size
     dc_id, location = get_input_location(location)
-    downloader = ParallelTransferrer(client, dc_id)
-    async for chunk in downloader.download(location, size):
-        out.write(chunk)
-        if progress_callback:
-            with suppress(BaseException):
-                await _maybe_await(progress_callback(out.tell(), size))
+    async with parallel_transfer_locks[dc_id]:
+        downloader = ParallelTransferrer(client, dc_id)
+        async for chunk in downloader.download(location, size):
+            out.write(chunk)
+            if progress_callback:
+                with suppress(BaseException):
+                    await _maybe_await(progress_callback(out.tell(), size))
     return out  # type: ignore[return-value]
 
 
@@ -407,6 +427,7 @@ async def upload_file(
     filename: str,
     progress_callback: Callable | None = None,
 ) -> TypeInputFile:
-    return (
-        await _internal_transfer_to_telegram(client, file, filename, progress_callback)  # type: ignore[arg-type]
-    )[0]
+    async with parallel_transfer_locks[client.session.dc_id]:
+        return (
+            await _internal_transfer_to_telegram(client, file, filename, progress_callback)  # type: ignore[arg-type]
+        )[0]
