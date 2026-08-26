@@ -8,7 +8,7 @@ from src.utils.fast_telethon import ParallelTransferrer, upload_file
 
 
 class ParallelDownloadTest(IsolatedAsyncioTestCase):
-    async def test_temporary_sender_does_not_auto_reconnect(self) -> None:
+    async def test_temporary_sender_uses_telethon_reconnect(self) -> None:
         client: Any = SimpleNamespace(
             _get_dc=AsyncMock(return_value=SimpleNamespace(ip_address='127.0.0.1', port=443, id=1)),
             _log={},
@@ -24,9 +24,7 @@ class ParallelDownloadTest(IsolatedAsyncioTestCase):
             sender_class.return_value.connect = AsyncMock()
             await transferrer._create_sender()
 
-        sender_class.assert_called_once_with(
-            transferrer.auth_key, loggers=client._log, auto_reconnect=False
-        )
+        sender_class.assert_called_once_with(transferrer.auth_key, loggers=client._log)
 
     async def test_sender_offsets_use_part_indexes(self) -> None:
         transferrer = object.__new__(ParallelTransferrer)

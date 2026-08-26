@@ -274,7 +274,7 @@ class ParallelTransferrer:
 
     async def _create_sender(self) -> MTProtoSender:
         dc = await self.client._get_dc(self.dc_id)
-        sender = MTProtoSender(self.auth_key, loggers=self.client._log, auto_reconnect=False)
+        sender = MTProtoSender(self.auth_key, loggers=self.client._log)
         try:
             await sender.connect(
                 self.client._connection(
