@@ -3,7 +3,7 @@ import sys
 import time
 from shlex import quote
 
-from src.utils.run import run_command, run_subprocess_shell
+from src.utils.run import MAX_MESSAGE_LENGTH, run_command, run_subprocess_shell
 
 
 def test_streamed_subprocess_timeout_is_total_runtime() -> None:
@@ -29,6 +29,17 @@ def test_streamed_subprocess_strips_ansi_sequences() -> None:
     output = asyncio.run(run())
 
     assert output[-1] == ('blue\n', 0)
+
+
+def test_streamed_subprocess_caps_retained_output() -> None:
+    async def run() -> list[tuple[str, int | None]]:
+        code = f'print({"x" * (MAX_MESSAGE_LENGTH + 1)!r})'
+        command = f'{quote(sys.executable)} -c {quote(code)}'
+        return [item async for item in run_subprocess_shell(command)]
+
+    output = asyncio.run(run())
+
+    assert len(output[-1][0]) == MAX_MESSAGE_LENGTH
 
 
 def test_run_command_kills_process_after_timeout() -> None:

@@ -1074,7 +1074,7 @@ with pymupdf.open() as doc:
             f'pdftoppm -r 300 -gray "{input_file}" "{work_dir / "page"}" '
             f'&& for f in "{work_dir}"/page-*.pgm; do '
             'n=${f##*/}; n=${n%.pgm}; n=${n#page-}; '
-            f'unpaper --dpi 300 --type pbm --black-threshold 0.33 --white-threshold 0.9 "$f" "{work_dir}/cleaned-$n.pbm"; '
+            f'unpaper --dpi 300 --type pbm --black-threshold 0.33 --white-threshold 0.9 "$f" "{work_dir}/cleaned-$n.pbm" >/dev/null || exit; '
             f'done && python -c {quote(assembly_code)} {quote(str(output_file))} "{work_dir}"/cleaned-*.pbm'
         )
         await stream_shell_output(event, command, status_message, progress_message)
