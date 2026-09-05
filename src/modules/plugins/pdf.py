@@ -46,6 +46,14 @@ PDF_SAVE_KWARGS = {
     'deflate_fonts': False,
     'use_objstms': True,
 }
+PDF_PAGE_SIZES = {
+    'a3': 'A3',
+    'a4': 'A4',
+    'a5': 'A5',
+    'b5': 'ISO B5',
+    'letter': 'Letter',
+    'legal': 'Legal',
+}
 PDF_FONT_ZIP_THRESHOLD = 5
 SCREENAI_OCR_PATTERN = re.compile(r'^/(screenai)\s+(ocr)(?:\s+([\d,\-\s]+))?$')
 screenai_lock = Lock()
@@ -306,6 +314,22 @@ def save_sanitized_pdf(input_file: Path, output_file: Path) -> None:
 def save_repaired_pdf(input_file: Path, output_file: Path) -> None:
     with pymupdf.open(input_file) as doc:
         doc.save(output_file, **PDF_SAVE_KWARGS)
+
+
+def normalize_pdf_page_size(input_file: Path, output_file: Path, paper_size: str) -> None:
+    target = pymupdf.paper_rect(paper_size)
+    with pymupdf.open(input_file) as source, pymupdf.open() as output:
+        for source_page in source:
+            width, height = target.width, target.height
+            if source_page.rect.width > source_page.rect.height:
+                width, height = height, width
+            page = output.new_page(width=width, height=height)
+            page.show_pdf_page(page.rect, source, source_page.number, keep_proportion=True)
+
+        output.set_metadata(source.metadata)
+        if toc := source.get_toc():
+            output.set_toc(toc)
+        output.save(output_file, **PDF_SAVE_KWARGS)
 
 
 async def extract_pdf_text(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -745,6 +769,38 @@ async def linearize_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
         await upload_file_and_cleanup(event, output_file, progress_message)
 
     await progress_message.edit(t('pdf_linearized'))
+
+
+async def resize_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    if isinstance(event, CallbackQuery.Event):
+        paper_size = await inline_choice_grid(
+            event,
+            prefix='m|pdf_resize|',
+            prompt_text=t('choose_pdf_page_size'),
+            pairs=[(label, f'm|pdf_resize|{name}') for name, label in PDF_PAGE_SIZES.items()],
+        )
+        if paper_size is None:
+            return
+    else:
+        paper_size = event.message.text.rsplit(maxsplit=1)[-1].lower()
+
+    reply_message = await get_reply_message(event, previous=True)
+    progress_message = await send_progress_message(event, t('normalizing_pdf_page_size'))
+
+    async with download_to_temp_file(
+        event,
+        reply_message,
+        progress_message,
+        suffix='.pdf',
+    ) as temp_file_path:
+        output_file = temp_file_path.with_name(
+            f'{get_download_name(reply_message).stem}_{paper_size}.pdf'
+        )
+        await to_thread(normalize_pdf_page_size, temp_file_path, output_file, paper_size)
+        await upload_file_and_cleanup(event, output_file, progress_message)
+
+    await progress_message.edit(t('pdf_page_size_normalized'))
+    delete_callback_after(event)
 
 
 async def convert_to_images(event: NewMessage.Event | CallbackQuery.Event) -> None:
@@ -1224,6 +1280,13 @@ class PDF(ModuleBase):
             handler=linearize_pdf,
             description=t('_pdf_linearize_description'),
             pattern=re.compile(r'^/(pdf)\s+(linearize)$'),
+            condition=has_pdf_file,
+            is_applicable_for_reply=True,
+        ),
+        'pdf resize': Command(
+            handler=resize_pdf,
+            description=t('_pdf_resize_description'),
+            pattern=re.compile(r'^/(pdf)\s+(resize)\s+(a3|a4|a5|b5|letter|legal)$', re.IGNORECASE),
             condition=has_pdf_file,
             is_applicable_for_reply=True,
         ),

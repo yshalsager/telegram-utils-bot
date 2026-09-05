@@ -12,6 +12,7 @@ from src.modules.plugins.pdf import (
     collect_pdf_font_files,
     collect_pdf_fonts,
     format_pdf_info,
+    normalize_pdf_page_size,
     parse_page_numbers,
     remaining_pdf_pages,
     save_repaired_pdf,
@@ -176,6 +177,29 @@ class PdfEditHelpersTest(TestCase):
             with pymupdf.open(output_file) as doc:
                 assert doc.page_count == 3
 
+    def test_normalize_pdf_page_size_preserves_orientation_and_content(self) -> None:
+        with TemporaryDirectory() as temp_dir_name:
+            input_file = Path(temp_dir_name) / 'sample.pdf'
+            output_file = Path(temp_dir_name) / 'normalized.pdf'
+            with pymupdf.open() as doc:
+                doc.set_metadata({'title': 'Sample title'})
+                for width, height, text in ((300, 400, 'portrait'), (400, 300, 'landscape')):
+                    page = doc.new_page(width=width, height=height)
+                    page.insert_text((72, 72), text)
+                doc.set_toc([[1, 'First page', 1]])
+                doc.save(input_file)
+
+            normalize_pdf_page_size(input_file, output_file, 'a4')
+
+            with pymupdf.open(output_file) as doc:
+                assert [(page.rect.width, page.rect.height) for page in doc] == [
+                    (595, 842),
+                    (842, 595),
+                ]
+                assert [page.get_text().strip() for page in doc] == ['portrait', 'landscape']
+                assert doc.metadata['title'] == 'Sample title'
+                assert doc.get_toc() == [[1, 'First page', 1]]
+
 
 class PdfCommandPatternTest(TestCase):
     def test_pdf_info_attachments_and_fonts_commands_match(self) -> None:
@@ -189,3 +213,4 @@ class PdfCommandPatternTest(TestCase):
         assert PDF.commands['pdf sanitize'].pattern.match('/pdf sanitize')
         assert PDF.commands['pdf repair'].pattern.match('/pdf repair')
         assert PDF.commands['pdf linearize'].pattern.match('/pdf linearize')
+        assert PDF.commands['pdf resize'].pattern.match('/pdf resize a4')
