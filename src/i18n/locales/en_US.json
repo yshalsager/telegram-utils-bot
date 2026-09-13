@@ -565,6 +565,8 @@
   "_ai_module_description": "AI related commands.",
   "_gemini_ocr": "Gemini OCR",
   "_gemini_ocr_description": "Perform OCR using Google Gemini.",
+  "_mistral_ocr": "Mistral OCR",
+  "_mistral_ocr_description": "Extract structured text using Mistral OCR.",
   "_gemini_transcribe": "Gemini transcribe",
   "_gemini_transcribe_description": "Transcribe audio/video using Google Gemini.",
   "_gemini_prompt": "Gemini prompt",

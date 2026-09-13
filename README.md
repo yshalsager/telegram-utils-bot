@@ -121,6 +121,8 @@ Before setting up the bot:
    BOT_ADMINS='123456,123456,123456'
    # Optional (AI/Gemini)
    LLM_GEMINI_KEY="..."
+   # Optional (Mistral OCR)
+   MISTRAL_API_KEY="..."
    # Optional (Whisper via Groq)
    GROQ_API_KEY="..."
    # Optional (Arabic transcription via Cohere)

@@ -80,10 +80,13 @@ Do Not rely or compare with on any memorized texts. Only OCR the text present in
 """
 GEMINI_TRANSCRIBE_CHUNK_SECONDS = 30 * 60
 GEMINI_FILES_API_BASE = 'https://generativelanguage.googleapis.com'
+MISTRAL_API_BASE = 'https://api.mistral.ai/v1'
+MISTRAL_OCR_MODEL = 'mistral-ocr-latest'
 
 GEMINI_OCR_PATTERN = re.compile(r'^/(gemini)\s+(ocr)(?:\s+(.+))?$')
 GEMINI_TRANSCRIBE_PATTERN = re.compile(r'^/(gemini)\s+(transcribe)(?:\s+([a-zA-Z-]+))?$')
 GEMINI_PROMPT_PATTERN = re.compile(r'^/(gemini)\s+(prompt)$')
+MISTRAL_OCR_PATTERN = re.compile(r'^/(mistral)\s+(ocr)(?:\s+(.+))?$')
 PROMPT_TEXT_PATTERN = re.compile(r'(?s)^(.+)$')
 
 
@@ -358,6 +361,59 @@ def build_ocr_prompt(page_number: int) -> str:
     )
 
 
+def format_mistral_ocr_pages(pages: list[dict[str, Any]]) -> tuple[str, dict[str, str]]:
+    content = {str(int(page['index']) + 1): str(page.get('markdown') or '') for page in pages}
+    return (
+        '\n\n'.join(f'=== Page {page_number} ===\n{text}' for page_number, text in content.items()),
+        content,
+    )
+
+
+async def call_mistral_ocr(
+    input_file: Path,
+    api_key: str,
+    pages: list[int] | None,
+    mime_type: str | None,
+) -> dict[str, Any]:
+    headers = {'Authorization': f'Bearer {api_key}'}
+    async with aiohttp.ClientSession(
+        headers=headers, timeout=aiohttp.ClientTimeout(total=30 * 60)
+    ) as session:
+        form = aiohttp.FormData()
+        form.add_field('purpose', 'ocr')
+        with input_file.open('rb') as source:
+            form.add_field(
+                'file',
+                source,
+                filename=input_file.name,
+                content_type=mime_type or 'application/octet-stream',
+            )
+            async with session.post(f'{MISTRAL_API_BASE}/files', data=form) as response:
+                body = await response.read()
+                if response.status >= 400:
+                    raise RuntimeError(body.decode(errors='replace'))
+                file_id = orjson.loads(body)['id']
+
+        try:
+            request: dict[str, Any] = {
+                'model': MISTRAL_OCR_MODEL,
+                'document': {'type': 'file', 'file_id': file_id},
+            }
+            if pages is not None:
+                request['pages'] = pages
+            async with session.post(f'{MISTRAL_API_BASE}/ocr', json=request) as response:
+                body = await response.read()
+                if response.status >= 400:
+                    raise RuntimeError(body.decode(errors='replace'))
+                return cast(dict[str, Any], orjson.loads(body))
+        finally:
+            async with session.delete(f'{MISTRAL_API_BASE}/files/{file_id}') as response:
+                if response.status >= 400:
+                    logger.warning(
+                        f'Failed to delete Mistral file {file_id}: HTTP {response.status}'
+                    )
+
+
 async def prompt_gemini_ocr_page(
     model: llm.AsyncModel, image_path: Path, operation: str, page_number: int
 ) -> str:
@@ -502,6 +558,66 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     else:
         await status_message.edit(t('pdf_ocr_process_completed'))
     rmtree(output_dir, ignore_errors=True)
+
+
+async def mistral_ocr_document(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    api_key = getenv('MISTRAL_API_KEY')
+    if not api_key:
+        await event.reply(f'{t("missing_api_key")}: <code>MISTRAL_API_KEY</code>')
+        return
+
+    input_message = await get_message_for_processing(event)
+    page_selection = ''
+    if isinstance(event, NewMessage.Event) and event.message.text:
+        match = MISTRAL_OCR_PATTERN.match(event.message.text)
+        page_selection = (match.group(3) if match else '') or ''
+
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('performing_ocr'))
+    output_dir = TMP_DIR / str(uuid4())
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        async with download_to_temp_file(
+            event,
+            input_message,
+            progress_message,
+            suffix=input_message.file.ext,
+            temp_dir=output_dir,
+        ) as input_file:
+            output_name = get_download_name(input_message)
+            mime_type = get_message_mime_type(input_message) or guess_type(input_file)[0]
+            pages = None
+            if mime_type == 'application/pdf' or input_file.suffix.lower() == '.pdf':
+                with pymupdf.open(input_file) as doc:
+                    selected_pages = parse_ocr_page_selection(page_selection, doc.page_count)
+                if not selected_pages:
+                    await progress_message.edit(t('invalid_pdf_extract_pages'))
+                    return
+                pages = [page - 1 for page in selected_pages]
+
+            response = await call_mistral_ocr(input_file, api_key, pages, mime_type)
+            markdown, content = format_mistral_ocr_pages(response.get('pages') or [])
+            if not content:
+                raise RuntimeError('Mistral OCR returned no pages')
+
+            output_file = input_file.with_name(f'{output_name.stem}.md')
+            output_json_file = input_file.with_name(f'{output_name.stem}.mistral.raw.json')
+            output_file.write_text(markdown)
+            output_json_file.write_bytes(
+                orjson.dumps(
+                    {'source_file': output_name.name, 'content': content, 'mistral': response},
+                    option=json_options,
+                )
+            )
+            await upload_file_and_cleanup(event, output_file, progress_message, force_document=True)
+            await upload_file_and_cleanup(
+                event, output_json_file, progress_message, force_document=True
+            )
+
+        await status_message.edit(t('pdf_ocr_process_completed'))
+    finally:
+        delete_message_after(progress_message)
+        rmtree(output_dir, ignore_errors=True)
 
 
 async def gemini_transcribe_media(  # noqa: C901, PLR0911, PLR0912, PLR0915
@@ -709,6 +825,13 @@ class AI(ModuleBase):
             handler=gemini_ocr_pdf,
             description=t('_gemini_ocr_description'),
             pattern=GEMINI_OCR_PATTERN,
+            condition=lambda e, m: has_pdf_file(e, m) or has_photo_or_photo_file(e, m),
+            is_applicable_for_reply=True,
+        ),
+        'mistral ocr': Command(
+            handler=mistral_ocr_document,
+            description=t('_mistral_ocr_description'),
+            pattern=MISTRAL_OCR_PATTERN,
             condition=lambda e, m: has_pdf_file(e, m) or has_photo_or_photo_file(e, m),
             is_applicable_for_reply=True,
         ),

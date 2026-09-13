@@ -565,6 +565,8 @@
   "_ai_module_description": "أوامر AI.",
   "_gemini_ocr": "OCR جيميني",
   "_gemini_ocr_description": "التفريغ باستخدام جوجل جيميني.",
+  "_mistral_ocr": "OCR ميسترال",
+  "_mistral_ocr_description": "استخراج النص المنظم باستخدام ميسترال.",
   "_gemini_transcribe": "تفريغ جيميني",
   "_gemini_transcribe_description": "تفريغ الصوت/الفيديو باستخدام جوجل جيميني.",
   "_gemini_prompt": "أمر جيميني",
