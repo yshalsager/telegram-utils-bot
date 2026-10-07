@@ -57,6 +57,7 @@ params = {
     'no_color': True,
     'nocheckcertificate': True,
     'source_address': getenv('YTDLP_SOURCE_ADDRESS'),
+    'live_from_start': True,
     'remote_components': ['ejs:github'],
     'format_sort': ['res:480', '+size', 'ext'],
     'restrictfilenames': True,
