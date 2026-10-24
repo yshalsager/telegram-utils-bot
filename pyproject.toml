@@ -6,7 +6,7 @@ authors = [
     { name = "yshalsager", email = "contact@yshalsager.com" }
 ]
 license = { file = "LICENSE" }
-requires-python = ">=3.14, <3.15"
+requires-python = ">=3.15, <3.16"
 dependencies = [
     "telethon>=1.44.0",
     "cryptg>=0.5.1",
