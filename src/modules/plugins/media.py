@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 from functools import partial
 from math import floor
 from os import getenv
@@ -22,6 +23,7 @@ from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeVideo
 from src import TMP_DIR
 from src.modules.base import ModuleBase
 from src.modules.plugins.run import stream_shell_output
+from src.utils.arabi_tools import transcribe_with_arabi
 from src.utils.command import Command
 from src.utils.downloads import (
     download_file,
@@ -52,7 +54,7 @@ ALLOWED_AUDIO_COMPRESS_BITRATES = [16, 32, 48, 64, 96, 128]
 ALLOWED_AMPLIFY_FACTORS = [1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0]
 ALLOWED_VIDEO_COMPRESS_PERCENTAGES = list(range(20, 100, 10))
 ALLOWED_VIDEO_X265_CRF = [18, 20, 22, 24, 26, 28, 30]
-ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'cohere', 'google']
+ALLOWED_TRANSCRIBE_METHODS = ['wit', 'whisper', 'cohere', 'google', 'arabi']
 SUPPORTED_AUDIO_THUMBNAIL_EXTS = {'.mp3', '.m4a', '.m4b'}
 TELEGRAM_THUMBNAIL_MAX_SIZE = 20_000
 DEFAULT_AUDIO_BITRATE = '96k'
@@ -2211,13 +2213,18 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
     output_dir.mkdir(parents=True, exist_ok=True)
     transcription = None
 
-    async with download_to_temp_file(
-        event,
-        reply_message,
-        progress_message,
-        suffix=reply_message.file.ext,
-        temp_dir=output_dir,
-    ) as input_file_path:
+    async with (
+        AsyncExitStack() as cleanup,
+        download_to_temp_file(
+            event,
+            reply_message,
+            progress_message,
+            suffix=reply_message.file.ext,
+            temp_dir=output_dir,
+        ) as input_file_path,
+    ):
+        cleanup.callback(rmtree, output_dir, ignore_errors=True)
+        cleanup.callback(delete_message_after, progress_message)
         if transcription_method == 'google':
             try:
                 output_file = await transcribe_with_google(input_file_path, output_dir, language)
@@ -2252,15 +2259,18 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             )
             response.on_done(lambda _: audio_file_path.unlink(missing_ok=True))
             transcription = response.text()
-        elif transcription_method == 'cohere' and cohere_api_key:
+        elif transcription_method in ('cohere', 'arabi'):
             try:
-                transcription = await transcribe_with_cohere(
-                    input_file_path,
-                    output_dir,
-                    cohere_api_key,
-                    language,
-                    progress_message,
-                )
+                if transcription_method == 'arabi':
+                    await transcribe_with_arabi(input_file_path, output_dir, language)
+                else:
+                    transcription = await transcribe_with_cohere(
+                        input_file_path,
+                        output_dir,
+                        cohere_api_key or '',
+                        language,
+                        progress_message,
+                    )
             except Exception as e:  # noqa: BLE001
                 await edit_or_send_as_file(
                     event,
@@ -2284,7 +2294,11 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
             )
         output_files = get_transcription_files(output_dir)
         if not output_files:
-            await status_message.edit(t('failed_to_transcribe'))
+            await status_message.edit(
+                t('no_speech_detected')
+                if transcription_method == 'arabi'
+                else t('failed_to_transcribe')
+            )
         else:
             await status_message.edit(t('transcription_completed'))
             for index, output_file in enumerate(output_files):
@@ -2303,8 +2317,6 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
                     file_name=file_name,
                     caption=f'<code>{file_name}</code>',
                 )
-    rmtree(output_dir, ignore_errors=True)
-    delete_message_after(progress_message)
     if delete_message_after_process:
         delete_callback_after(event)
 
@@ -2461,7 +2473,7 @@ class Media(ModuleBase):
             handler=transcribe_media,
             description=t('_transcribe_description'),
             pattern=re.compile(
-                r'^/(transcribe)(?:\s+(wit|whisper|cohere|google))?(?:\s+(\w{2,3}))?$'
+                r'^/(transcribe)(?:\s+(wit|whisper|cohere|google|arabi))?(?:\s+(\w{2,3}))?$'
             ),
             condition=partial(has_media, any=True),
             is_applicable_for_reply=True,

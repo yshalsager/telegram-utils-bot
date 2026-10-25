@@ -562,6 +562,14 @@ class AudioThumbnailHelpersTest(TestCase):
 
 
 class MediaCommandPatternsTest(TestCase):
+    def test_arabi_transcription_is_available_without_changing_wit(self) -> None:
+        pattern = Media.commands['transcribe'].pattern
+
+        assert pattern.match('/transcribe')
+        assert pattern.match('/transcribe wit ar').group(2) == 'wit'
+        match = pattern.match('/transcribe arabi en')
+        assert match.group(2, 3) == ('arabi', 'en')
+
     def test_existing_media_cut_command_pattern_still_matches(self) -> None:
         match = Media.commands['media cut'].pattern.match(
             '/media cut 00:00:00 00:30:00 00:45:00 01:15:00'
