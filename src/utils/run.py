@@ -152,9 +152,12 @@ async def run_command(
     )
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-    except TimeoutError:
-        process.kill()
+    except (TimeoutError, asyncio.CancelledError) as error:
+        with suppress(ProcessLookupError):
+            process.kill()
         await process.wait()
+        if isinstance(error, asyncio.CancelledError):
+            raise
         return t('process_timed_out'), -1
     output = (stdout + stderr).decode('utf-8', errors='replace').strip()
     return output, (process.returncode or 0)

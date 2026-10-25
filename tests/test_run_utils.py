@@ -1,7 +1,9 @@
 import asyncio
 import sys
 import time
+from contextlib import suppress
 from shlex import quote
+from unittest.mock import AsyncMock, patch
 
 from src.utils.run import MAX_MESSAGE_LENGTH, run_command, run_subprocess_shell
 
@@ -52,3 +54,31 @@ def test_run_command_kills_process_after_timeout() -> None:
 
     assert code == -1
     assert output
+
+
+def test_run_command_kills_process_after_cancellation() -> None:
+    async def run() -> None:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            '-c',
+            'import time; time.sleep(30)',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            with patch(
+                'src.utils.run.asyncio.create_subprocess_exec', AsyncMock(return_value=process)
+            ):
+                task = asyncio.create_task(run_command('unused'))
+                await asyncio.sleep(0)
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+                assert task.cancelled()
+                assert process.returncode is not None
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
+
+    asyncio.run(run())
