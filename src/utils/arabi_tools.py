@@ -1,4 +1,5 @@
 from asyncio import Lock, sleep, timeout
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from shlex import quote
 from uuid import uuid4
@@ -6,6 +7,7 @@ from uuid import uuid4
 import aiohttp
 import regex as re
 
+from src.utils.i18n import t
 from src.utils.run import run_command
 
 API_BASE = 'https://arabi.tools'
@@ -14,7 +16,12 @@ arabi_lock = Lock()
 arabi_attempt = uuid4().hex
 
 
-async def transcribe_with_arabi(input_file: Path, output_dir: Path, language: str) -> None:  # noqa: C901
+async def transcribe_with_arabi(  # noqa: C901, PLR0912, PLR0915
+    input_file: Path,
+    output_dir: Path,
+    language: str,
+    progress: Callable[[str], Awaitable[None]] | None = None,
+) -> None:
     duration, code = await run_command(
         f'ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 {quote(str(input_file))}'
     )
@@ -32,6 +39,9 @@ async def transcribe_with_arabi(input_file: Path, output_dir: Path, language: st
     if audio.stat().st_size > MAX_UPLOAD_BYTES:
         raise RuntimeError('arabi.tools accepts files up to 99 MB.')
 
+    last_progress = t('waiting_for_transcription')
+    if progress:
+        await progress(last_progress)
     async with (
         arabi_lock,
         timeout(60 * 60),
@@ -66,8 +76,20 @@ async def transcribe_with_arabi(input_file: Path, output_dir: Path, language: st
                 raise RuntimeError('arabi.tools transcription failed or expired.')
             if state[1] == 'done':
                 break
+            text = (
+                t('starting_transcription')
+                if state[1] == 'running'
+                else t('waiting_for_transcription')
+            )
+            if percent := re.search(r'<progress\b[^>]*\bvalue="(\d+)"', page):
+                text += f' {percent[1]}%'
+            if progress and text != last_progress:
+                await progress(text)
+                last_progress = text
             await sleep(5)
 
+        if progress:
+            await progress(t('downloading'))
         for extension in ('txt', 'srt'):
             async with session.get(f'{API_BASE}{job}/transcript.{extension}') as response:
                 response.raise_for_status()

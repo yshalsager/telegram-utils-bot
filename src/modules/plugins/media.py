@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from functools import partial
 from math import floor
 from os import getenv
@@ -16,6 +16,7 @@ from llm import Attachment, get_model
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 from telethon import TelegramClient
+from telethon.errors import RPCError
 from telethon.events import CallbackQuery, NewMessage, StopPropagation
 from telethon.tl.custom import Message
 from telethon.tl.types import DocumentAttributeAudio, DocumentAttributeVideo
@@ -2262,7 +2263,14 @@ async def transcribe_media(event: NewMessage.Event | CallbackQuery.Event) -> Non
         elif transcription_method in ('cohere', 'arabi'):
             try:
                 if transcription_method == 'arabi':
-                    await transcribe_with_arabi(input_file_path, output_dir, language)
+
+                    async def report_progress(text: str) -> None:
+                        with suppress(RPCError):
+                            await progress_message.edit(text)
+
+                    await transcribe_with_arabi(
+                        input_file_path, output_dir, language, report_progress
+                    )
                 else:
                     transcription = await transcribe_with_cohere(
                         input_file_path,

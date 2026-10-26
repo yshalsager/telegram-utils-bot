@@ -461,6 +461,7 @@
   "please_set_wit_client_access_tokens": "Please set WIT_CLIENT_ACCESS_TOKENS environment variable.",
   "please_set_whisper_api_key": "Please set GROQ_API_KEY environment variable.",
   "starting_transcription": "Starting transcription process…",
+  "waiting_for_transcription": "Waiting for transcription…",
   "failed_to_transcribe": "Failed to transcribe",
   "transcription_completed": "Transcription completed.",
   "no_speech_detected": "No speech detected.",

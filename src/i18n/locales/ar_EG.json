@@ -461,6 +461,7 @@
   "please_set_wit_client_access_tokens": "يرجى تعيين متغير بيئة WIT_CLIENT_ACCESS_TOKENS.",
   "please_set_whisper_api_key": "يرجى تعيين متغير بيئة GROQ_API_KEY.",
   "starting_transcription": "بدء عملية التفريغ…",
+  "waiting_for_transcription": "في انتظار التفريغ…",
   "failed_to_transcribe": "فشل التفريغ",
   "transcription_completed": "اكتمل التفريغ.",
   "no_speech_detected": "لم يُكتشف كلام في التسجيل.",

@@ -4,11 +4,12 @@ from contextlib import AsyncExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 from src.utils.arabi_tools import transcribe_with_arabi
+from src.utils.i18n import t
 
 JOB = f'/transcribe/jobs/{"a" * 32}'
 
@@ -21,6 +22,7 @@ class ArabiToolsTest(IsolatedAsyncioTestCase):
         self.input_file = self.output_dir / 'درس.mp3'
         self.input_file.write_bytes(b'audio')
         self.states = ['waiting', 'running', 'done']
+        self.percentages = iter([37, 37, 75])
         self.text = 'نص التفريغ'
         self.requests = []
         self.upload = f'{JOB}/audio'
@@ -56,7 +58,12 @@ class ArabiToolsTest(IsolatedAsyncioTestCase):
             return web.json_response({'next': JOB})
         if request.path == JOB:
             state = self.states.pop(0) if len(self.states) > 1 else self.states[0]
-            return web.Response(text=f'<div class="job" data-state="{state}">')
+            progress = (
+                f'<progress max="100" value="{next(self.percentages)}"></progress>'
+                if state == 'running'
+                else ''
+            )
+            return web.Response(text=f'<div class="job" data-state="{state}">{progress}</div>')
         assert request.path in (f'{JOB}/transcript.txt', f'{JOB}/transcript.srt')
         return web.Response(text=self.text)
 
@@ -73,6 +80,19 @@ class ArabiToolsTest(IsolatedAsyncioTestCase):
         assert self.sleep.await_count == 2
         for extension in ('txt', 'srt'):
             assert self.input_file.with_suffix(f'.{extension}').read_text() == self.text
+
+    async def test_reports_changed_progress_without_extra_requests(self) -> None:
+        self.states = ['waiting', 'running', 'running', 'running', 'done']
+        progress = AsyncMock()
+        await transcribe_with_arabi(self.input_file, self.output_dir, 'ar', progress)
+        assert progress.await_args_list == [
+            call(t('waiting_for_transcription')),
+            call(f'{t("starting_transcription")} 37%'),
+            call(f'{t("starting_transcription")} 75%'),
+            call(t('downloading')),
+        ]
+        assert self.requests.count(('GET', JOB)) == 5
+        assert len(self.requests) == 9
 
     async def test_converts_video_before_upload(self) -> None:
         self.input_file = self.input_file.rename(self.input_file.with_suffix('.mp4'))
