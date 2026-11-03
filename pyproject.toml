@@ -20,7 +20,7 @@ dependencies = [
     "regex>=2025.11.3",
     "tafrigh[wit]>=1.7.8",
     "wikipedia>=1.4.0",
-    "yt-dlp[default,curl-cffi]>=2026.3.17",
+    "yt-dlp[default,curl-cffi]>=2026.10.26",
     "pymupdf>=1.26.6",
     "tahweel>=0.2.0",
     "ocrmypdf>=16.12.0",
@@ -28,7 +28,7 @@ dependencies = [
     "llm>=0.32",
     "llm-gemini>=0.34",
     "llm-groq>=0.8",
-    "bgutil-ytdlp-pot-provider>=1.3.1",
+    "bgutil-ytdlp-pot-provider>=2.0.2",
     "gpapi>=0.4.4",
     "locro @ https://github.com/yshalsager/clv-locro/archive/e28800b406196893fa146602029c18ef833a0f71.zip",
 ]
