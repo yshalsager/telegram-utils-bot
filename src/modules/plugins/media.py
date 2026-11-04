@@ -538,7 +538,7 @@ def build_resize_video_command(quality: int) -> str:
 def build_split_media_command(input_file: Path, output_pattern: Path, segment_duration: int) -> str:
     return (
         f'ffmpeg -hide_banner -y -i {shell_arg(input_file)} -f segment '
-        f'-segment_time {segment_duration} -map 0:v? -map 0:a? -dn -sn '
+        f'-segment_time {segment_duration} -reset_timestamps 1 -map 0:v? -map 0:a? -dn -sn '
         f'-c copy {shell_arg(output_pattern)}'
     )
 

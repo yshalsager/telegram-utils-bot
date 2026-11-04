@@ -303,7 +303,7 @@ class MediaTimeRangeHelpersTest(TestCase):
     def test_split_media_command_keeps_only_audio_and_video_streams(self) -> None:
         command = build_split_media_command(Path('input.mkv'), Path('segment_%03d.mkv'), 60)
 
-        assert '-f segment -segment_time 60' in command
+        assert '-f segment -segment_time 60 -reset_timestamps 1' in command
         assert '-map 0:v? -map 0:a? -dn -sn' in command
         assert '-c copy' in command
 
