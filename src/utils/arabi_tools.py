@@ -63,7 +63,11 @@ async def transcribe_with_arabi(  # noqa: C901, PLR0912, PLR0915
         form.add_field('language', language)
         with audio.open('rb') as source:
             form.add_field('file', source, filename=audio.name)
-            async with session.post(f'{API_BASE}{upload}', data=form) as response:
+            async with session.post(
+                f'{API_BASE}{upload}',
+                data=form,
+                timeout=aiohttp.ClientTimeout(total=30 * 60, connect=30),
+            ) as response:
                 response.raise_for_status()
                 await response.read()
 

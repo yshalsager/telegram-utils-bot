@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, call, patch
 
-from aiohttp import web
+from aiohttp import ClientSession, web
 from aiohttp.test_utils import TestServer
 from src.utils.arabi_tools import transcribe_with_arabi
 from src.utils.i18n import t
@@ -80,6 +80,25 @@ class ArabiToolsTest(IsolatedAsyncioTestCase):
         assert self.sleep.await_count == 2
         for extension in ('txt', 'srt'):
             assert self.input_file.with_suffix(f'.{extension}').read_text() == self.text
+
+    async def test_longer_timeout_is_only_used_for_audio_upload(self) -> None:
+        original_post = ClientSession.post
+        upload_timeouts = []
+
+        def post(session, url, **kwargs):
+            assert session.timeout.total == 120
+            if url.endswith('/audio'):
+                upload_timeouts.append(kwargs['timeout'])
+            else:
+                assert 'timeout' not in kwargs
+            return original_post(session, url, **kwargs)
+
+        with patch.object(ClientSession, 'post', post):
+            await transcribe_with_arabi(self.input_file, self.output_dir, 'ar')
+        assert len(upload_timeouts) == 1
+        assert upload_timeouts[0].total == 30 * 60
+        assert upload_timeouts[0].connect == 30
+        assert self.input_file.with_suffix('.srt').read_text() == self.text
 
     async def test_reports_changed_progress_without_extra_requests(self) -> None:
         self.states = ['waiting', 'running', 'running', 'running', 'done']
