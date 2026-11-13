@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = "==3.14.*"
 
 [manifest]
@@ -1065,16 +1065,16 @@ wheels = [
 
 [[package]]
 name = "llm-gemini"
-version = "0.34"
+version = "0.37"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "ijson" },
     { name = "llm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c3/9f/1ec5a501e8301c92aa735b573c68725d09ad4da8579934c08e9da232b139/llm_gemini-0.34.tar.gz", hash = "sha256:fcc61136044f95f55d59e6156957f0c927e7f59d5522ba91c66b6460ff19a6a2", size = 27605, upload-time = "2026-09-02T16:40:47.894Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2c/d1/ba01d3e7a05bee9cb65d8d0702480c6dee0c9892789220dfcbc4a83ead4b/llm_gemini-0.37.tar.gz", hash = "sha256:774eef1a1d8a02a939d873e2e23883d06ba8346349db7a1bad7376ba064ac958", size = 28448, upload-time = "2026-11-12T22:56:32.395Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/7e/396da5bce8de35f8f0c78b618544c24a907777a3319d59074b70a120831b/llm_gemini-0.34-py3-none-any.whl", hash = "sha256:802ca936f5aba2a0d621a4ae17dc6df894ba95c0aaddc4a121417bedf390e0bf", size = 19490, upload-time = "2026-09-02T16:40:46.63Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/b6/15f7cdbdc38b6d871f155e2599099ef9f6254905e968fd4b0216b7cd9b27/llm_gemini-0.37-py3-none-any.whl", hash = "sha256:55354558c0e80007c7066c334d2b199c6d05d197883bd242f8110165fa5f19e1", size = 20059, upload-time = "2026-11-12T22:56:31.103Z" },
 ]
 
 [[package]]
@@ -2251,7 +2251,7 @@ requires-dist = [
     { name = "hachoir", specifier = ">=3.3.0" },
     { name = "humanize", specifier = ">=4.12.3" },
     { name = "llm", specifier = ">=0.32" },
-    { name = "llm-gemini", specifier = ">=0.34" },
+    { name = "llm-gemini", specifier = ">=0.37" },
     { name = "llm-groq", specifier = ">=0.8" },
     { name = "locro", url = "https://github.com/yshalsager/clv-locro/archive/e28800b406196893fa146602029c18ef833a0f71.zip" },
     { name = "ocrmypdf", specifier = ">=16.12.0" },

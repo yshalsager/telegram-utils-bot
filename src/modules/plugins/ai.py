@@ -39,7 +39,7 @@ from src.utils.telegram import (
     send_progress_message,
 )
 
-OCR_MODEL = 'gemini-3.5-flash'
+OCR_MODEL = 'gemini-4-hydrogen'
 OCR_MODEL_RPM = 10
 OCR_IMAGE_DPI = 300
 OCR_IMAGE_MAX_WIDTH = 3000
@@ -47,15 +47,11 @@ OCR_MAX_OUTPUT_TOKENS = 64_000
 GEMINI_MODELS: list[str] = [
     'gemini-flash-latest',
     'gemini-flash-lite-latest',
+    'gemini-4-hydrogen',
     'gemini-3.8-flash',
-    'gemini-3.7-flash',
     'gemini-3.6-flash',
-    'gemini-3.5-flash',
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
-    'gemini-3.1-flash-lite-preview',
-    'gemini-3-flash-preview',
-    'gemini-2.5-flash',
 ]
 OCR_PROMPT = """Extract text from this page, it is mostly in arabic
 Remove the page Number (may be at the top or bottom of the page)
