@@ -16,6 +16,7 @@ import llm_gemini
 import orjson
 import pymupdf
 import regex as re
+from chrome_lens_py import LensAPI
 from telethon.events import CallbackQuery, NewMessage
 from telethon.tl.custom import Message
 
@@ -83,6 +84,7 @@ GEMINI_OCR_PATTERN = re.compile(r'^/(gemini)\s+(ocr)(?:\s+(.+))?$')
 GEMINI_TRANSCRIBE_PATTERN = re.compile(r'^/(gemini)\s+(transcribe)(?:\s+([a-zA-Z-]+))?$')
 GEMINI_PROMPT_PATTERN = re.compile(r'^/(gemini)\s+(prompt)$')
 MISTRAL_OCR_PATTERN = re.compile(r'^/(mistral)\s+(ocr)(?:\s+(.+))?$')
+LENS_OCR_PATTERN = re.compile(r'^/(lens)\s+(ocr)$')
 PROMPT_TEXT_PATTERN = re.compile(r'(?s)^(.+)$')
 
 
@@ -556,6 +558,63 @@ async def gemini_ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     rmtree(output_dir, ignore_errors=True)
 
 
+async def lens_ocr(event: NewMessage.Event | CallbackQuery.Event) -> None:
+    input_message = await get_message_for_processing(event)
+    status_message = await send_progress_message(event, t('starting_process'))
+    progress_message = await send_progress_message(event, t('performing_ocr'))
+    output_dir = Path(TMP_DIR / str(uuid4()))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        async with download_to_temp_file(
+            event,
+            input_message,
+            progress_message,
+            suffix=input_message.file.ext,
+            temp_dir=output_dir,
+        ) as input_file:
+            pages = [input_file]
+            if input_file.suffix.lower() == '.pdf':
+                pages = []
+                with pymupdf.open(input_file) as document:
+                    for page_number, page in enumerate(document, start=1):
+                        zoom = ocr_page_zoom(page.rect.width)
+                        page_file = output_dir / f'{page_number:05}.png'
+                        page_file.write_bytes(
+                            page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False).tobytes(
+                                'png'
+                            )
+                        )
+                        pages.append(page_file)
+
+            results = []
+            async with LensAPI() as api:
+                for page_number, page_file in enumerate(pages, start=1):
+                    await progress_message.edit(
+                        f'<pre>{page_number} / {len(pages)}</pre>'
+                        if len(pages) > 1
+                        else t('performing_ocr')
+                    )
+                    result = await api.process_image(page_file)
+                    text = (result.get('ocr_text') or '').strip()
+                    if len(pages) > 1:
+                        text = f'=== Page {page_number} ===\n{text}'
+                    if text:
+                        results.append(text)
+
+            transcription = '\n\n'.join(results)
+            await edit_or_send_as_file(
+                event,
+                status_message,
+                transcription,
+                file_name=f'{get_download_name(input_message).stem}.lens.txt',
+            )
+    except Exception as e:  # noqa: BLE001
+        await status_message.edit(t('an_error_occurred', error=f'\n<pre>{e!s}</pre>'))
+    finally:
+        delete_message_after(progress_message)
+        rmtree(output_dir, ignore_errors=True)
+
+
 async def mistral_ocr_document(event: NewMessage.Event | CallbackQuery.Event) -> None:
     api_key = getenv('MISTRAL_API_KEY')
     if not api_key:
@@ -821,6 +880,13 @@ class AI(ModuleBase):
             handler=gemini_ocr_pdf,
             description=t('_gemini_ocr_description'),
             pattern=GEMINI_OCR_PATTERN,
+            condition=lambda e, m: has_pdf_file(e, m) or has_photo_or_photo_file(e, m),
+            is_applicable_for_reply=True,
+        ),
+        'lens ocr': Command(
+            handler=lens_ocr,
+            description=t('_lens_ocr_description'),
+            pattern=LENS_OCR_PATTERN,
             condition=lambda e, m: has_pdf_file(e, m) or has_photo_or_photo_file(e, m),
             is_applicable_for_reply=True,
         ),

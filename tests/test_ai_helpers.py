@@ -1,6 +1,12 @@
 from unittest import TestCase
 
-from src.modules.plugins.ai import format_mistral_ocr_pages
+from src.modules.plugins.ai import LENS_OCR_PATTERN, format_mistral_ocr_pages
+
+
+class LensOcrCommandTest(TestCase):
+    def test_lens_ocr_pattern_matches(self) -> None:
+        assert LENS_OCR_PATTERN.match('/lens ocr')
+        assert not LENS_OCR_PATTERN.match('/lens ocr 1')
 
 
 class MistralOcrHelpersTest(TestCase):

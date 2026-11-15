@@ -569,6 +569,7 @@
   "_gemini_ocr_description": "التفريغ باستخدام جوجل جيميني.",
   "_mistral_ocr": "OCR ميسترال",
   "_mistral_ocr_description": "استخراج النص المنظم باستخدام ميسترال.",
+  "_lens_ocr_description": "التعرف الضوئي على الصور وملفات PDF باستخدام عدسة جوجل.",
   "_gemini_transcribe": "تفريغ جيميني",
   "_gemini_transcribe_description": "تفريغ الصوت/الفيديو باستخدام جوجل جيميني.",
   "_gemini_prompt": "أمر جيميني",
