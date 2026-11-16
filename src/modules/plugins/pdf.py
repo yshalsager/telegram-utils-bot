@@ -1075,7 +1075,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  
         if method == 'gs':
             command = (
                 f'gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.7 -dPDFSETTINGS=/{option} -dNOPAUSE '
-                f'-dQUIET -dBATCH -sOutputFile="{output_file}" "{temp_file_path}"'
+                f'-dQUIET -dBATCH -sOutputFile={quote(str(output_file))} {quote(str(temp_file_path))}'
             )
             await stream_shell_output(event, command, status_message, progress_message)
         elif method == 'pymupdf':
