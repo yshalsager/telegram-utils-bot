@@ -1040,10 +1040,12 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  
                     prefix='m|pdf_compress|gs|',
                     prompt_text=f'{t("choose_ghostscript_compression")}:',
                     pairs=[
-                        (opt, f'm|pdf_compress|gs|{opt}')
-                        for opt in ['screen', 'ebook', 'printer', 'prepress', 'default']
+                        (t('pdf_compression_original'), 'm|pdf_compress|gs|default'),
+                        (t('pdf_compression_high'), 'm|pdf_compress|gs|printer'),
+                        (t('pdf_compression_balanced'), 'm|pdf_compress|gs|ebook'),
+                        (t('pdf_compression_smallest'), 'm|pdf_compress|gs|screen'),
                     ],
-                    cols=5,
+                    cols=2,
                     cast=str,
                 )
                 if _option is None:
