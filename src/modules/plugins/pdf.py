@@ -1004,7 +1004,7 @@ async def ocr_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:
     rmtree(output_dir, ignore_errors=True)
 
 
-async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912
+async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  # noqa: C901, PLR0912, PLR0915
     delete_message_after_process = False
     method: str
     option: str
@@ -1089,10 +1089,15 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  
             )
             return
 
-        compression_ratio = (1 - (output_file.stat().st_size / reply_message.file.size)) * 100
-        await upload_file_and_cleanup(event, output_file, progress_message)
-        feedback_text = f'{t("compression")}: {compression_ratio:.2f}%\n'
-        await progress_message.edit(feedback_text)
+        input_size = temp_file_path.stat().st_size
+        output_size = output_file.stat().st_size
+        if output_size >= input_size:
+            output_file.unlink()
+            await progress_message.edit(t('pdf_not_reduced'))
+        else:
+            compression_ratio = (1 - output_size / input_size) * 100
+            await upload_file_and_cleanup(event, output_file, progress_message)
+            await progress_message.edit(f'{t("compression")}: {compression_ratio:.2f}%\n')
 
     if delete_message_after_process:
         await status_message.delete()

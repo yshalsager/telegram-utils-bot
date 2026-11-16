@@ -341,6 +341,7 @@
   "choose_ghostscript_compression": "Choose Ghostscript compression option",
   "choose_compression_method": "Choose compression method",
   "compressing_pdf": "Compressing PDF…",
+  "pdf_not_reduced": "Could not reduce this PDF with these settings. Keep the original file.",
   "converting_pdf_to_bw": "Converting PDF to b/w…",
   "compression": "Compression",
   "pdf_bw_completed": "PDF b/w conversion complete.",

@@ -341,6 +341,7 @@
   "choose_ghostscript_compression": "اختر جودة الضغط",
   "choose_compression_method": "اختر طريقة الضغط",
   "compressing_pdf": "ضغط PDF…",
+  "pdf_not_reduced": "تعذر تقليل حجم ملف PDF بهذه الإعدادات. احتفظ بالملف الأصلي.",
   "converting_pdf_to_bw": "جاري تحويل PDF إلى أبيض وأسود…",
   "compression": "الضغط",
   "pdf_bw_completed": "اكتمل تحويل PDF إلى أبيض وأسود.",

@@ -11,6 +11,7 @@ from src.modules.plugins.pdf import (
     collect_pdf_attachments,
     collect_pdf_font_files,
     collect_pdf_fonts,
+    compress_pdf,
     format_pdf_info,
     normalize_pdf_page_size,
     parse_page_numbers,
@@ -32,6 +33,45 @@ class PdfPageParsingTest(TestCase):
     def test_parse_page_numbers_ignores_zero_and_invalid_ranges(self) -> None:
         assert parse_page_numbers('0') == []
         assert parse_page_numbers('0-2 4-2') == []
+
+
+class PdfCompressionTest(IsolatedAsyncioTestCase):
+    async def test_uploads_only_smaller_results_using_actual_input_size(self) -> None:
+        for output_size in (60, 100, 145):
+            with self.subTest(output_size=output_size), TemporaryDirectory() as temp_dir:
+                input_file = Path(temp_dir) / 'input.pdf'
+                input_file.write_bytes(b'x' * 100)
+                output_file = input_file.with_name('book_compressed.pdf')
+                reply = SimpleNamespace(file=SimpleNamespace(name='book.pdf', size=200))
+                progress = AsyncMock()
+                with (
+                    patch(
+                        'src.modules.plugins.pdf.get_reply_message', AsyncMock(return_value=reply)
+                    ),
+                    patch(
+                        'src.modules.plugins.pdf.send_progress_message',
+                        AsyncMock(return_value=progress),
+                    ),
+                    patch('src.modules.plugins.pdf.download_to_temp_file') as download,
+                    patch('src.modules.plugins.pdf.pymupdf.open') as open_pdf,
+                    patch('src.modules.plugins.pdf.upload_file_and_cleanup', AsyncMock()) as upload,
+                    patch('src.modules.plugins.pdf.t', side_effect=lambda key: key),
+                ):
+                    download.return_value.__aenter__.return_value = input_file
+                    open_pdf.return_value.__enter__.return_value.save.side_effect = (
+                        lambda path, size=output_size, **kwargs: path.write_bytes(b'x' * size)
+                    )
+
+                    await compress_pdf(SimpleNamespace())
+
+                    if output_size < 100:
+                        upload.assert_awaited_once()
+                        progress.edit.assert_awaited_once_with('compression: 40.00%\n')
+                    else:
+                        upload.assert_not_awaited()
+                        progress.edit.assert_awaited_once_with('pdf_not_reduced')
+                        assert not output_file.exists()
+                    assert input_file.stat().st_size == 100
 
 
 class PdfThumbnailTest(IsolatedAsyncioTestCase):
