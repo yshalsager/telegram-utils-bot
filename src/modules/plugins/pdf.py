@@ -1080,7 +1080,10 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  
             with pymupdf.open(temp_file_path) as doc:
                 doc.save(output_file, **PDF_SAVE_KWARGS)
         else:  # ocrmypdf
-            command = f'ocrmypdf --clean --tesseract-timeout 0 "{temp_file_path.name}" "{output_file.name}"'
+            command = (
+                f'ocrmypdf --skip-text --output-type pdf --clean --tesseract-timeout 0 '
+                f'{quote(str(temp_file_path))} {quote(str(output_file))}'
+            )
             await stream_shell_output(event, command, status_message, progress_message)
 
         if not output_file.exists() or not output_file.stat().st_size:
