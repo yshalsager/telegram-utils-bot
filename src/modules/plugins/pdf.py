@@ -6,7 +6,7 @@ from os import getenv
 from pathlib import Path
 from shlex import quote
 from shutil import rmtree
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Any, ClassVar
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -1113,49 +1113,47 @@ async def pdf_bw(event: NewMessage.Event | CallbackQuery.Event) -> None:
     reply_message = await get_reply_message(event, previous=True)
     status_message = await send_progress_message(event, t('starting_process'))
     progress_message = await send_progress_message(event, t('converting_pdf_to_bw'))
-    output_dir = Path(TMP_DIR / str(uuid4()))
-    output_dir.mkdir(parents=True, exist_ok=True)
-    work_dir = output_dir.absolute()
+    with TemporaryDirectory(dir=TMP_DIR) as temp_dir:
+        output_dir = Path(temp_dir)
+        work_dir = output_dir.absolute()
 
-    async with download_to_temp_file(
-        event,
-        reply_message,
-        progress_message,
-        suffix='.pdf',
-        temp_dir=output_dir,
-    ) as temp_file_path:
-        input_file = temp_file_path.absolute()
-        output_file = output_dir / f'{Path(reply_message.file.name).stem}_bw.pdf'
-        assembly_code = f"""import sys
+        async with download_to_temp_file(
+            event,
+            reply_message,
+            progress_message,
+            suffix='.pdf',
+            temp_dir=output_dir,
+        ) as temp_file_path:
+            input_file = temp_file_path.absolute()
+            output_file = output_dir / f'{Path(reply_message.file.name).stem}_bw.pdf'
+            assembly_code = f"""import sys
 import pymupdf
 
 with pymupdf.open() as doc:
     for file_name in sys.argv[2:]:
         pix = pymupdf.Pixmap(file_name)
-        page = doc.new_page(width=pix.width, height=pix.height)
-        page.insert_image(pymupdf.Rect(0, 0, pix.width, pix.height), stream=pix.tobytes('png'))
+        page = doc.new_page(width=pix.width * 72 / 300, height=pix.height * 72 / 300)
+        page.insert_image(page.rect, stream=pix.tobytes('png'))
     doc.save(sys.argv[1], **{PDF_SAVE_KWARGS!r})
 """
-        command = (
-            f'pdftoppm -r 300 -gray "{input_file}" "{work_dir / "page"}" '
-            f'&& for f in "{work_dir}"/page-*.pgm; do '
-            'n=${f##*/}; n=${n%.pgm}; n=${n#page-}; '
-            f'unpaper --dpi 300 --type pbm --black-threshold 0.33 --white-threshold 0.9 "$f" "{work_dir}/cleaned-$n.pbm" >/dev/null || exit; '
-            f'done && python -c {quote(assembly_code)} {quote(str(output_file))} "{work_dir}"/cleaned-*.pbm'
-        )
-        await stream_shell_output(event, command, status_message, progress_message)
-
-        if not output_file.exists() or not output_file.stat().st_size:
-            await status_message.edit(
-                t('process_failed_for_file', file_name=reply_message.file.name)
+            command = (
+                f'pdftoppm -r 300 -gray "{input_file}" "{work_dir / "page"}" '
+                f'&& for f in "{work_dir}"/page-*.pgm; do '
+                'n=${f##*/}; n=${n%.pgm}; n=${n#page-}; '
+                f'unpaper --dpi 300 --type pbm --black-threshold 0.33 --white-threshold 0.9 "$f" "{work_dir}/cleaned-$n.pbm" >/dev/null || exit; '
+                f'done && python -c {quote(assembly_code)} {quote(str(output_file))} "{work_dir}"/cleaned-*.pbm'
             )
-            rmtree(output_dir, ignore_errors=True)
-            return
+            await stream_shell_output(event, command, status_message, progress_message)
 
-        await upload_file_and_cleanup(event, output_file, progress_message)
+            if not output_file.exists() or not output_file.stat().st_size:
+                await status_message.edit(
+                    t('process_failed_for_file', file_name=reply_message.file.name)
+                )
+                return
+
+            await upload_file_and_cleanup(event, output_file, progress_message)
 
     await progress_message.edit(t('pdf_bw_completed'))
-    rmtree(output_dir, ignore_errors=True)
 
 
 async def crop_pdf_whitespace(event: NewMessage.Event) -> None:
