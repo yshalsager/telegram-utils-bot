@@ -353,7 +353,7 @@
   "_pdf": "إلى PDF",
   "_pdf_description": "تحويل الصورة إلى PDF.",
   "_pdf_compress": "ضغط PDF",
-  "_pdf_compress_description": "ضغط ملف PDF.",
+  "_pdf_compress_description": "ضغط ملف PDF؛ يحافظ الأمر /pdf compress على دقة الصور الأصلية.",
   "_pdf_bw": "PDF أبيض وأسود",
   "_pdf_bw_description": "تحويل PDF إلى أبيض وأسود (بحجم أصغر) باستخدام unpaper.",
   "_pdf_crop": "قص PDF",

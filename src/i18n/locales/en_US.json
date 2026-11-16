@@ -353,7 +353,7 @@
   "_pdf": "pdf",
   "_pdf_description": "Convert image to PDF.",
   "_pdf_compress": "compress",
-  "_pdf_compress_description": "Compress PDF file.",
+  "_pdf_compress_description": "Compress PDF; /pdf compress keeps the original image resolution.",
   "_pdf_bw": "bw",
   "_pdf_bw_description": "Convert PDF to b/w (small) PDF using unpaper.",
   "_pdf_crop": "crop",

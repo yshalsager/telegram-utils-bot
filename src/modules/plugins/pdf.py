@@ -1025,7 +1025,7 @@ async def compress_pdf(event: NewMessage.Event | CallbackQuery.Event) -> None:  
                 prompt_text=f'{t("choose_compression_method")}:',
                 pairs=[
                     ('Ghostscript', 'm|pdf_compress|gs'),
-                    ('PyMuPDF', 'm|pdf_compress|pymupdf'),
+                    (f'PyMuPDF ({t("pdf_compression_original")})', 'm|pdf_compress|pymupdf'),
                     ('OCRmyPDF', 'm|pdf_compress|ocrmypdf'),
                 ],
                 cols=3,
