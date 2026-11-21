@@ -6,7 +6,7 @@ authors = [
     { name = "yshalsager", email = "contact@yshalsager.com" }
 ]
 license = { file = "LICENSE" }
-requires-python = ">=3.14, <3.15"
+requires-python = ">=3.15, <3.16"
 dependencies = [
     "telethon>=1.44.0",
     "cryptg>=0.5.1",
@@ -28,7 +28,7 @@ dependencies = [
     "llm>=0.32",
     "llm-gemini>=0.37",
     "llm-groq>=0.8",
-    "chrome-lens-py==4.0.0",
+    "chrome-lens-py==4.0.2",
     "bgutil-ytdlp-pot-provider>=2.0.2",
     "gpapi>=0.4.4",
     "locro @ https://github.com/yshalsager/clv-locro/archive/e28800b406196893fa146602029c18ef833a0f71.zip",
